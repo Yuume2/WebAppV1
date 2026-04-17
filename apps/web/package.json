@@ -11,6 +11,9 @@
     "clean": "rm -rf .next .turbo"
   },
   "dependencies": {
+    "@webapp/config": "workspace:*",
+    "@webapp/types": "workspace:*",
+    "@webapp/ui": "workspace:*",
     "next": "15.1.3",
     "react": "19.0.0",
     "react-dom": "19.0.0"

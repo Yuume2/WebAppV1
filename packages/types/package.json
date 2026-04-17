@@ -5,6 +5,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
+    "build": "echo \"(types) no build step\"",
+    "lint": "echo \"(types) lint placeholder\"",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo"
   },
