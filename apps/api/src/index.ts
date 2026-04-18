@@ -1,16 +1,8 @@
-import { createServer } from 'node:http';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
-import { Router } from './lib/router.js';
-import { handleRequest } from './middleware/handle-request.js';
-import { routes } from './routes/index.js';
+import { createApiServer } from './lib/server.js';
 
-const router = new Router();
-router.registerAll(routes);
-
-const server = createServer((req, res) => {
-  void handleRequest(router, req, res);
-});
+const server = createApiServer();
 
 server.listen(env.port, () => {
   logger.info('api listening', {

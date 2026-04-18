@@ -30,17 +30,27 @@ Every response sets `X-Request-Id`.
 
 ## Endpoints
 
-| Method | Path          | Description                       |
-| ------ | ------------- | --------------------------------- |
-| GET    | `/health`     | Service health + uptime           |
-| GET    | `/v1/health`  | Same, under versioned prefix      |
+| Method | Path             | Description                       |
+| ------ | ---------------- | --------------------------------- |
+| GET    | `/health`        | Service health + uptime           |
+| GET    | `/v1/health`     | Same, under versioned prefix      |
+| GET    | `/v1/projects`   | Readonly list of projects         |
 
 ## Dev
 
 ```bash
 pnpm --filter @webapp/api dev
 curl -i http://localhost:4000/health
+curl -i http://localhost:4000/v1/projects
 ```
+
+## Tests
+
+```bash
+pnpm --filter @webapp/api test
+```
+
+Vitest spins up the real server on an ephemeral port per suite and asserts on the envelope, headers, and error paths.
 
 ## Env vars
 
