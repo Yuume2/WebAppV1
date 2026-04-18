@@ -10,7 +10,9 @@ interface ChatWindowProps {
   provider: AIProvider;
   model: string;
   messages: MockMessage[];
+  active?: boolean;
   onClose?: (id: string) => void;
+  onFocus?: (id: string) => void;
 }
 
 const providerColor: Record<AIProvider, string> = {
@@ -19,20 +21,39 @@ const providerColor: Record<AIProvider, string> = {
   perplexity: '#6b8afd',
 };
 
-export function ChatWindow({ id, title, provider, model, messages, onClose }: ChatWindowProps) {
+const providerLabel: Record<AIProvider, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  perplexity: 'Perplexity',
+};
+
+export function ChatWindow({
+  id,
+  title,
+  provider,
+  model,
+  messages,
+  active = false,
+  onClose,
+  onFocus,
+}: ChatWindowProps) {
   const [draft, setDraft] = useState('');
 
   return (
     <div
+      onClick={() => onFocus?.(id)}
       style={{
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
         minHeight: 360,
         background: '#131318',
-        border: '1px solid #24242c',
+        border: `1px solid ${active ? '#4f6bff' : '#24242c'}`,
+        boxShadow: active ? '0 0 0 1px rgba(79,107,255,0.35)' : 'none',
         borderRadius: 12,
         overflow: 'hidden',
+        transition: 'border-color 120ms ease, box-shadow 120ms ease',
+        cursor: active ? 'default' : 'pointer',
       }}
     >
       <div
@@ -42,10 +63,10 @@ export function ChatWindow({ id, title, provider, model, messages, onClose }: Ch
           justifyContent: 'space-between',
           padding: '0.65rem 0.9rem',
           borderBottom: '1px solid #24242c',
-          background: '#181820',
+          background: active ? '#1c1c28' : '#181820',
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
           <span
             style={{
               fontSize: '0.9rem',
@@ -58,40 +79,24 @@ export function ChatWindow({ id, title, provider, model, messages, onClose }: Ch
           >
             {title}
           </span>
-          <span
-            style={{
-              fontSize: '0.72rem',
-              color: '#8a8a95',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              marginTop: 2,
-            }}
-          >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: providerColor[provider],
-                display: 'inline-block',
-              }}
-            />
-            {provider} · {model}
-          </span>
+          <ProviderBadge provider={provider} model={model} />
         </div>
         {onClose ? (
           <button
-            onClick={() => onClose(id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose(id);
+            }}
             aria-label="Close window"
             style={{
               background: 'transparent',
               border: 'none',
               color: '#8a8a95',
               cursor: 'pointer',
-              fontSize: '1rem',
-              padding: '0.25rem 0.4rem',
+              fontSize: '1.1rem',
+              padding: '0.25rem 0.5rem',
               borderRadius: 6,
+              lineHeight: 1,
             }}
           >
             ×
@@ -123,6 +128,7 @@ export function ChatWindow({ id, title, provider, model, messages, onClose }: Ch
           e.preventDefault();
           setDraft('');
         }}
+        onClick={(e) => e.stopPropagation()}
         style={{
           display: 'flex',
           gap: '0.5rem',
@@ -134,6 +140,7 @@ export function ChatWindow({ id, title, provider, model, messages, onClose }: Ch
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => onFocus?.(id)}
           placeholder="Send a message…"
           style={{
             flex: 1,
@@ -166,6 +173,39 @@ export function ChatWindow({ id, title, provider, model, messages, onClose }: Ch
         </button>
       </form>
     </div>
+  );
+}
+
+function ProviderBadge({ provider, model }: { provider: AIProvider; model: string }) {
+  const color = providerColor[provider];
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+        marginTop: 4,
+        padding: '2px 8px',
+        background: `${color}1a`,
+        border: `1px solid ${color}55`,
+        borderRadius: 999,
+        fontSize: '0.7rem',
+        color: '#e8e8ef',
+        alignSelf: 'flex-start',
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: color,
+          display: 'inline-block',
+        }}
+      />
+      <span style={{ fontWeight: 600 }}>{providerLabel[provider]}</span>
+      <span style={{ color: '#8a8a95' }}>· {model}</span>
+    </span>
   );
 }
 
