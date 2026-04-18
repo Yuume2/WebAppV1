@@ -13,6 +13,7 @@ interface ChatWindowProps {
   active?: boolean;
   onClose?: (id: string) => void;
   onFocus?: (id: string) => void;
+  onSend?: (id: string, content: string) => void;
 }
 
 const providerColor: Record<AIProvider, string> = {
@@ -36,8 +37,16 @@ export function ChatWindow({
   active = false,
   onClose,
   onFocus,
+  onSend,
 }: ChatWindowProps) {
   const [draft, setDraft] = useState('');
+
+  const submit = () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    onSend?.(id, trimmed);
+    setDraft('');
+  };
 
   return (
     <div
@@ -115,8 +124,17 @@ export function ChatWindow({
         }}
       >
         {messages.length === 0 ? (
-          <div style={{ color: '#6a6a75', fontSize: '0.85rem', margin: 'auto' }}>
-            No messages yet
+          <div
+            style={{
+              color: '#6a6a75',
+              fontSize: '0.85rem',
+              margin: 'auto',
+              textAlign: 'center',
+            }}
+          >
+            No messages yet.
+            <br />
+            <span style={{ fontSize: '0.75rem' }}>Type below to start the conversation.</span>
           </div>
         ) : (
           messages.map((m) => <MessageBubble key={m.id} message={m} />)
@@ -126,7 +144,7 @@ export function ChatWindow({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          setDraft('');
+          submit();
         }}
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -142,6 +160,7 @@ export function ChatWindow({
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => onFocus?.(id)}
           placeholder="Send a message…"
+          aria-label={`Message ${title}`}
           style={{
             flex: 1,
             background: '#1b1b23',

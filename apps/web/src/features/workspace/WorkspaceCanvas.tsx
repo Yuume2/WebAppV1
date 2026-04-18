@@ -6,7 +6,8 @@ import type { MockMessage } from '@/lib/data';
 
 interface WorkspaceCanvasProps {
   visibleWindows: ChatWindowType[];
-  messagesByWindow: Record<string, MockMessage[]>;
+  getMessages: (windowId: string) => MockMessage[];
+  onSend: (windowId: string, content: string) => void;
   activeId: string | null;
   hasClosed: boolean;
   onClose: (id: string) => void;
@@ -17,7 +18,8 @@ interface WorkspaceCanvasProps {
 
 export function WorkspaceCanvas({
   visibleWindows,
-  messagesByWindow,
+  getMessages,
+  onSend,
   activeId,
   hasClosed,
   onClose,
@@ -48,10 +50,11 @@ export function WorkspaceCanvas({
             title={w.title}
             provider={w.provider}
             model={w.model}
-            messages={messagesByWindow[w.id] ?? []}
+            messages={getMessages(w.id)}
             active={activeId === w.id}
             onClose={onClose}
             onFocus={onFocus}
+            onSend={onSend}
           />
         ))
       )}
