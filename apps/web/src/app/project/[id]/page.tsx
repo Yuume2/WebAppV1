@@ -1,13 +1,8 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { WorkspaceCanvas } from '@/features/workspace/WorkspaceCanvas';
 import { AppShell } from '@/components/AppShell';
-import {
-  getProject,
-  getWorkspaceByProject,
-  getWindowsForWorkspace,
-  getMessagesForWindow,
-  type MockMessage,
-} from '@/lib/mock-data';
+import { WorkspaceCanvas } from '@/features/workspace/WorkspaceCanvas';
+import { getProjectView } from '@/lib/data';
 
 interface ProjectPageProps {
   params: Promise<{ id: string }>;
@@ -15,24 +10,21 @@ interface ProjectPageProps {
 
 export default async function ProjectPage({ params }: ProjectPageProps) {
   const { id } = await params;
-  const project = getProject(id);
-  if (!project) notFound();
+  const view = getProjectView(id);
+  if (!view) notFound();
 
-  const workspace = getWorkspaceByProject(project.id);
+  const { project, workspace, windows, messagesByWindow } = view;
+
   if (!workspace) {
     return (
-      <AppShell subtitle={project.name}>
+      <AppShell subtitle="Project" right={<BackLink />}>
         <NoWorkspace projectName={project.name} />
       </AppShell>
     );
   }
 
-  const windows = getWindowsForWorkspace(workspace.id);
-  const messagesByWindow: Record<string, MockMessage[]> = {};
-  for (const w of windows) messagesByWindow[w.id] = getMessagesForWindow(w.id);
-
   return (
-    <AppShell subtitle="Workspace">
+    <AppShell subtitle="Workspace" right={<BackLink />}>
       <WorkspaceCanvas
         projectName={project.name}
         workspaceName={workspace.name}
@@ -40,6 +32,21 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
         messagesByWindow={messagesByWindow}
       />
     </AppShell>
+  );
+}
+
+function BackLink() {
+  return (
+    <Link
+      href="/"
+      style={{
+        color: '#8a8a95',
+        textDecoration: 'none',
+        fontSize: '0.85rem',
+      }}
+    >
+      ← Projects
+    </Link>
   );
 }
 

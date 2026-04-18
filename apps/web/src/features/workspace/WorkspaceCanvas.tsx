@@ -4,7 +4,7 @@ import type { ChatWindow as ChatWindowType } from '@webapp/types';
 import { ChatWindow } from '@/features/chat/ChatWindow';
 import { WorkspaceToolbar } from '@/features/workspace/WorkspaceToolbar';
 import { useWorkspaceState } from '@/features/workspace/useWorkspaceState';
-import type { MockMessage } from '@/lib/mock-data';
+import type { MockMessage } from '@/lib/data';
 
 interface WorkspaceCanvasProps {
   projectName: string;

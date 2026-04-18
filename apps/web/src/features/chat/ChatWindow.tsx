@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { AIProvider } from '@webapp/types';
-import type { MockMessage } from '@/lib/mock-data';
+import type { MockMessage } from '@/lib/data';
 
 interface ChatWindowProps {
   id: string;

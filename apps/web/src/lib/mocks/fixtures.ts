@@ -10,7 +10,7 @@ export interface MockMessage {
 
 const now = '2026-04-18T00:00:00.000Z';
 
-export const mockProjects: Project[] = [
+export const projects: Project[] = [
   {
     id: 'proj-1',
     name: 'Research Sprint',
@@ -27,7 +27,7 @@ export const mockProjects: Project[] = [
   },
 ];
 
-export const mockWorkspaces: Workspace[] = [
+export const workspaces: Workspace[] = [
   {
     id: 'ws-1',
     projectId: 'proj-1',
@@ -46,7 +46,7 @@ export const mockWorkspaces: Workspace[] = [
   },
 ];
 
-export const mockWindows: ChatWindow[] = [
+export const windows: ChatWindow[] = [
   {
     id: 'win-1',
     workspaceId: 'ws-1',
@@ -94,7 +94,7 @@ export const mockWindows: ChatWindow[] = [
   },
 ];
 
-export const mockMessages: MockMessage[] = [
+export const messages: MockMessage[] = [
   {
     id: 'm-1',
     windowId: 'win-1',
@@ -145,19 +145,3 @@ export const mockMessages: MockMessage[] = [
     createdAt: now,
   },
 ];
-
-export function getProject(id: string): Project | undefined {
-  return mockProjects.find((p) => p.id === id);
-}
-
-export function getWorkspaceByProject(projectId: string): Workspace | undefined {
-  return mockWorkspaces.find((w) => w.projectId === projectId);
-}
-
-export function getWindowsForWorkspace(workspaceId: string): ChatWindow[] {
-  return mockWindows.filter((w) => w.workspaceId === workspaceId);
-}
-
-export function getMessagesForWindow(windowId: string): MockMessage[] {
-  return mockMessages.filter((m) => m.windowId === windowId);
-}
