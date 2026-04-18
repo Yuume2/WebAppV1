@@ -2,69 +2,59 @@
 
 import type { ChatWindow as ChatWindowType } from '@webapp/types';
 import { ChatWindow } from '@/features/chat/ChatWindow';
-import { WorkspaceToolbar } from '@/features/workspace/WorkspaceToolbar';
-import { useWorkspaceState } from '@/features/workspace/useWorkspaceState';
 import type { MockMessage } from '@/lib/data';
 
 interface WorkspaceCanvasProps {
-  projectName: string;
-  workspaceName?: string;
-  windows: ChatWindowType[];
+  visibleWindows: ChatWindowType[];
   messagesByWindow: Record<string, MockMessage[]>;
+  activeId: string | null;
+  hasClosed: boolean;
+  onClose: (id: string) => void;
+  onFocus: (id: string) => void;
+  onReset: () => void;
+  onAddMock: () => void;
 }
 
 export function WorkspaceCanvas({
-  projectName,
-  workspaceName,
-  windows,
+  visibleWindows,
   messagesByWindow,
+  activeId,
+  hasClosed,
+  onClose,
+  onFocus,
+  onReset,
+  onAddMock,
 }: WorkspaceCanvasProps) {
-  const state = useWorkspaceState({ windows });
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <WorkspaceToolbar
-        projectName={projectName}
-        workspaceName={workspaceName}
-        openCount={state.visibleWindows.length}
-        totalCount={state.visibleWindows.length + state.closedWindows.length}
-        closedWindows={state.closedWindows}
-        onReset={state.reset}
-        onAddMock={state.addMockWindow}
-        onReopen={state.reopen}
-      />
-      <div
-        style={{
-          flex: 1,
-          padding: '1.25rem',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-          gap: '1rem',
-          alignContent: 'start',
-        }}
-      >
-        {state.visibleWindows.length === 0 ? (
-          <EmptyWorkspace
-            hasClosed={state.closedWindows.length > 0}
-            onReset={state.reset}
-            onAddMock={state.addMockWindow}
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        padding: '1.25rem',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+        gap: '1rem',
+        alignContent: 'start',
+        overflowY: 'auto',
+      }}
+    >
+      {visibleWindows.length === 0 ? (
+        <EmptyWorkspace hasClosed={hasClosed} onReset={onReset} onAddMock={onAddMock} />
+      ) : (
+        visibleWindows.map((w) => (
+          <ChatWindow
+            key={w.id}
+            id={w.id}
+            title={w.title}
+            provider={w.provider}
+            model={w.model}
+            messages={messagesByWindow[w.id] ?? []}
+            active={activeId === w.id}
+            onClose={onClose}
+            onFocus={onFocus}
           />
-        ) : (
-          state.visibleWindows.map((w) => (
-            <ChatWindow
-              key={w.id}
-              id={w.id}
-              title={w.title}
-              provider={w.provider}
-              model={w.model}
-              messages={messagesByWindow[w.id] ?? []}
-              active={state.activeId === w.id}
-              onClose={state.close}
-              onFocus={state.focus}
-            />
-          ))
-        )}
-      </div>
+        ))
+      )}
     </div>
   );
 }
@@ -93,7 +83,7 @@ function EmptyWorkspace({
     >
       <div style={{ fontSize: '1rem', color: '#e8e8ef' }}>No windows open</div>
       <div style={{ fontSize: '0.85rem' }}>
-        {hasClosed ? 'Reopen a closed window or reset the workspace.' : 'Add a mock window to begin.'}
+        {hasClosed ? 'Reopen a window from the sidebar or reset the workspace.' : 'Add a mock window to begin.'}
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
         <button

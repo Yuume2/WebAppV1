@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
-import { WorkspaceCanvas } from '@/features/workspace/WorkspaceCanvas';
+import { Workspace } from '@/features/workspace/Workspace';
 import { getProjectView } from '@/lib/data';
 
 interface ProjectPageProps {
@@ -24,14 +24,12 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   }
 
   return (
-    <AppShell subtitle="Workspace" right={<BackLink />}>
-      <WorkspaceCanvas
-        projectName={project.name}
-        workspaceName={workspace.name}
-        windows={windows}
-        messagesByWindow={messagesByWindow}
-      />
-    </AppShell>
+    <Workspace
+      projectName={project.name}
+      workspaceName={workspace.name}
+      windows={windows}
+      messagesByWindow={messagesByWindow}
+    />
   );
 }
 
@@ -39,11 +37,7 @@ function BackLink() {
   return (
     <Link
       href="/"
-      style={{
-        color: '#8a8a95',
-        textDecoration: 'none',
-        fontSize: '0.85rem',
-      }}
+      style={{ color: '#8a8a95', textDecoration: 'none', fontSize: '0.85rem' }}
     >
       ← Projects
     </Link>

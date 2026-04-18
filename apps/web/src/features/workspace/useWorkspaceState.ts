@@ -20,16 +20,23 @@ interface WorkspaceState {
   addMockWindow: () => void;
 }
 
+const MOCK_PRESETS: Array<Pick<ChatWindow, 'provider' | 'model'>> = [
+  { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  { provider: 'openai', model: 'gpt-4o' },
+  { provider: 'perplexity', model: 'sonar-pro' },
+];
+
 let mockCounter = 0;
 function makeMockWindow(workspaceId: string): ChatWindow {
   mockCounter += 1;
+  const preset = MOCK_PRESETS[mockCounter % MOCK_PRESETS.length]!;
   const now = new Date().toISOString();
   return {
     id: `mock-${Date.now()}-${mockCounter}`,
     workspaceId,
     title: `Mock window ${mockCounter}`,
-    provider: 'anthropic',
-    model: 'claude-sonnet-4-6',
+    provider: preset.provider,
+    model: preset.model,
     createdAt: now,
     updatedAt: now,
   };
