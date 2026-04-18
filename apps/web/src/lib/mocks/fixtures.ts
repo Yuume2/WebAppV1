@@ -37,6 +37,14 @@ export const workspaces: Workspace[] = [
     updatedAt: now,
   },
   {
+    id: 'ws-1b',
+    projectId: 'proj-1',
+    name: 'Deep Dive',
+    windowIds: ['win-6', 'win-7'],
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
     id: 'ws-2',
     projectId: 'proj-2',
     name: 'Draft Canvas',
@@ -92,6 +100,24 @@ export const windows: ChatWindow[] = [
     createdAt: now,
     updatedAt: now,
   },
+  {
+    id: 'win-6',
+    workspaceId: 'ws-1b',
+    title: 'Regulation deep dive',
+    provider: 'anthropic',
+    model: 'claude-opus-4-7',
+    createdAt: now,
+    updatedAt: now,
+  },
+  {
+    id: 'win-7',
+    workspaceId: 'ws-1b',
+    title: 'Patent search',
+    provider: 'perplexity',
+    model: 'sonar-pro',
+    createdAt: now,
+    updatedAt: now,
+  },
 ];
 
 export const messages: MockMessage[] = [
@@ -142,6 +168,27 @@ export const messages: MockMessage[] = [
     windowId: 'win-5',
     role: 'user',
     content: 'Make this paragraph more concise.',
+    createdAt: now,
+  },
+  {
+    id: 'm-8',
+    windowId: 'win-6',
+    role: 'user',
+    content: 'Map current EU AI Act obligations for high-risk systems.',
+    createdAt: now,
+  },
+  {
+    id: 'm-9',
+    windowId: 'win-6',
+    role: 'assistant',
+    content: 'Article 9 risk management, Article 10 data governance, Article 13 transparency.',
+    createdAt: now,
+  },
+  {
+    id: 'm-10',
+    windowId: 'win-7',
+    role: 'user',
+    content: 'Find recent patents about RAG infrastructure.',
     createdAt: now,
   },
 ];

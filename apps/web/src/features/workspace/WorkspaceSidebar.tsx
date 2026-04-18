@@ -1,12 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import type { AIProvider, ChatWindow } from '@webapp/types';
+import { useState } from 'react';
+import type { AIProvider, ChatWindow, Workspace } from '@webapp/types';
 import { Button } from '@/components/Button';
 
 interface WorkspaceSidebarProps {
+  projectId: string;
   projectName: string;
-  workspaceName?: string;
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
   visibleWindows: ChatWindow[];
   closedWindows: ChatWindow[];
   activeId: string | null;
@@ -24,8 +27,10 @@ const providerColor: Record<AIProvider, string> = {
 };
 
 export function WorkspaceSidebar({
+  projectId,
   projectName,
-  workspaceName,
+  workspaces,
+  activeWorkspaceId,
   visibleWindows,
   closedWindows,
   activeId,
@@ -36,6 +41,7 @@ export function WorkspaceSidebar({
   onReset,
 }: WorkspaceSidebarProps) {
   const total = visibleWindows.length + closedWindows.length;
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
 
   return (
     <aside
@@ -62,11 +68,12 @@ export function WorkspaceSidebar({
           ← Projects
         </Link>
         <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#f5f5f5' }}>{projectName}</div>
-        {workspaceName ? (
-          <div style={{ fontSize: '0.78rem', color: '#8a8a95', marginTop: 2 }}>
-            {workspaceName}
-          </div>
-        ) : null}
+        <WorkspaceSwitcher
+          projectId={projectId}
+          workspaces={workspaces}
+          activeWorkspaceId={activeWorkspaceId}
+          activeWorkspaceName={activeWorkspace?.name ?? '—'}
+        />
         <div style={{ fontSize: '0.7rem', color: '#6a6a75', marginTop: 8 }}>
           {visibleWindows.length} open · {total} total
         </div>
@@ -126,6 +133,108 @@ export function WorkspaceSidebar({
         </Button>
       </div>
     </aside>
+  );
+}
+
+function WorkspaceSwitcher({
+  projectId,
+  workspaces,
+  activeWorkspaceId,
+  activeWorkspaceName,
+}: {
+  projectId: string;
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+  activeWorkspaceName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const single = workspaces.length <= 1;
+
+  return (
+    <div style={{ position: 'relative', marginTop: 6 }}>
+      <button
+        onClick={() => !single && setOpen((v) => !v)}
+        disabled={single}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          gap: 6,
+          background: '#181820',
+          border: '1px solid #24242c',
+          borderRadius: 6,
+          padding: '0.35rem 0.55rem',
+          color: '#e8e8ef',
+          fontSize: '0.78rem',
+          fontFamily: 'inherit',
+          cursor: single ? 'default' : 'pointer',
+          opacity: single ? 0.85 : 1,
+        }}
+      >
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {activeWorkspaceName}
+        </span>
+        {single ? null : (
+          <span style={{ color: '#8a8a95', fontSize: '0.7rem' }}>{open ? '▴' : '▾'}</span>
+        )}
+      </button>
+      {open && !single ? (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            left: 0,
+            right: 0,
+            background: '#181820',
+            border: '1px solid #24242c',
+            borderRadius: 6,
+            padding: 4,
+            zIndex: 10,
+            boxShadow: '0 6px 18px rgba(0,0,0,0.4)',
+          }}
+        >
+          {workspaces.map((w) => {
+            const active = w.id === activeWorkspaceId;
+            return (
+              <Link
+                key={w.id}
+                href={`/project/${projectId}?workspace=${w.id}`}
+                onClick={() => setOpen(false)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.4rem 0.55rem',
+                  borderRadius: 4,
+                  color: active ? '#f5f5f5' : '#cfcfd6',
+                  background: active ? '#1c1c28' : 'transparent',
+                  textDecoration: 'none',
+                  fontSize: '0.78rem',
+                }}
+              >
+                <span
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {w.name}
+                </span>
+                {active ? <span style={{ color: '#8a8a95', fontSize: '0.7rem' }}>●</span> : null}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

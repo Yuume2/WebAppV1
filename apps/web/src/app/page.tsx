@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { Panel } from '@/components/Panel';
-import { listProjects, getWorkspaceForProject } from '@/lib/data';
+import { listProjects, listWorkspacesForProject } from '@/lib/data';
 
 export default function HomePage() {
   const projects = listProjects();
@@ -21,7 +21,8 @@ export default function HomePage() {
             }}
           >
             {projects.map((project) => {
-              const workspace = getWorkspaceForProject(project.id);
+              const projectWorkspaces = listWorkspacesForProject(project.id);
+              const totalWindows = projectWorkspaces.reduce((sum, w) => sum + w.windowIds.length, 0);
               return (
                 <Link
                   key={project.id}
@@ -36,7 +37,9 @@ export default function HomePage() {
                       </div>
                     ) : null}
                     <div style={{ color: '#6a6a75', fontSize: '0.75rem', marginTop: 12 }}>
-                      {workspace ? `${workspace.windowIds.length} windows` : 'No workspace'}
+                      {projectWorkspaces.length === 0
+                        ? 'No workspace'
+                        : `${projectWorkspaces.length} workspace${projectWorkspaces.length > 1 ? 's' : ''} · ${totalWindows} windows`}
                     </div>
                   </Panel>
                 </Link>

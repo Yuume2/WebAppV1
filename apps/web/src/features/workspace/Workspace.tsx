@@ -1,21 +1,25 @@
 'use client';
 
-import type { ChatWindow } from '@webapp/types';
+import type { ChatWindow, Workspace as WorkspaceType } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
 import { useWorkspaceState } from '@/features/workspace/useWorkspaceState';
 import { WorkspaceSidebar } from '@/features/workspace/WorkspaceSidebar';
 import { WorkspaceCanvas } from '@/features/workspace/WorkspaceCanvas';
 
 interface WorkspaceProps {
+  projectId: string;
   projectName: string;
-  workspaceName?: string;
+  workspaces: WorkspaceType[];
+  activeWorkspace: WorkspaceType;
   windows: ChatWindow[];
   messagesByWindow: Record<string, MockMessage[]>;
 }
 
 export function Workspace({
+  projectId,
   projectName,
-  workspaceName,
+  workspaces,
+  activeWorkspace,
   windows,
   messagesByWindow,
 }: WorkspaceProps) {
@@ -24,8 +28,10 @@ export function Workspace({
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <WorkspaceSidebar
+        projectId={projectId}
         projectName={projectName}
-        workspaceName={workspaceName}
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspace.id}
         visibleWindows={state.visibleWindows}
         closedWindows={state.closedWindows}
         activeId={state.activeId}
