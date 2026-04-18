@@ -1,18 +1,44 @@
+import Link from 'next/link';
+import { AppShell } from '@/components/AppShell';
+import { Panel } from '@/components/Panel';
+import { mockProjects, getWorkspaceByProject } from '@/lib/mock-data';
+
 export default function HomePage() {
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontFamily: 'system-ui, sans-serif',
-        padding: '2rem',
-      }}
-    >
-      <h1 style={{ fontSize: '2.5rem', margin: 0 }}>AI Workspace V1</h1>
-      <p style={{ opacity: 0.7, marginTop: '0.75rem' }}>Project foundation initialized</p>
-    </main>
+    <AppShell subtitle="Projects">
+      <section style={{ padding: '1.5rem', maxWidth: 960, width: '100%', margin: '0 auto' }}>
+        <h1 style={{ fontSize: '1.5rem', margin: '0 0 1.25rem 0' }}>Your projects</h1>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+            gap: '1rem',
+          }}
+        >
+          {mockProjects.map((project) => {
+            const workspace = getWorkspaceByProject(project.id);
+            return (
+              <Link
+                key={project.id}
+                href={`/project/${project.id}`}
+                style={{ textDecoration: 'none', color: 'inherit' }}
+              >
+                <Panel style={{ padding: '1rem', height: '100%' }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 600 }}>{project.name}</div>
+                  {project.description ? (
+                    <div style={{ color: '#8a8a95', fontSize: '0.85rem', marginTop: 4 }}>
+                      {project.description}
+                    </div>
+                  ) : null}
+                  <div style={{ color: '#6a6a75', fontSize: '0.75rem', marginTop: 12 }}>
+                    {workspace ? `${workspace.windowIds.length} windows` : 'No workspace'}
+                  </div>
+                </Panel>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+    </AppShell>
   );
 }
