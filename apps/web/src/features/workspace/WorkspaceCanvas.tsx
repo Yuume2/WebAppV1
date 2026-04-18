@@ -2,7 +2,8 @@
 
 import type { ChatWindow as ChatWindowType } from '@webapp/types';
 import { ChatWindow } from '@/features/chat/ChatWindow';
-import type { MockMessage } from '@/lib/data';
+import type { MockMessage, WindowPreset } from '@/lib/data';
+import { WINDOW_PRESETS } from '@/lib/data';
 
 interface WorkspaceCanvasProps {
   visibleWindows: ChatWindowType[];
@@ -12,8 +13,9 @@ interface WorkspaceCanvasProps {
   hasClosed: boolean;
   onClose: (id: string) => void;
   onFocus: (id: string) => void;
+  onRename: (id: string, title: string) => void;
   onReset: () => void;
-  onAddMock: () => void;
+  onCreate: (preset: WindowPreset, title?: string) => string;
 }
 
 export function WorkspaceCanvas({
@@ -24,8 +26,9 @@ export function WorkspaceCanvas({
   hasClosed,
   onClose,
   onFocus,
+  onRename,
   onReset,
-  onAddMock,
+  onCreate,
 }: WorkspaceCanvasProps) {
   return (
     <div
@@ -41,7 +44,7 @@ export function WorkspaceCanvas({
       }}
     >
       {visibleWindows.length === 0 ? (
-        <EmptyWorkspace hasClosed={hasClosed} onReset={onReset} onAddMock={onAddMock} />
+        <EmptyWorkspace hasClosed={hasClosed} onReset={onReset} onCreate={onCreate} />
       ) : (
         visibleWindows.map((w) => (
           <ChatWindow
@@ -55,6 +58,7 @@ export function WorkspaceCanvas({
             onClose={onClose}
             onFocus={onFocus}
             onSend={onSend}
+            onRename={onRename}
           />
         ))
       )}
@@ -65,12 +69,13 @@ export function WorkspaceCanvas({
 function EmptyWorkspace({
   hasClosed,
   onReset,
-  onAddMock,
+  onCreate,
 }: {
   hasClosed: boolean;
   onReset: () => void;
-  onAddMock: () => void;
+  onCreate: (preset: WindowPreset, title?: string) => string;
 }) {
+  const defaultPreset = WINDOW_PRESETS[0]!;
   return (
     <div
       style={{
@@ -86,11 +91,13 @@ function EmptyWorkspace({
     >
       <div style={{ fontSize: '1rem', color: '#e8e8ef' }}>No windows open</div>
       <div style={{ fontSize: '0.85rem' }}>
-        {hasClosed ? 'Reopen a window from the sidebar or reset the workspace.' : 'Add a mock window to begin.'}
+        {hasClosed
+          ? 'Reopen a window from the sidebar or create a new one.'
+          : 'Create your first window to begin.'}
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
         <button
-          onClick={onAddMock}
+          onClick={() => onCreate(defaultPreset)}
           style={{
             background: '#f5f5f5',
             color: '#0b0b0d',
@@ -103,7 +110,7 @@ function EmptyWorkspace({
             fontFamily: 'inherit',
           }}
         >
-          + Mock window
+          + New window
         </button>
         <button
           onClick={onReset}

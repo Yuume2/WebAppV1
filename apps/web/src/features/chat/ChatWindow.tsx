@@ -14,6 +14,7 @@ interface ChatWindowProps {
   onClose?: (id: string) => void;
   onFocus?: (id: string) => void;
   onSend?: (id: string, content: string) => void;
+  onRename?: (id: string, title: string) => void;
 }
 
 const providerColor: Record<AIProvider, string> = {
@@ -38,8 +39,18 @@ export function ChatWindow({
   onClose,
   onFocus,
   onSend,
+  onRename,
 }: ChatWindowProps) {
   const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(title);
+
+  const commitRename = () => {
+    const trimmed = titleDraft.trim();
+    if (trimmed && trimmed !== title) onRename?.(id, trimmed);
+    else setTitleDraft(title);
+    setEditing(false);
+  };
 
   const submit = () => {
     const trimmed = draft.trim();
@@ -76,18 +87,56 @@ export function ChatWindow({
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-          <span
-            style={{
-              fontSize: '0.9rem',
-              fontWeight: 600,
-              color: '#f5f5f5',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {title}
-          </span>
+          {editing ? (
+            <input
+              autoFocus
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') {
+                  setTitleDraft(title);
+                  setEditing(false);
+                }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              aria-label="Rename window"
+              style={{
+                background: '#0f0f13',
+                border: '1px solid #2a2a30',
+                borderRadius: 4,
+                padding: '2px 6px',
+                color: '#f5f5f5',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                fontFamily: 'inherit',
+                outline: 'none',
+                width: '100%',
+              }}
+            />
+          ) : (
+            <span
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                if (!onRename) return;
+                setTitleDraft(title);
+                setEditing(true);
+              }}
+              title={onRename ? 'Double-click to rename' : title}
+              style={{
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                color: '#f5f5f5',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                cursor: onRename ? 'text' : 'inherit',
+              }}
+            >
+              {title}
+            </span>
+          )}
           <ProviderBadge provider={provider} model={model} />
         </div>
         {onClose ? (

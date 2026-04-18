@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import type { AIProvider, ChatWindow, Workspace } from '@webapp/types';
+import type { WindowPreset } from '@/lib/data';
 import { Button } from '@/components/Button';
+import { NewWindowComposer } from '@/features/workspace/NewWindowComposer';
 
 interface WorkspaceSidebarProps {
   projectId: string;
@@ -16,7 +18,7 @@ interface WorkspaceSidebarProps {
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
   onReopen: (id: string) => void;
-  onAddMock: () => void;
+  onCreate: (preset: WindowPreset, title?: string) => string;
   onReset: () => void;
 }
 
@@ -37,7 +39,7 @@ export function WorkspaceSidebar({
   onFocus,
   onClose,
   onReopen,
-  onAddMock,
+  onCreate,
   onReset,
 }: WorkspaceSidebarProps) {
   const total = visibleWindows.length + closedWindows.length;
@@ -125,9 +127,7 @@ export function WorkspaceSidebar({
           background: '#0c0c10',
         }}
       >
-        <Button variant="ghost" onClick={onAddMock} style={{ flex: 1, fontSize: '0.78rem' }}>
-          + Mock
-        </Button>
+        <NewWindowComposer onCreate={onCreate} />
         <Button variant="ghost" onClick={onReset} style={{ flex: 1, fontSize: '0.78rem' }}>
           Reset
         </Button>

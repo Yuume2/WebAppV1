@@ -8,6 +8,7 @@ import {
 } from '@/lib/mocks/fixtures';
 
 export type { MockMessage };
+export { WINDOW_PRESETS, getPreset, type WindowPreset } from '@/lib/data/presets';
 
 export type WorkspaceResolution =
   | { kind: 'ok'; workspace: Workspace }

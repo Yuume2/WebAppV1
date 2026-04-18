@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import type { ChatWindow } from '@webapp/types';
+import type { WindowPreset } from '@/lib/data';
 
 interface WorkspaceStateInit {
   windows: ChatWindow[];
@@ -17,30 +18,11 @@ interface WorkspaceState {
   reopen: (id: string) => void;
   focus: (id: string) => void;
   reset: () => void;
-  addMockWindow: () => void;
+  createWindow: (preset: WindowPreset, customTitle?: string) => string;
+  renameWindow: (id: string, title: string) => void;
 }
 
-const MOCK_PRESETS: Array<Pick<ChatWindow, 'provider' | 'model'>> = [
-  { provider: 'anthropic', model: 'claude-sonnet-4-6' },
-  { provider: 'openai', model: 'gpt-4o' },
-  { provider: 'perplexity', model: 'sonar-pro' },
-];
-
-let mockCounter = 0;
-function makeMockWindow(workspaceId: string): ChatWindow {
-  mockCounter += 1;
-  const preset = MOCK_PRESETS[mockCounter % MOCK_PRESETS.length]!;
-  const now = new Date().toISOString();
-  return {
-    id: `mock-${Date.now()}-${mockCounter}`,
-    workspaceId,
-    title: `Mock window ${mockCounter}`,
-    provider: preset.provider,
-    model: preset.model,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
+let creationCounter = 0;
 
 export function useWorkspaceState({ windows }: WorkspaceStateInit): WorkspaceState {
   const initialIds = useMemo(() => windows.map((w) => w.id), [windows]);
@@ -71,13 +53,34 @@ export function useWorkspaceState({ windows }: WorkspaceStateInit): WorkspaceSta
     setActiveId(initialIds[0] ?? null);
   }, [windows, initialIds]);
 
-  const addMockWindow = useCallback(() => {
-    const workspaceId = windows[0]?.workspaceId ?? 'mock-ws';
-    const w = makeMockWindow(workspaceId);
-    setPool((prev) => [...prev, w]);
-    setOpenIds((prev) => [...prev, w.id]);
-    setActiveId(w.id);
-  }, [windows]);
+  const createWindow = useCallback(
+    (preset: WindowPreset, customTitle?: string) => {
+      creationCounter += 1;
+      const workspaceId = windows[0]?.workspaceId ?? 'local-ws';
+      const now = new Date().toISOString();
+      const title = customTitle?.trim() || preset.defaultTitle;
+      const w: ChatWindow = {
+        id: `local-${Date.now()}-${creationCounter}`,
+        workspaceId,
+        title,
+        provider: preset.provider,
+        model: preset.model,
+        createdAt: now,
+        updatedAt: now,
+      };
+      setPool((prev) => [...prev, w]);
+      setOpenIds((prev) => [...prev, w.id]);
+      setActiveId(w.id);
+      return w.id;
+    },
+    [windows],
+  );
+
+  const renameWindow = useCallback((id: string, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    setPool((prev) => prev.map((w) => (w.id === id ? { ...w, title: trimmed } : w)));
+  }, []);
 
   const visibleWindows = useMemo(
     () => openIds.map((id) => pool.find((w) => w.id === id)).filter((w): w is ChatWindow => Boolean(w)),
@@ -99,6 +102,7 @@ export function useWorkspaceState({ windows }: WorkspaceStateInit): WorkspaceSta
     reopen,
     focus,
     reset,
-    addMockWindow,
+    createWindow,
+    renameWindow,
   };
 }

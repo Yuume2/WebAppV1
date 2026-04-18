@@ -40,7 +40,7 @@ export function Workspace({
         onFocus={state.focus}
         onClose={state.close}
         onReopen={state.reopen}
-        onAddMock={state.addMockWindow}
+        onCreate={state.createWindow}
         onReset={state.reset}
       />
       <WorkspaceCanvas
@@ -51,8 +51,9 @@ export function Workspace({
         hasClosed={state.closedWindows.length > 0}
         onClose={state.close}
         onFocus={state.focus}
+        onRename={state.renameWindow}
         onReset={state.reset}
-        onAddMock={state.addMockWindow}
+        onCreate={state.createWindow}
       />
     </div>
   );
