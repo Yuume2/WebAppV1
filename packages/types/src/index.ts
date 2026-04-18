@@ -28,3 +28,21 @@ export interface ChatWindow {
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }
+
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+export type ApiResponse<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: ApiError };
+
+export interface HealthStatus {
+  service: 'webapp-api';
+  status: 'ok';
+  version: string;
+  uptimeSeconds: number;
+  timestamp: ISODateString;
+}
