@@ -4,21 +4,48 @@ Minimal Node.js + TypeScript backend for AI Workspace V1.
 
 ## Purpose
 
-Server-side API — auth, provider proxying, persistence. No framework yet; stdlib HTTP server as bootstrap. Framework choice deferred until features land.
+Server-side API — auth, provider proxying, persistence. No HTTP framework yet; stdlib `http` server with an internal router. Framework choice deferred until features require it.
 
 ## Structure
 
-- `src/index.ts` — entry
-- `src/config` — env + runtime config
-- `src/routes` — HTTP route definitions
-- `src/controllers` — request handlers
-- `src/services` — domain logic
-- `src/middleware` — request pipeline
-- `src/lib` — utilities
-- `src/types` — shared backend types
+- `src/index.ts` — entry, server bootstrap, graceful shutdown
+- `src/config/env.ts` — parsed & validated env
+- `src/routes/` — route definitions (method + path + handler)
+- `src/controllers/` — request handlers, one per concern
+- `src/services/` — domain logic (empty until features land)
+- `src/middleware/` — request pipeline (dispatch, error envelope, logging)
+- `src/lib/` — internal utilities (router, http helpers, logger, request id)
+- `src/types/` — backend-only types (shared contracts live in `@webapp/types`)
+
+## Response envelope
+
+All JSON responses follow `ApiResponse<T>` from `@webapp/types`:
+
+```ts
+{ ok: true,  data: T }
+{ ok: false, error: { code: string; message: string; details?: unknown } }
+```
+
+Every response sets `X-Request-Id`.
+
+## Endpoints
+
+| Method | Path          | Description                       |
+| ------ | ------------- | --------------------------------- |
+| GET    | `/health`     | Service health + uptime           |
+| GET    | `/v1/health`  | Same, under versioned prefix      |
 
 ## Dev
 
 ```bash
 pnpm --filter @webapp/api dev
+curl -i http://localhost:4000/health
 ```
+
+## Env vars
+
+| Name           | Default       | Notes                              |
+| -------------- | ------------- | ---------------------------------- |
+| `API_PORT`     | `4000`        | 1–65535                            |
+| `NODE_ENV`     | `development` | `development` \| `production` \| `test` |
+| `API_VERSION`  | `0.1.0`       | Reported by `/health`              |
