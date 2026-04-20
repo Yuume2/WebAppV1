@@ -52,7 +52,7 @@ export async function createChatWindowController(ctx: RequestContext): Promise<I
   }
 
   const cw: ChatWindow = createChatWindow(input.workspaceId, input.title.trim(), input.provider, input.model.trim());
-  return respondCreated(cw);
+  return respondCreated(cw, `/v1/chat-windows/${cw.id}`);
 }
 
 export function getChatWindowController(ctx: RequestContext): InternalResult {

@@ -17,6 +17,7 @@ export interface RequestContext {
 export interface InternalResult {
   httpStatus: number;
   body: ApiResponse<unknown>;
+  headers?: Record<string, string>;
 }
 
 export type RouteHandler = (ctx: RequestContext) => Promise<InternalResult> | InternalResult;
@@ -40,8 +41,8 @@ export function respond<T>(data: T, httpStatus = 200): InternalResult {
   return { httpStatus, body: ok(data) };
 }
 
-export function respondCreated<T>(data: T): InternalResult {
-  return { httpStatus: 201, body: ok(data) };
+export function respondCreated<T>(data: T, location?: string): InternalResult {
+  return { httpStatus: 201, body: ok(data), ...(location ? { headers: { Location: location } } : {}) };
 }
 
 export function respondError(code: ApiErrorCode, message: string, httpStatus = 400, details?: unknown): InternalResult {

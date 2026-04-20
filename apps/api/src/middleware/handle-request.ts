@@ -68,8 +68,8 @@ export async function handleRequest(
   const ctx: RequestContext = { method: rawMethod, path, url, requestId, req, params };
 
   try {
-    const { httpStatus, body } = await handler(ctx);
-    writeJson(res, httpStatus, body, requestId);
+    const { httpStatus, body, headers } = await handler(ctx);
+    writeJson(res, httpStatus, body, requestId, headers);
     logger.info('request handled', {
       requestId,
       method: rawMethod,

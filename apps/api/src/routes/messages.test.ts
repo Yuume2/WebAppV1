@@ -83,6 +83,7 @@ describe('POST /v1/messages', () => {
     expect(body.data.chatWindowId).toBe(cw.id);
     expect(body.data.role).toBe('user');
     expect(body.data.content).toBe('Hello');
+    expect(res.headers.get('location')).toBe(`/v1/messages/${body.data.id}`);
   });
 
   it('created message is visible via GET with filter', async () => {

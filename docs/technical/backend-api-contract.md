@@ -129,7 +129,7 @@ Frontend must use `chatWindowId`. **Do not use `windowId`.**
 **Body:** `CreateProjectInput` = `{ name: string; description?: string }`
 
 ```
-201 { ok: true,  data: Project }
+201 { ok: true,  data: Project }   Location: /v1/projects/:id
 400 ApiErrorResponse  (code: 'validation_error' | 'invalid_json')
 ```
 
@@ -156,7 +156,7 @@ Frontend must use `chatWindowId`. **Do not use `windowId`.**
 **Body:** `CreateWorkspaceInput` = `{ projectId: string; name: string }`
 
 ```
-201 { ok: true,  data: Workspace }
+201 { ok: true,  data: Workspace }   Location: /v1/workspaces/:id
 400 ApiErrorResponse  (code: 'validation_error' | 'invalid_json')
 404 ApiErrorResponse  (code: 'not_found')   ← projectId missing
 ```
@@ -186,7 +186,7 @@ Frontend must use `chatWindowId`. **Do not use `windowId`.**
 `provider` must be one of: `openai` | `anthropic` | `perplexity`
 
 ```
-201 { ok: true,  data: ChatWindow }
+201 { ok: true,  data: ChatWindow }   Location: /v1/chat-windows/:id
 400 ApiErrorResponse  (code: 'validation_error' | 'invalid_json')
 404 ApiErrorResponse  (code: 'not_found')   ← workspaceId missing
 ```
@@ -218,7 +218,7 @@ Side effect: created window's `id` is appended to `workspace.windowIds`.
 `role` must be one of: `user` | `assistant` | `system`
 
 ```
-201 { ok: true,  data: Message }
+201 { ok: true,  data: Message }   Location: /v1/messages/:id
 400 ApiErrorResponse  (code: 'validation_error' | 'invalid_json')
 404 ApiErrorResponse  (code: 'not_found')   ← chatWindowId missing
 ```

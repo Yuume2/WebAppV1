@@ -49,7 +49,7 @@ export async function createMessageController(ctx: RequestContext): Promise<Inte
   }
 
   const msg: Message = createMessage(input.chatWindowId, input.role, input.content);
-  return respondCreated(msg);
+  return respondCreated(msg, `/v1/messages/${msg.id}`);
 }
 
 export function getMessageController(ctx: RequestContext): InternalResult {

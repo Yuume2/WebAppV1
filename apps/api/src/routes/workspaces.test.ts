@@ -58,6 +58,7 @@ describe('POST /v1/workspaces', () => {
     expect(body.data.name).toBe('WS One');
     expect(Array.isArray(body.data.windowIds)).toBe(true);
     expect(body.data.windowIds).toHaveLength(0);
+    expect(res.headers.get('location')).toBe(`/v1/workspaces/${body.data.id}`);
   });
 
   it('created workspace is then visible via GET with filter', async () => {

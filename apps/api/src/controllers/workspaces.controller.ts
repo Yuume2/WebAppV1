@@ -40,7 +40,7 @@ export async function createWorkspaceController(ctx: RequestContext): Promise<In
   }
 
   const ws: Workspace = createWorkspace(input.projectId, input.name.trim());
-  return respondCreated(ws);
+  return respondCreated(ws, `/v1/workspaces/${ws.id}`);
 }
 
 export function getWorkspaceController(ctx: RequestContext): InternalResult {

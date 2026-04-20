@@ -69,6 +69,7 @@ describe('POST /v1/chat-windows', () => {
     expect(body.data.workspaceId).toBe(ws.id);
     expect(body.data.provider).toBe('openai');
     expect(body.data.model).toBe('gpt-4o');
+    expect(res.headers.get('location')).toBe(`/v1/chat-windows/${body.data.id}`);
   });
 
   it('created window id is appended to workspace.windowIds', async () => {

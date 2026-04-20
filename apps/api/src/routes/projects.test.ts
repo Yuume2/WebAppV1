@@ -61,6 +61,7 @@ describe('POST /v1/projects', () => {
     expect(typeof body.data.id).toBe('string');
     expect(body.data.name).toBe('My Project');
     expect(body.data.description).toBe('Test');
+    expect(res.headers.get('location')).toBe(`/v1/projects/${body.data.id}`);
   });
 
   it('creates a project without optional description', async () => {
