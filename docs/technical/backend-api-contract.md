@@ -27,7 +27,9 @@ Access-Control-Allow-Methods: GET, POST, OPTIONS
 Access-Control-Allow-Headers: Content-Type
 ```
 
-`OPTIONS` requests → 204 with no body.
+`OPTIONS` requests → 204 with no body, CORS headers included. This applies to all paths including unknown ones — preflight never returns 404.
+
+`Access-Control-Allow-Origin` is a **static configured value**, never an echo of the request's `Origin` header. Set `CORS_ORIGIN=http://localhost:3000` in dev to restrict browser access to that origin.
 
 ---
 
