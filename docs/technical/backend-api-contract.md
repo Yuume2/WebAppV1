@@ -51,7 +51,12 @@ All POST endpoints that read a body enforce the following:
 
 State is held in memory and resets on server restart. No database yet.
 
-Two projects are seeded on startup: `proj-1` (Research Sprint) and `proj-2` (Content Pipeline).
+**Startup state (fresh server):**
+- Projects: `proj-1` (Research Sprint), `proj-2` (Content Pipeline) — pre-loaded
+- Workspaces, ChatWindows, Messages: **empty**
+
+For a fully populated local dev graph (workspaces, chat-windows, messages), call `POST /v1/dev/seed`.
+Note: `/v1/dev/seed` **resets** all collections first — including proj-1/proj-2 — then inserts a fresh demo graph under different IDs (`demo-proj-1`, `demo-proj-2`, etc.).
 
 ---
 
