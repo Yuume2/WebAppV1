@@ -1,14 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import type { AppState, AIProvider } from '@webapp/types';
 import {
-  fetchState,
-  createProject,
-  createWorkspace,
-  createChatWindow,
-  createMessage,
-  devSeed,
+  fetchState, createProject, createWorkspace,
+  createChatWindow, createMessage, devSeed,
 } from '@/lib/api';
 
 const PROVIDERS: AIProvider[] = ['openai', 'anthropic', 'perplexity'];
@@ -18,301 +15,379 @@ const DEFAULT_MODEL: Record<AIProvider, string> = {
   perplexity: 'sonar',
 };
 
-export default function HomePage() {
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+function buildParams(params: Record<string, string | null>): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) { if (v) p.set(k, v); }
+  const qs = p.toString();
+  return qs ? `/?${qs}` : '/';
+}
+
+// ── main component ───────────────────────────────────────────────────────────
+
+function WorkspaceApp() {
+  const router = useRouter();
+  const sp = useSearchParams();
+
   const [state, setState] = useState<AppState | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-  const [selectedChatWindowId, setSelectedChatWindowId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(sp.get('projectId'));
+  const [workspaceId, setWorkspaceId] = useState<string | null>(sp.get('workspaceId'));
+  const [chatWindowId, setChatWindowId] = useState<string | null>(sp.get('chatWindowId'));
 
   const [newProjectName, setNewProjectName] = useState('');
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [newCwTitle, setNewCwTitle] = useState('');
   const [newCwProvider, setNewCwProvider] = useState<AIProvider>('openai');
   const [newCwModel, setNewCwModel] = useState(DEFAULT_MODEL.openai);
-  const [newMessageContent, setNewMessageContent] = useState('');
+  const [newMessage, setNewMessage] = useState('');
+
+  const threadRef = useRef<HTMLDivElement>(null);
+
+  // selection helpers — update React state + URL atomically
+  function selectProject(id: string | null) {
+    setProjectId(id); setWorkspaceId(null); setChatWindowId(null);
+    router.replace(buildParams({ projectId: id }), { scroll: false });
+  }
+  function selectWorkspace(id: string | null, pid = projectId) {
+    setWorkspaceId(id); setChatWindowId(null);
+    router.replace(buildParams({ projectId: pid, workspaceId: id }), { scroll: false });
+  }
+  function selectChatWindow(id: string | null) {
+    setChatWindowId(id);
+    router.replace(buildParams({ projectId, workspaceId, chatWindowId: id }), { scroll: false });
+  }
 
   const reload = useCallback(async () => {
     try {
       const s = await fetchState();
-      setState(s);
-      setError(null);
+      setState(s); setError(null); return s;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load');
+      setError(e instanceof Error ? e.message : 'Failed to load'); return null;
     }
   }, []);
 
+  const validated = useRef(false);
   useEffect(() => {
-    reload().finally(() => setLoading(false));
-  }, [reload]);
+    reload().then(s => {
+      setLoading(false);
+      if (!s || validated.current) return;
+      validated.current = true;
+      const pid = sp.get('projectId'), wid = sp.get('workspaceId'), cwid = sp.get('chatWindowId');
+      if (pid && !s.projects.some(p => p.id === pid)) {
+        setProjectId(null); setWorkspaceId(null); setChatWindowId(null);
+        router.replace('/', { scroll: false });
+      } else if (wid && !s.workspaces.some(ws => ws.id === wid)) {
+        setWorkspaceId(null); setChatWindowId(null);
+        router.replace(buildParams({ projectId: pid }), { scroll: false });
+      } else if (cwid && !s.chatWindows.some(cw => cw.id === cwid)) {
+        setChatWindowId(null);
+        router.replace(buildParams({ projectId: pid, workspaceId: wid }), { scroll: false });
+      }
+    });
+  }, [reload]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // scroll thread to bottom on new messages
+  useEffect(() => {
+    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+  }, [state, chatWindowId]);
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
-    try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : 'Error'); }
+    try { await fn(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Error'); }
     finally { setBusy(false); }
   }
 
-  async function handleCreateProject() {
+  const handleCreateProject = () => {
     if (!newProjectName.trim()) return;
-    await run(async () => {
+    run(async () => {
       const p = await createProject({ name: newProjectName.trim() });
-      await reload();
-      setSelectedProjectId(p.id);
-      setSelectedWorkspaceId(null);
-      setSelectedChatWindowId(null);
-      setNewProjectName('');
+      await reload(); selectProject(p.id); setNewProjectName('');
     });
-  }
-
-  async function handleCreateWorkspace() {
-    if (!selectedProjectId || !newWorkspaceName.trim()) return;
-    await run(async () => {
-      const ws = await createWorkspace({ projectId: selectedProjectId, name: newWorkspaceName.trim() });
-      await reload();
-      setSelectedWorkspaceId(ws.id);
-      setSelectedChatWindowId(null);
-      setNewWorkspaceName('');
+  };
+  const handleCreateWorkspace = () => {
+    if (!projectId || !newWorkspaceName.trim()) return;
+    run(async () => {
+      const ws = await createWorkspace({ projectId, name: newWorkspaceName.trim() });
+      await reload(); selectWorkspace(ws.id); setNewWorkspaceName('');
     });
-  }
-
-  async function handleCreateChatWindow() {
-    if (!selectedWorkspaceId || !newCwTitle.trim() || !newCwModel.trim()) return;
-    await run(async () => {
-      const cw = await createChatWindow({
-        workspaceId: selectedWorkspaceId,
-        title: newCwTitle.trim(),
-        provider: newCwProvider,
-        model: newCwModel.trim(),
-      });
-      await reload();
-      setSelectedChatWindowId(cw.id);
-      setNewCwTitle('');
+  };
+  const handleCreateChatWindow = () => {
+    if (!workspaceId || !newCwTitle.trim() || !newCwModel.trim()) return;
+    run(async () => {
+      const cw = await createChatWindow({ workspaceId, title: newCwTitle.trim(), provider: newCwProvider, model: newCwModel.trim() });
+      await reload(); selectChatWindow(cw.id); setNewCwTitle('');
     });
-  }
-
-  async function handleSendMessage() {
-    if (!selectedChatWindowId || !newMessageContent.trim()) return;
-    await run(async () => {
-      await createMessage({
-        chatWindowId: selectedChatWindowId,
-        role: 'user',
-        content: newMessageContent.trim(),
-      });
-      await reload();
-      setNewMessageContent('');
+  };
+  const handleSendMessage = () => {
+    if (!chatWindowId || !newMessage.trim()) return;
+    run(async () => {
+      await createMessage({ chatWindowId, role: 'user', content: newMessage.trim() });
+      await reload(); setNewMessage('');
     });
-  }
-
-  async function handleSeed() {
-    await run(async () => {
-      await devSeed();
-      await reload();
-      setSelectedProjectId(null);
-      setSelectedWorkspaceId(null);
-      setSelectedChatWindowId(null);
+  };
+  const handleSeed = () => {
+    run(async () => {
+      await devSeed(); await reload();
+      setProjectId(null); setWorkspaceId(null); setChatWindowId(null);
+      router.replace('/', { scroll: false });
     });
-  }
+  };
 
-  const projects = state?.projects ?? [];
-  const workspaces = state?.workspaces.filter(ws => ws.projectId === selectedProjectId) ?? [];
-  const chatWindows = state?.chatWindows.filter(cw => cw.workspaceId === selectedWorkspaceId) ?? [];
-  const messages = state?.messages.filter(m => m.chatWindowId === selectedChatWindowId) ?? [];
+  // derived data
+  const projects    = state?.projects ?? [];
+  const workspaces  = state?.workspaces.filter(ws => ws.projectId === projectId) ?? [];
+  const chatWindows = state?.chatWindows.filter(cw => cw.workspaceId === workspaceId) ?? [];
+  const messages    = state?.messages.filter(m => m.chatWindowId === chatWindowId) ?? [];
+  const selProject  = projects.find(p => p.id === projectId);
+  const selCW       = chatWindows.find(cw => cw.id === chatWindowId);
 
-  const selectedProject = projects.find(p => p.id === selectedProjectId);
-  const selectedWorkspace = workspaces.find(ws => ws.id === selectedWorkspaceId);
-  const selectedChatWindow = chatWindows.find(cw => cw.id === selectedChatWindowId);
-
-  if (loading) return <main style={s.main}><p style={s.muted}>Loading…</p></main>;
-
+  // ── render ─────────────────────────────────────────────────────────────────
   return (
-    <main style={s.main}>
-      <div style={s.header}>
-        <h1 style={s.heading}>AI Workspace V1</h1>
-        <button style={s.seedBtn} onClick={handleSeed} disabled={busy} title="Dev only">
+    <div style={s.root}>
+
+      {/* TOP BAR */}
+      <div style={s.topbar}>
+        <span style={s.appName}>AI Workspace</span>
+        {error && <span style={s.topError}>⚠ {error}</span>}
+        <button style={s.seedBtn} onClick={handleSeed} disabled={busy} title="Dev only — resets all data">
           Seed demo data
         </button>
       </div>
 
-      {error && <p style={s.error}>⚠ {error}</p>}
+      {loading ? (
+        <div style={s.loadingWrap}><span style={s.muted}>Loading…</span></div>
+      ) : (
+        <div style={s.columns}>
 
-      {/* PROJECTS */}
-      <section style={s.section}>
-        <h2 style={s.sectionTitle}>Projects</h2>
-        {projects.length === 0 && <p style={s.muted}>No projects. Create one below or seed demo data.</p>}
-        <ul style={s.itemList}>
-          {projects.map(p => (
-            <li
-              key={p.id}
-              style={{ ...s.item, ...(p.id === selectedProjectId ? s.itemSelected : {}) }}
-              onClick={() => {
-                setSelectedProjectId(p.id);
-                setSelectedWorkspaceId(null);
-                setSelectedChatWindowId(null);
-              }}
-            >
-              <span>{p.name}</span>
-              {p.description && <span style={s.dim}>{p.description}</span>}
-            </li>
-          ))}
-        </ul>
-        <div style={s.form}>
-          <input
-            style={s.input}
-            placeholder="New project name"
-            value={newProjectName}
-            onChange={e => setNewProjectName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
-            disabled={busy}
-          />
-          <button style={s.btn} onClick={handleCreateProject} disabled={busy || !newProjectName.trim()}>
-            + Project
-          </button>
-        </div>
-      </section>
-
-      {/* WORKSPACES */}
-      {selectedProject && (
-        <section style={s.section}>
-          <h2 style={s.sectionTitle}>Workspaces — {selectedProject.name}</h2>
-          {workspaces.length === 0 && <p style={s.muted}>No workspaces yet.</p>}
-          <ul style={s.itemList}>
-            {workspaces.map(ws => (
-              <li
-                key={ws.id}
-                style={{ ...s.item, ...(ws.id === selectedWorkspaceId ? s.itemSelected : {}) }}
-                onClick={() => { setSelectedWorkspaceId(ws.id); setSelectedChatWindowId(null); }}
-              >
-                {ws.name}
-              </li>
-            ))}
-          </ul>
-          <div style={s.form}>
-            <input
-              style={s.input}
-              placeholder="New workspace name"
-              value={newWorkspaceName}
-              onChange={e => setNewWorkspaceName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleCreateWorkspace()}
-              disabled={busy}
-            />
-            <button style={s.btn} onClick={handleCreateWorkspace} disabled={busy || !newWorkspaceName.trim()}>
-              + Workspace
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* CHAT WINDOWS */}
-      {selectedWorkspace && (
-        <section style={s.section}>
-          <h2 style={s.sectionTitle}>Chat Windows — {selectedWorkspace.name}</h2>
-          {chatWindows.length === 0 && <p style={s.muted}>No chat windows yet.</p>}
-          <ul style={s.itemList}>
-            {chatWindows.map(cw => (
-              <li
-                key={cw.id}
-                style={{ ...s.item, ...(cw.id === selectedChatWindowId ? s.itemSelected : {}) }}
-                onClick={() => setSelectedChatWindowId(cw.id)}
-              >
-                <span>{cw.title}</span>
-                <span style={s.badge}>{cw.provider} · {cw.model}</span>
-              </li>
-            ))}
-          </ul>
-          <div style={s.form}>
-            <input
-              style={{ ...s.input, flex: 2 }}
-              placeholder="Window title"
-              value={newCwTitle}
-              onChange={e => setNewCwTitle(e.target.value)}
-              disabled={busy}
-            />
-            <select
-              style={s.select}
-              value={newCwProvider}
-              onChange={e => {
-                const p = e.target.value as AIProvider;
-                setNewCwProvider(p);
-                setNewCwModel(DEFAULT_MODEL[p]);
-              }}
-              disabled={busy}
-            >
-              {PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
-            <input
-              style={s.input}
-              placeholder="Model"
-              value={newCwModel}
-              onChange={e => setNewCwModel(e.target.value)}
-              disabled={busy}
-            />
-            <button
-              style={s.btn}
-              onClick={handleCreateChatWindow}
-              disabled={busy || !newCwTitle.trim() || !newCwModel.trim()}
-            >
-              + Window
-            </button>
-          </div>
-        </section>
-      )}
-
-      {/* MESSAGES */}
-      {selectedChatWindow && (
-        <section style={s.section}>
-          <h2 style={s.sectionTitle}>{selectedChatWindow.title}</h2>
-          <div style={s.thread}>
-            {messages.length === 0 && <p style={s.muted}>No messages yet.</p>}
-            {messages.map(m => (
-              <div key={m.id} style={{ ...s.msg, ...(m.role === 'user' ? s.msgUser : s.msgAssistant) }}>
-                <span style={s.role}>{m.role}</span>
-                <span>{m.content}</span>
+          {/* LEFT SIDEBAR — projects + workspaces */}
+          <div style={s.sidebar}>
+            <div style={s.colSection}>
+              <p style={s.colLabel}>Projects</p>
+              {projects.length === 0 && <p style={s.muted}>No projects yet.</p>}
+              {projects.map(p => (
+                <div
+                  key={p.id}
+                  style={{ ...s.navItem, ...(p.id === projectId ? s.navItemActive : {}) }}
+                  onClick={() => selectProject(p.id)}
+                >
+                  {p.name}
+                </div>
+              ))}
+              <div style={s.inlineForm}>
+                <input
+                  style={s.input}
+                  placeholder="New project…"
+                  value={newProjectName}
+                  onChange={e => setNewProjectName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleCreateProject()}
+                  disabled={busy}
+                />
+                <button style={s.iconBtn} onClick={handleCreateProject} disabled={busy || !newProjectName.trim()}>+</button>
               </div>
-            ))}
+            </div>
+
+            {selProject && (
+              <div style={s.colSection}>
+                <p style={s.colLabel}>Workspaces</p>
+                <p style={s.dimLabel}>{selProject.name}</p>
+                {workspaces.length === 0 && <p style={s.muted}>No workspaces.</p>}
+                {workspaces.map(ws => (
+                  <div
+                    key={ws.id}
+                    style={{ ...s.navItem, ...(ws.id === workspaceId ? s.navItemActive : {}) }}
+                    onClick={() => selectWorkspace(ws.id)}
+                  >
+                    {ws.name}
+                  </div>
+                ))}
+                <div style={s.inlineForm}>
+                  <input
+                    style={s.input}
+                    placeholder="New workspace…"
+                    value={newWorkspaceName}
+                    onChange={e => setNewWorkspaceName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleCreateWorkspace()}
+                    disabled={busy}
+                  />
+                  <button style={s.iconBtn} onClick={handleCreateWorkspace} disabled={busy || !newWorkspaceName.trim()}>+</button>
+                </div>
+              </div>
+            )}
           </div>
-          <div style={s.form}>
-            <input
-              style={{ ...s.input, flex: 1 }}
-              placeholder="Type a message…"
-              value={newMessageContent}
-              onChange={e => setNewMessageContent(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-              disabled={busy}
-            />
-            <button style={s.btn} onClick={handleSendMessage} disabled={busy || !newMessageContent.trim()}>
-              Send
-            </button>
+
+          {/* MIDDLE — chat windows */}
+          <div style={s.middle}>
+            <div style={s.colSection}>
+              <p style={s.colLabel}>Chat Windows</p>
+              {!workspaceId && <p style={s.muted}>Select a workspace.</p>}
+              {workspaceId && chatWindows.length === 0 && <p style={s.muted}>No windows yet.</p>}
+              {chatWindows.map(cw => (
+                <div
+                  key={cw.id}
+                  style={{ ...s.navItem, ...(cw.id === chatWindowId ? s.navItemActive : {}) }}
+                  onClick={() => selectChatWindow(cw.id)}
+                >
+                  <span style={s.cwTitle}>{cw.title}</span>
+                  <span style={s.cwBadge}>{cw.provider}</span>
+                  <span style={s.cwModel}>{cw.model}</span>
+                </div>
+              ))}
+
+              {workspaceId && (
+                <div style={{ ...s.inlineForm, flexDirection: 'column', gap: '0.3rem' }}>
+                  <input
+                    style={s.input}
+                    placeholder="Window title…"
+                    value={newCwTitle}
+                    onChange={e => setNewCwTitle(e.target.value)}
+                    disabled={busy}
+                  />
+                  <div style={{ display: 'flex', gap: '0.3rem' }}>
+                    <select
+                      style={{ ...s.input, flex: 'none', width: '88px' }}
+                      value={newCwProvider}
+                      onChange={e => { const p = e.target.value as AIProvider; setNewCwProvider(p); setNewCwModel(DEFAULT_MODEL[p]); }}
+                      disabled={busy}
+                    >
+                      {PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                    <input
+                      style={s.input}
+                      placeholder="model"
+                      value={newCwModel}
+                      onChange={e => setNewCwModel(e.target.value)}
+                      disabled={busy}
+                    />
+                  </div>
+                  <button
+                    style={{ ...s.btn, width: '100%' }}
+                    onClick={handleCreateChatWindow}
+                    disabled={busy || !newCwTitle.trim() || !newCwModel.trim()}
+                  >
+                    + New Window
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </section>
+
+          {/* MAIN — thread */}
+          <div style={s.main}>
+            {!selCW ? (
+              <div style={s.threadEmpty}>
+                <p style={s.muted}>Select a chat window to start.</p>
+              </div>
+            ) : (
+              <>
+                {/* Thread header */}
+                <div style={s.threadHeader}>
+                  <span style={s.threadTitle}>{selCW.title}</span>
+                  <span style={s.threadMeta}>{selCW.provider} · {selCW.model}</span>
+                </div>
+
+                {/* Messages */}
+                <div style={s.thread} ref={threadRef}>
+                  {messages.length === 0 && (
+                    <p style={{ ...s.muted, padding: '1rem' }}>No messages yet. Start the conversation.</p>
+                  )}
+                  {messages.map(m => (
+                    <div key={m.id} style={{ ...s.msg, ...(m.role === 'user' ? s.msgUser : s.msgOther) }}>
+                      <span style={s.msgRole}>{m.role}</span>
+                      <span style={s.msgContent}>{m.content}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Composer */}
+                <div style={s.composer}>
+                  <input
+                    style={{ ...s.input, flex: 1, fontSize: '0.9rem', padding: '0.55rem 0.75rem' }}
+                    placeholder={`Message in ${selCW.title}…`}
+                    value={newMessage}
+                    onChange={e => setNewMessage(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                    disabled={busy}
+                  />
+                  <button
+                    style={{ ...s.btn, padding: '0.55rem 1.1rem' }}
+                    onClick={handleSendMessage}
+                    disabled={busy || !newMessage.trim()}
+                  >
+                    Send
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+        </div>
       )}
-    </main>
+    </div>
   );
 }
 
+export default function Page() {
+  return (
+    <Suspense fallback={
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontFamily: 'system-ui' }}>
+        Loading…
+      </div>
+    }>
+      <WorkspaceApp />
+    </Suspense>
+  );
+}
+
+// ── styles ───────────────────────────────────────────────────────────────────
+
 const s = {
-  main: { minHeight: '100vh', padding: '2rem', maxWidth: '800px', margin: '0 auto', fontFamily: 'system-ui, sans-serif' },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' },
-  heading: { fontSize: '1.75rem', margin: 0, color: '#f5f5f5' },
-  seedBtn: { fontSize: '0.75rem', padding: '0.3rem 0.7rem', background: '#1a1a1e', border: '1px solid #333', borderRadius: '4px', color: '#666', cursor: 'pointer' },
-  error: { color: '#f87171', fontSize: '0.85rem', marginBottom: '1rem' },
-  section: { marginBottom: '1.5rem', borderLeft: '2px solid #1e1e22', paddingLeft: '1rem' },
-  sectionTitle: { fontSize: '0.85rem', textTransform: 'uppercase' as const, letterSpacing: '0.05em', color: '#555', margin: '0 0 0.5rem' },
-  itemList: { listStyle: 'none', padding: 0, margin: '0 0 0.5rem', display: 'flex', flexDirection: 'column' as const, gap: '0.2rem' },
-  item: { display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.6rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem', color: '#ccc', background: 'transparent' },
-  itemSelected: { background: '#1a1a2e', color: '#a5b4fc', borderLeft: '2px solid #4f46e5', paddingLeft: '0.4rem' },
-  dim: { fontSize: '0.8rem', color: '#555' },
-  badge: { fontSize: '0.72rem', color: '#555', background: '#111', padding: '0.1rem 0.35rem', borderRadius: '3px' },
-  form: { display: 'flex', gap: '0.4rem', alignItems: 'center', marginTop: '0.4rem' },
-  input: { flex: 1, background: '#111113', border: '1px solid #2a2a2e', borderRadius: '4px', padding: '0.4rem 0.6rem', color: '#e5e5e5', fontSize: '0.85rem', outline: 'none' },
-  select: { background: '#111113', border: '1px solid #2a2a2e', borderRadius: '4px', padding: '0.4rem 0.5rem', color: '#e5e5e5', fontSize: '0.85rem' },
-  btn: { padding: '0.4rem 0.8rem', background: '#1e1e2e', border: '1px solid #2a2a3e', borderRadius: '4px', color: '#a5b4fc', fontSize: '0.85rem', cursor: 'pointer', whiteSpace: 'nowrap' as const },
-  thread: { display: 'flex', flexDirection: 'column' as const, gap: '0.4rem', marginBottom: '0.75rem', maxHeight: '320px', overflowY: 'auto' as const, padding: '0.25rem 0' },
-  msg: { padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.875rem', display: 'flex', gap: '0.5rem' },
-  msgUser: { background: '#111a2e', color: '#c7d2fe' },
-  msgAssistant: { background: '#111113', color: '#aaa' },
-  role: { fontSize: '0.75rem', color: '#555', minWidth: '4.5rem', paddingTop: '0.1rem' },
-  muted: { fontSize: '0.8rem', color: '#444', margin: '0.2rem 0' },
+  root:        { display: 'flex', flexDirection: 'column' as const, height: '100vh', overflow: 'hidden', fontFamily: 'system-ui, sans-serif', color: '#d4d4d8' },
+  topbar:      { display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0 1rem', height: '48px', background: '#0d0d10', borderBottom: '1px solid #1a1a20', flexShrink: 0 },
+  appName:     { fontWeight: 600, fontSize: '0.95rem', color: '#f5f5f5', marginRight: 'auto' },
+  topError:    { fontSize: '0.8rem', color: '#f87171' },
+  seedBtn:     { fontSize: '0.72rem', padding: '0.25rem 0.6rem', background: 'transparent', border: '1px solid #2a2a30', borderRadius: '4px', color: '#555', cursor: 'pointer' },
+  loadingWrap: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  muted:       { fontSize: '0.8rem', color: '#444', margin: '0.2rem 0' },
+
+  columns: { display: 'flex', flex: 1, overflow: 'hidden' },
+
+  sidebar: { width: '210px', flexShrink: 0, overflowY: 'auto' as const, borderRight: '1px solid #1a1a20', background: '#0d0d10' },
+  middle:  { width: '220px', flexShrink: 0, overflowY: 'auto' as const, borderRight: '1px solid #1a1a20', background: '#0d0d10' },
+  main:    { flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#0b0b0d' },
+
+  colSection: { padding: '0.75rem 0.6rem', borderBottom: '1px solid #141418' },
+  colLabel:   { fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase' as const, color: '#3f3f46', margin: '0 0 0.4rem' },
+  dimLabel:   { fontSize: '0.75rem', color: '#555', margin: '0 0 0.35rem' },
+
+  navItem:       { padding: '0.35rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem', color: '#71717a', lineHeight: 1.4 },
+  navItemActive: { background: '#1e1e2e', color: '#a5b4fc' },
+
+  inlineForm: { display: 'flex', gap: '0.3rem', marginTop: '0.5rem' },
+  input:      { flex: 1, minWidth: 0, background: '#111116', border: '1px solid #22222a', borderRadius: '4px', padding: '0.35rem 0.5rem', color: '#e4e4e7', fontSize: '0.82rem', outline: 'none' },
+  iconBtn:    { flexShrink: 0, width: '26px', height: '26px', background: '#1e1e2e', border: '1px solid #2d2d40', borderRadius: '4px', color: '#a5b4fc', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 },
+  btn:        { padding: '0.35rem 0.7rem', background: '#1e1e2e', border: '1px solid #2d2d40', borderRadius: '4px', color: '#a5b4fc', fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' as const },
+
+  cwTitle: { display: 'block', fontSize: '0.85rem', lineHeight: 1.3 },
+  cwBadge: { display: 'block', fontSize: '0.7rem', color: '#52525b', marginTop: '0.1rem' },
+  cwModel: { display: 'block', fontSize: '0.7rem', color: '#3f3f46' },
+
+  threadEmpty:  { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  threadHeader: { padding: '0.75rem 1.25rem', borderBottom: '1px solid #1a1a20', flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: '0.75rem' },
+  threadTitle:  { fontSize: '0.95rem', fontWeight: 600, color: '#e4e4e7' },
+  threadMeta:   { fontSize: '0.78rem', color: '#52525b' },
+
+  thread:  { flex: 1, overflowY: 'auto' as const, padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column' as const, gap: '0.5rem' },
+  msg:     { display: 'flex', gap: '0.75rem', padding: '0.5rem 0.75rem', borderRadius: '6px', alignItems: 'flex-start' },
+  msgUser:  { background: '#0f1729' },
+  msgOther: { background: '#111116' },
+  msgRole:    { fontSize: '0.72rem', fontWeight: 600, color: '#52525b', minWidth: '52px', paddingTop: '0.15rem', flexShrink: 0 },
+  msgContent: { fontSize: '0.875rem', color: '#d4d4d8', lineHeight: 1.5, wordBreak: 'break-word' as const },
+
+  composer: { padding: '0.75rem 1.25rem', borderTop: '1px solid #1a1a20', display: 'flex', gap: '0.5rem', flexShrink: 0 },
 } as const;
