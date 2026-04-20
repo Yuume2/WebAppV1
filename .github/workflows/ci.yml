@@ -27,8 +27,10 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Lint
-        run: pnpm lint || echo "lint placeholder"
+      - name: Backend lint
+        run: |
+          pnpm --filter @webapp/types lint
+          pnpm --filter @webapp/api lint
 
       - name: Backend tests
         run: |
