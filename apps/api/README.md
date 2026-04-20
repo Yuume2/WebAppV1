@@ -34,14 +34,18 @@ Every response sets `X-Request-Id`.
 | ------ | ----------------------------- | -------------------------------------------- |
 | GET    | `/health`                     | Service health + uptime                      |
 | GET    | `/v1/health`                  | Same, under versioned prefix                 |
-| GET    | `/v1/projects`                | List projects                                |
-| POST   | `/v1/projects`                | Create project                               |
-| GET    | `/v1/workspaces?projectId=`   | List workspaces for a project                |
-| POST   | `/v1/workspaces`              | Create workspace                             |
-| GET    | `/v1/chat-windows?workspaceId=` | List chat windows for a workspace          |
-| POST   | `/v1/chat-windows`            | Create chat window                           |
-| GET    | `/v1/messages?chatWindowId=`  | List messages for a chat window              |
-| POST   | `/v1/messages`                | Create message                               |
+| GET    | `/v1/projects`                  | List projects                                |
+| POST   | `/v1/projects`                  | Create project                               |
+| GET    | `/v1/projects/:id`              | Get project by id                            |
+| GET    | `/v1/workspaces?projectId=`     | List workspaces for a project                |
+| POST   | `/v1/workspaces`                | Create workspace                             |
+| GET    | `/v1/workspaces/:id`            | Get workspace by id                          |
+| GET    | `/v1/chat-windows?workspaceId=` | List chat windows for a workspace            |
+| POST   | `/v1/chat-windows`              | Create chat window                           |
+| GET    | `/v1/chat-windows/:id`          | Get chat window by id                        |
+| GET    | `/v1/messages?chatWindowId=`    | List messages for a chat window              |
+| POST   | `/v1/messages`                  | Create message                               |
+| GET    | `/v1/messages/:id`              | Get message by id                            |
 | GET    | `/v1/state`                   | Full snapshot of all in-memory collections   |
 
 See `docs/technical/backend-api-contract.md` for full request/response shapes.

@@ -16,6 +16,11 @@ export function createWorkspace(projectId: string, name: string): Workspace {
   return { ...ws, windowIds: [] };
 }
 
+export function findWorkspace(id: string): Workspace | undefined {
+  const w = store.find((w) => w.id === id);
+  return w ? { ...w, windowIds: [...w.windowIds] } : undefined;
+}
+
 export function workspaceExists(id: string): boolean {
   return store.some((w) => w.id === id);
 }

@@ -21,6 +21,11 @@ export function createChatWindow(
   return { ...cw };
 }
 
+export function findChatWindow(id: string): ChatWindow | undefined {
+  const w = store.find((w) => w.id === id);
+  return w ? { ...w } : undefined;
+}
+
 export function chatWindowExists(id: string): boolean {
   return store.some((w) => w.id === id);
 }

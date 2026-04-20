@@ -9,7 +9,7 @@ import {
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
-import { createChatWindow, listChatWindows } from '../services/chat-windows.service.js';
+import { createChatWindow, findChatWindow, listChatWindows } from '../services/chat-windows.service.js';
 import { workspaceExists } from '../services/workspaces.service.js';
 
 const AI_PROVIDERS: AIProvider[] = ['openai', 'anthropic', 'perplexity'];
@@ -54,4 +54,10 @@ export async function createChatWindowController(ctx: RequestContext): Promise<I
 
   const cw: ChatWindow = createChatWindow(body.workspaceId, body.title.trim(), body.provider, body.model.trim());
   return respondCreated(cw);
+}
+
+export function getChatWindowController(ctx: RequestContext): InternalResult {
+  const id = ctx.params['id'] ?? '';
+  const cw = findChatWindow(id);
+  return cw ? respond(cw) : respondNotFound(`ChatWindow ${id} not found`);
 }

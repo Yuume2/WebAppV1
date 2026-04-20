@@ -10,7 +10,7 @@ import {
   type RequestContext,
 } from '../lib/http.js';
 import { projectExists } from '../services/projects.service.js';
-import { createWorkspace, listWorkspaces } from '../services/workspaces.service.js';
+import { createWorkspace, findWorkspace, listWorkspaces } from '../services/workspaces.service.js';
 
 export function listWorkspacesController(ctx: RequestContext): InternalResult {
   const projectId = ctx.url.searchParams.get('projectId');
@@ -42,4 +42,10 @@ export async function createWorkspaceController(ctx: RequestContext): Promise<In
 
   const ws: Workspace = createWorkspace(body.projectId, body.name.trim());
   return respondCreated(ws);
+}
+
+export function getWorkspaceController(ctx: RequestContext): InternalResult {
+  const id = ctx.params['id'] ?? '';
+  const ws = findWorkspace(id);
+  return ws ? respond(ws) : respondNotFound(`Workspace ${id} not found`);
 }

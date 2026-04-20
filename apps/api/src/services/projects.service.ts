@@ -19,6 +19,11 @@ export function createProject(name: string, description?: string): Project {
   return { ...project };
 }
 
+export function findProject(id: string): Project | undefined {
+  const p = store.find((p) => p.id === id);
+  return p ? { ...p } : undefined;
+}
+
 export function projectExists(id: string): boolean {
   return store.some((p) => p.id === id);
 }

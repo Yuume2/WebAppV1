@@ -44,9 +44,9 @@ export async function handleRequest(
     return;
   }
 
-  const handler = router.match(rawMethod, path);
+  const match = router.match(rawMethod, path);
 
-  if (!handler) {
+  if (!match) {
     const status = router.hasPath(path) ? 405 : 404;
     const code = status === 405 ? 'method_not_allowed' : 'not_found';
     const message = status === 405 ? `Method ${rawMethod} not allowed for ${path}` : `No route for ${path}`;
@@ -61,7 +61,8 @@ export async function handleRequest(
     return;
   }
 
-  const ctx: RequestContext = { method: rawMethod, path, url, requestId, req };
+  const { handler, params } = match;
+  const ctx: RequestContext = { method: rawMethod, path, url, requestId, req, params };
 
   try {
     const { httpStatus, body } = await handler(ctx);

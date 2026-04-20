@@ -10,7 +10,7 @@ import {
   type RequestContext,
 } from '../lib/http.js';
 import { chatWindowExists } from '../services/chat-windows.service.js';
-import { createMessage, listMessages } from '../services/messages.service.js';
+import { createMessage, findMessage, listMessages } from '../services/messages.service.js';
 
 const MESSAGE_ROLES: MessageRole[] = ['user', 'assistant', 'system'];
 
@@ -51,4 +51,10 @@ export async function createMessageController(ctx: RequestContext): Promise<Inte
 
   const msg: Message = createMessage(body.chatWindowId, body.role, body.content);
   return respondCreated(msg);
+}
+
+export function getMessageController(ctx: RequestContext): InternalResult {
+  const id = ctx.params['id'] ?? '';
+  const msg = findMessage(id);
+  return msg ? respond(msg) : respondNotFound(`Message ${id} not found`);
 }

@@ -13,3 +13,8 @@ export function createMessage(chatWindowId: string, role: MessageRole, content: 
   store.push(msg);
   return { ...msg };
 }
+
+export function findMessage(id: string): Message | undefined {
+  const m = store.find((m) => m.id === id);
+  return m ? { ...m } : undefined;
+}

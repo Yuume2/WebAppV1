@@ -63,6 +63,13 @@ Frontend must use `chatWindowId`. **Do not use `windowId`.**
 200 { ok: true, data: Project[] }
 ```
 
+### GET /v1/projects/:id
+
+```
+200 { ok: true,  data: Project }
+404 { ok: false, error: { code: 'not_found', message } }
+```
+
 ### POST /v1/projects
 
 **Body:** `{ name: string; description?: string }`
@@ -73,6 +80,13 @@ Frontend must use `chatWindowId`. **Do not use `windowId`.**
 ```
 
 ---
+
+### GET /v1/workspaces/:id
+
+```
+200 { ok: true,  data: Workspace }
+404 { ok: false, error: { code: 'not_found', message } }
+```
 
 ### GET /v1/workspaces?projectId=
 
@@ -94,6 +108,13 @@ Frontend must use `chatWindowId`. **Do not use `windowId`.**
 ```
 
 ---
+
+### GET /v1/chat-windows/:id
+
+```
+200 { ok: true,  data: ChatWindow }
+404 { ok: false, error: { code: 'not_found', message } }
+```
 
 ### GET /v1/chat-windows?workspaceId=
 
@@ -119,6 +140,13 @@ Frontend must use `chatWindowId`. **Do not use `windowId`.**
 Side effect: created window's `id` is appended to `workspace.windowIds`.
 
 ---
+
+### GET /v1/messages/:id
+
+```
+200 { ok: true,  data: Message }
+404 { ok: false, error: { code: 'not_found', message } }
+```
 
 ### GET /v1/messages?chatWindowId=
 

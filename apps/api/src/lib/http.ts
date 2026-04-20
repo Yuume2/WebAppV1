@@ -9,6 +9,7 @@ export interface RequestContext {
   url: URL;
   requestId: string;
   req: IncomingMessage;
+  params: Record<string, string>;
 }
 
 /** Internal pipeline result — carries an explicit HTTP status alongside the body. */

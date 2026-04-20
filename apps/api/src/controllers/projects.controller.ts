@@ -5,10 +5,11 @@ import {
   respond,
   respondCreated,
   respondError,
+  respondNotFound,
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
-import { createProject, listProjects } from '../services/projects.service.js';
+import { createProject, findProject, listProjects } from '../services/projects.service.js';
 
 export function listProjectsController(_ctx: RequestContext): InternalResult {
   return respond(listProjects());
@@ -32,4 +33,10 @@ export async function createProjectController(ctx: RequestContext): Promise<Inte
     typeof body.description === 'string' ? body.description : undefined,
   );
   return respondCreated(project);
+}
+
+export function getProjectController(ctx: RequestContext): InternalResult {
+  const id = ctx.params['id'] ?? '';
+  const project = findProject(id);
+  return project ? respond(project) : respondNotFound(`Project ${id} not found`);
 }
