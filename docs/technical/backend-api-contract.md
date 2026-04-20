@@ -11,6 +11,8 @@ All responses follow `ApiResponse<T>`:
 { ok: false, error: ApiError }  // ApiErrorResponse
 ```
 
+`ApiError.code` is typed as `ApiErrorCode` — a closed union exported from `@webapp/types`. Frontend can switch exhaustively on it without guessing.
+
 Every response sets `X-Request-Id` (UUID).
 
 ---
@@ -83,7 +85,7 @@ This guarantee is deterministic regardless of insertion timing or engine. Fronte
 | POST payloads  | `CreateProjectInput`, `CreateWorkspaceInput`, `CreateChatWindowInput`, `CreateMessageInput` |
 | State          | `AppState`                                                                  |
 | Responses      | `ProjectResponse`, `ProjectListResponse`, `WorkspaceResponse`, `WorkspaceListResponse`, `ChatWindowResponse`, `ChatWindowListResponse`, `MessageResponse`, `MessageListResponse`, `StateResponse` |
-| Errors         | `ApiError`, `ApiResponse<T>`, `ApiErrorResponse`                            |
+| Errors         | `ApiError`, `ApiErrorCode`, `ApiResponse<T>`, `ApiErrorResponse`            |
 
 ---
 
@@ -275,15 +277,19 @@ All IDs and `createdAt` values are fixed — calling seed multiple times produce
 
 ## Error codes
 
-| code                    | HTTP | meaning                                      |
-|-------------------------|------|----------------------------------------------|
-| `not_found`             | 404  | Route or foreign-key entity missing          |
-| `method_not_allowed`    | 405  | Method not registered for this path          |
-| `validation_error`      | 400  | Missing or invalid request field             |
-| `invalid_json`          | 400  | Request body is not valid JSON               |
-| `payload_too_large`     | 413  | Request body exceeds 100 KB limit            |
-| `unsupported_media_type`| 415  | Content-Type is not `application/json`       |
-| `internal_error`        | 500  | Unhandled exception                          |
+These are the complete set of values in `ApiErrorCode` (exported from `@webapp/types`).
+
+| code                     | HTTP | when returned                                                  |
+|--------------------------|------|----------------------------------------------------------------|
+| `not_found`              | 404  | Unknown route **or** entity/foreign-key does not exist         |
+| `method_not_allowed`     | 405  | Method not registered for this path                            |
+| `validation_error`       | 400  | Missing or invalid request field (body or query param)         |
+| `invalid_json`           | 400  | Request body is not valid JSON                                 |
+| `payload_too_large`      | 413  | Request body exceeds 100 KB limit                              |
+| `unsupported_media_type` | 415  | `Content-Type` is not `application/json` on a POST endpoint    |
+| `internal_error`         | 500  | Unhandled exception                                            |
+
+> `not_found` covers both "route doesn't exist" and "referenced entity not found". Frontend should not need to distinguish the two; the HTTP status 404 is the authoritative signal.
 
 ---
 

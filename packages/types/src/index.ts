@@ -39,8 +39,17 @@ export interface Message {
   createdAt: ISODateString;
 }
 
+export type ApiErrorCode =
+  | 'invalid_json'
+  | 'unsupported_media_type'
+  | 'payload_too_large'
+  | 'validation_error'
+  | 'not_found'
+  | 'method_not_allowed'
+  | 'internal_error';
+
 export interface ApiError {
-  code: string;
+  code: ApiErrorCode;
   message: string;
   details?: unknown;
 }

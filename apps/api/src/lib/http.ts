@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { ApiError, ApiResponse } from '@webapp/types';
+import type { ApiError, ApiErrorCode, ApiResponse } from '@webapp/types';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
 
@@ -30,7 +30,7 @@ export function ok<T>(data: T): ApiResponse<T> {
   return { ok: true, data };
 }
 
-export function fail(code: string, message: string, details?: unknown): ApiResponse<never> {
+export function fail(code: ApiErrorCode, message: string, details?: unknown): ApiResponse<never> {
   const error: ApiError = { code, message, ...(details === undefined ? {} : { details }) };
   return { ok: false, error };
 }
@@ -43,7 +43,7 @@ export function respondCreated<T>(data: T): InternalResult {
   return { httpStatus: 201, body: ok(data) };
 }
 
-export function respondError(code: string, message: string, httpStatus = 400, details?: unknown): InternalResult {
+export function respondError(code: ApiErrorCode, message: string, httpStatus = 400, details?: unknown): InternalResult {
   return { httpStatus, body: fail(code, message, details) };
 }
 
