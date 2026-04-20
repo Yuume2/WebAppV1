@@ -1,4 +1,4 @@
-import type { AIProvider, ChatWindow } from '@webapp/types';
+import type { AIProvider, ChatWindow, CreateChatWindowInput } from '@webapp/types';
 import {
   isRecord,
   readBody,
@@ -48,11 +48,13 @@ export async function createChatWindowController(ctx: RequestContext): Promise<I
     return respondError('validation_error', 'model is required and must be a non-empty string');
   }
 
-  if (!workspaceExists(body.workspaceId)) {
-    return respondNotFound(`Workspace ${body.workspaceId} not found`);
+  const input = body as unknown as CreateChatWindowInput;
+
+  if (!workspaceExists(input.workspaceId)) {
+    return respondNotFound(`Workspace ${input.workspaceId} not found`);
   }
 
-  const cw: ChatWindow = createChatWindow(body.workspaceId, body.title.trim(), body.provider, body.model.trim());
+  const cw: ChatWindow = createChatWindow(input.workspaceId, input.title.trim(), input.provider, input.model.trim());
   return respondCreated(cw);
 }
 

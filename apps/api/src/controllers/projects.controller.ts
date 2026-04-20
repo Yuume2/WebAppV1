@@ -1,4 +1,4 @@
-import type { Project } from '@webapp/types';
+import type { CreateProjectInput, Project } from '@webapp/types';
 import {
   isRecord,
   readBody,
@@ -28,10 +28,8 @@ export async function createProjectController(ctx: RequestContext): Promise<Inte
     return respondError('validation_error', 'name is required and must be a non-empty string');
   }
 
-  const project: Project = createProject(
-    body.name.trim(),
-    typeof body.description === 'string' ? body.description : undefined,
-  );
+  const input = body as unknown as CreateProjectInput;
+  const project: Project = createProject(input.name.trim(), input.description);
   return respondCreated(project);
 }
 

@@ -2,11 +2,13 @@
 
 Base URL: `http://localhost:4000`
 
-All responses follow `ApiResponse<T>` from `@webapp/types`:
+All types referenced here are exported from `@webapp/types`.
 
-```
+All responses follow `ApiResponse<T>`:
+
+```ts
 { ok: true,  data: T }
-{ ok: false, error: { code: string; message: string; details?: unknown } }
+{ ok: false, error: ApiError }  // ApiErrorResponse
 ```
 
 Every response sets `X-Request-Id` (UUID).
@@ -35,6 +37,19 @@ Two projects are seeded on startup: `proj-1` (Research Sprint) and `proj-2` (Con
 
 ---
 
+## Shared types reference (`@webapp/types`)
+
+| Category       | Exported names                                                              |
+|----------------|-----------------------------------------------------------------------------|
+| Domain         | `Project`, `Workspace`, `ChatWindow`, `Message`                             |
+| Primitives     | `AIProvider`, `MessageRole`, `ISODateString`                                |
+| POST payloads  | `CreateProjectInput`, `CreateWorkspaceInput`, `CreateChatWindowInput`, `CreateMessageInput` |
+| State          | `AppState`                                                                  |
+| Responses      | `ProjectResponse`, `ProjectListResponse`, `WorkspaceResponse`, `WorkspaceListResponse`, `ChatWindowResponse`, `ChatWindowListResponse`, `MessageResponse`, `MessageListResponse`, `StateResponse` |
+| Errors         | `ApiError`, `ApiResponse<T>`, `ApiErrorResponse`                            |
+
+---
+
 ## Naming canonical decision
 
 **`chatWindowId`** is the canonical field name for referencing a `ChatWindow`.
@@ -57,126 +72,127 @@ Frontend must use `chatWindowId`. **Do not use `windowId`.**
 
 ---
 
-### GET /v1/projects
+### GET /v1/projects → `ProjectListResponse`
 
 ```
 200 { ok: true, data: Project[] }
 ```
 
-### GET /v1/projects/:id
+### GET /v1/projects/:id → `ProjectResponse`
 
 ```
 200 { ok: true,  data: Project }
-404 { ok: false, error: { code: 'not_found', message } }
+404 ApiErrorResponse  (code: 'not_found')
 ```
 
-### POST /v1/projects
+### POST /v1/projects → `ProjectResponse`
 
-**Body:** `{ name: string; description?: string }`
+**Body:** `CreateProjectInput` = `{ name: string; description?: string }`
 
 ```
 201 { ok: true,  data: Project }
-400 { ok: false, error: { code: 'validation_error' | 'invalid_json', message } }
+400 ApiErrorResponse  (code: 'validation_error' | 'invalid_json')
 ```
 
 ---
 
-### GET /v1/workspaces/:id
-
-```
-200 { ok: true,  data: Workspace }
-404 { ok: false, error: { code: 'not_found', message } }
-```
-
-### GET /v1/workspaces?projectId=
+### GET /v1/workspaces?projectId= → `WorkspaceListResponse`
 
 **Query:** `projectId` required
 
 ```
 200 { ok: true,  data: Workspace[] }
-400 { ok: false, error: { code: 'validation_error', message } }
+400 ApiErrorResponse  (code: 'validation_error')
 ```
 
-### POST /v1/workspaces
+### GET /v1/workspaces/:id → `WorkspaceResponse`
 
-**Body:** `{ projectId: string; name: string }`
+```
+200 { ok: true,  data: Workspace }
+404 ApiErrorResponse  (code: 'not_found')
+```
+
+### POST /v1/workspaces → `WorkspaceResponse`
+
+**Body:** `CreateWorkspaceInput` = `{ projectId: string; name: string }`
 
 ```
 201 { ok: true,  data: Workspace }
-400 { ok: false, error: { code: 'validation_error' | 'invalid_json', message } }
-404 { ok: false, error: { code: 'not_found', message } }   ← projectId missing
+400 ApiErrorResponse  (code: 'validation_error' | 'invalid_json')
+404 ApiErrorResponse  (code: 'not_found')   ← projectId missing
 ```
 
 ---
 
-### GET /v1/chat-windows/:id
-
-```
-200 { ok: true,  data: ChatWindow }
-404 { ok: false, error: { code: 'not_found', message } }
-```
-
-### GET /v1/chat-windows?workspaceId=
+### GET /v1/chat-windows?workspaceId= → `ChatWindowListResponse`
 
 **Query:** `workspaceId` required
 
 ```
 200 { ok: true,  data: ChatWindow[] }
-400 { ok: false, error: { code: 'validation_error', message } }
+400 ApiErrorResponse  (code: 'validation_error')
 ```
 
-### POST /v1/chat-windows
+### GET /v1/chat-windows/:id → `ChatWindowResponse`
 
-**Body:** `{ workspaceId: string; title: string; provider: AIProvider; model: string }`
+```
+200 { ok: true,  data: ChatWindow }
+404 ApiErrorResponse  (code: 'not_found')
+```
+
+### POST /v1/chat-windows → `ChatWindowResponse`
+
+**Body:** `CreateChatWindowInput` = `{ workspaceId: string; title: string; provider: AIProvider; model: string }`
 
 `provider` must be one of: `openai` | `anthropic` | `perplexity`
 
 ```
 201 { ok: true,  data: ChatWindow }
-400 { ok: false, error: { code: 'validation_error' | 'invalid_json', message } }
-404 { ok: false, error: { code: 'not_found', message } }   ← workspaceId missing
+400 ApiErrorResponse  (code: 'validation_error' | 'invalid_json')
+404 ApiErrorResponse  (code: 'not_found')   ← workspaceId missing
 ```
 
 Side effect: created window's `id` is appended to `workspace.windowIds`.
 
 ---
 
-### GET /v1/messages/:id
-
-```
-200 { ok: true,  data: Message }
-404 { ok: false, error: { code: 'not_found', message } }
-```
-
-### GET /v1/messages?chatWindowId=
+### GET /v1/messages?chatWindowId= → `MessageListResponse`
 
 **Query:** `chatWindowId` required
 
 ```
 200 { ok: true,  data: Message[] }
-400 { ok: false, error: { code: 'validation_error', message } }
+400 ApiErrorResponse  (code: 'validation_error')
 ```
 
-### POST /v1/messages
+### GET /v1/messages/:id → `MessageResponse`
 
-**Body:** `{ chatWindowId: string; role: MessageRole; content: string }`
+```
+200 { ok: true,  data: Message }
+404 ApiErrorResponse  (code: 'not_found')
+```
+
+### POST /v1/messages → `MessageResponse`
+
+**Body:** `CreateMessageInput` = `{ chatWindowId: string; role: MessageRole; content: string }`
 
 `role` must be one of: `user` | `assistant` | `system`
 
 ```
 201 { ok: true,  data: Message }
-400 { ok: false, error: { code: 'validation_error' | 'invalid_json', message } }
-404 { ok: false, error: { code: 'not_found', message } }   ← chatWindowId missing
+400 ApiErrorResponse  (code: 'validation_error' | 'invalid_json')
+404 ApiErrorResponse  (code: 'not_found')   ← chatWindowId missing
 ```
 
 ---
 
-### GET /v1/state
+### GET /v1/state → `StateResponse`
 
-Full snapshot of all in-memory collections.
+Full snapshot. Data shape: `AppState`.
 
 ```
-200 { ok: true, data: { projects: Project[]; workspaces: Workspace[]; chatWindows: ChatWindow[]; messages: Message[] } }
+200 { ok: true, data: AppState }
+// AppState = { projects: Project[]; workspaces: Workspace[]; chatWindows: ChatWindow[]; messages: Message[] }
 ```
 
 ---

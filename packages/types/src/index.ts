@@ -56,3 +56,50 @@ export interface HealthStatus {
   uptimeSeconds: number;
   timestamp: ISODateString;
 }
+
+// ── POST payload types ───────────────────────────────────────────────────────
+
+export interface CreateProjectInput {
+  name: string;
+  description?: string;
+}
+
+export interface CreateWorkspaceInput {
+  projectId: string;
+  name: string;
+}
+
+export interface CreateChatWindowInput {
+  workspaceId: string;
+  title: string;
+  provider: AIProvider;
+  model: string;
+}
+
+export interface CreateMessageInput {
+  chatWindowId: string;
+  role: MessageRole;
+  content: string;
+}
+
+// ── State snapshot ───────────────────────────────────────────────────────────
+
+export interface AppState {
+  projects: Project[];
+  workspaces: Workspace[];
+  chatWindows: ChatWindow[];
+  messages: Message[];
+}
+
+// ── Named response aliases ───────────────────────────────────────────────────
+
+export type ProjectResponse        = ApiResponse<Project>;
+export type ProjectListResponse    = ApiResponse<Project[]>;
+export type WorkspaceResponse      = ApiResponse<Workspace>;
+export type WorkspaceListResponse  = ApiResponse<Workspace[]>;
+export type ChatWindowResponse     = ApiResponse<ChatWindow>;
+export type ChatWindowListResponse = ApiResponse<ChatWindow[]>;
+export type MessageResponse        = ApiResponse<Message>;
+export type MessageListResponse    = ApiResponse<Message[]>;
+export type StateResponse          = ApiResponse<AppState>;
+export type ApiErrorResponse       = Extract<ApiResponse<never>, { ok: false }>;

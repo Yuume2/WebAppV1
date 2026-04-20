@@ -1,3 +1,4 @@
+import type { AppState } from '@webapp/types';
 import { respond, type InternalResult, type RequestContext } from '../lib/http.js';
 import { listChatWindows } from '../services/chat-windows.service.js';
 import { listMessages } from '../services/messages.service.js';
@@ -9,5 +10,6 @@ export function stateController(_ctx: RequestContext): InternalResult {
   const workspaces = projects.flatMap((p) => listWorkspaces(p.id));
   const chatWindows = workspaces.flatMap((w) => listChatWindows(w.id));
   const messages = chatWindows.flatMap((c) => listMessages(c.id));
-  return respond({ projects, workspaces, chatWindows, messages });
+  const state: AppState = { projects, workspaces, chatWindows, messages };
+  return respond(state);
 }

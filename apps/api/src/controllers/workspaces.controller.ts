@@ -1,4 +1,4 @@
-import type { Workspace } from '@webapp/types';
+import type { CreateWorkspaceInput, Workspace } from '@webapp/types';
 import {
   isRecord,
   readBody,
@@ -36,11 +36,13 @@ export async function createWorkspaceController(ctx: RequestContext): Promise<In
     return respondError('validation_error', 'name is required and must be a non-empty string');
   }
 
-  if (!projectExists(body.projectId)) {
-    return respondNotFound(`Project ${body.projectId} not found`);
+  const input = body as unknown as CreateWorkspaceInput;
+
+  if (!projectExists(input.projectId)) {
+    return respondNotFound(`Project ${input.projectId} not found`);
   }
 
-  const ws: Workspace = createWorkspace(body.projectId, body.name.trim());
+  const ws: Workspace = createWorkspace(input.projectId, input.name.trim());
   return respondCreated(ws);
 }
 

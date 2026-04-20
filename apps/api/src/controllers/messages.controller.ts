@@ -1,4 +1,4 @@
-import type { Message, MessageRole } from '@webapp/types';
+import type { CreateMessageInput, Message, MessageRole } from '@webapp/types';
 import {
   isRecord,
   readBody,
@@ -45,11 +45,13 @@ export async function createMessageController(ctx: RequestContext): Promise<Inte
     return respondError('validation_error', 'content is required and must be a non-empty string');
   }
 
-  if (!chatWindowExists(body.chatWindowId)) {
-    return respondNotFound(`ChatWindow ${body.chatWindowId} not found`);
+  const input = body as unknown as CreateMessageInput;
+
+  if (!chatWindowExists(input.chatWindowId)) {
+    return respondNotFound(`ChatWindow ${input.chatWindowId} not found`);
   }
 
-  const msg: Message = createMessage(body.chatWindowId, body.role, body.content);
+  const msg: Message = createMessage(input.chatWindowId, input.role, input.content);
   return respondCreated(msg);
 }
 
