@@ -107,28 +107,35 @@ function WorkspaceApp() {
     if (!newProjectName.trim()) return;
     run(async () => {
       const p = await createProject({ name: newProjectName.trim() });
-      await reload(); selectProject(p.id); setNewProjectName('');
+      setState(s => s ? { ...s, projects: [...s.projects, p] } : s);
+      setNewProjectName('');
+      selectProject(p.id);
     });
   };
   const handleCreateWorkspace = () => {
     if (!projectId || !newWorkspaceName.trim()) return;
     run(async () => {
       const ws = await createWorkspace({ projectId, name: newWorkspaceName.trim() });
-      await reload(); selectWorkspace(ws.id); setNewWorkspaceName('');
+      setState(s => s ? { ...s, workspaces: [...s.workspaces, ws] } : s);
+      setNewWorkspaceName('');
+      selectWorkspace(ws.id);
     });
   };
   const handleCreateChatWindow = () => {
     if (!workspaceId || !newCwTitle.trim() || !newCwModel.trim()) return;
     run(async () => {
       const cw = await createChatWindow({ workspaceId, title: newCwTitle.trim(), provider: newCwProvider, model: newCwModel.trim() });
-      await reload(); selectChatWindow(cw.id); setNewCwTitle('');
+      setState(s => s ? { ...s, chatWindows: [...s.chatWindows, cw] } : s);
+      setNewCwTitle('');
+      selectChatWindow(cw.id);
     });
   };
   const handleSendMessage = () => {
     if (!chatWindowId || !newMessage.trim()) return;
     run(async () => {
-      await createMessage({ chatWindowId, role: 'user', content: newMessage.trim() });
-      await reload(); setNewMessage('');
+      const m = await createMessage({ chatWindowId, role: 'user', content: newMessage.trim() });
+      setState(s => s ? { ...s, messages: [...s.messages, m] } : s);
+      setNewMessage('');
     });
   };
   const handleSeed = () => {
