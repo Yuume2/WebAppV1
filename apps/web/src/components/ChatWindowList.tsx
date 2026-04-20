@@ -1,0 +1,82 @@
+import type { ChatWindow, AIProvider } from '@webapp/types';
+import { s } from '@/app/ws-styles';
+
+const PROVIDERS: AIProvider[] = ['openai', 'anthropic', 'perplexity'];
+
+interface Props {
+  chatWindows: ChatWindow[];
+  workspaceId: string | null;
+  chatWindowId: string | null;
+  onSelectChatWindow: (id: string) => void;
+  newCwTitle: string;
+  onNewCwTitle: (v: string) => void;
+  newCwProvider: AIProvider;
+  onNewCwProvider: (p: AIProvider) => void;
+  newCwModel: string;
+  onNewCwModel: (v: string) => void;
+  onCreateChatWindow: () => void;
+  busy: boolean;
+}
+
+export function ChatWindowList({
+  chatWindows, workspaceId, chatWindowId, onSelectChatWindow,
+  newCwTitle, onNewCwTitle, newCwProvider, onNewCwProvider,
+  newCwModel, onNewCwModel, onCreateChatWindow, busy,
+}: Props) {
+  return (
+    <div style={s.middle}>
+      <div style={s.colSection}>
+        <p style={s.colLabel}>Chat Windows</p>
+        {!workspaceId && <p style={s.muted}>Select a workspace first.</p>}
+        {workspaceId && chatWindows.length === 0 && <p style={s.muted}>No windows yet — create one below.</p>}
+        {chatWindows.map(cw => (
+          <div
+            key={cw.id}
+            style={{ ...s.navItem, ...(cw.id === chatWindowId ? s.navItemActive : {}) }}
+            onClick={() => onSelectChatWindow(cw.id)}
+          >
+            <span style={s.cwTitle}>{cw.title}</span>
+            <span style={s.cwBadge}>{cw.provider}</span>
+            <span style={s.cwModel}>{cw.model}</span>
+          </div>
+        ))}
+
+        {workspaceId && (
+          <div style={{ ...s.inlineForm, flexDirection: 'column', gap: '0.3rem' }}>
+            <input
+              style={s.input}
+              placeholder="Window title…"
+              value={newCwTitle}
+              onChange={e => onNewCwTitle(e.target.value)}
+              disabled={busy}
+            />
+            <div style={{ display: 'flex', gap: '0.3rem' }}>
+              <select
+                style={{ ...s.input, flex: 'none', width: '88px' }}
+                value={newCwProvider}
+                onChange={e => onNewCwProvider(e.target.value as AIProvider)}
+                disabled={busy}
+              >
+                {PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <input
+                style={s.input}
+                placeholder="model"
+                value={newCwModel}
+                onChange={e => onNewCwModel(e.target.value)}
+                disabled={busy}
+              />
+            </div>
+            <button
+              style={{ ...s.btn, width: '100%' }}
+              onClick={onCreateChatWindow}
+              disabled={busy || !newCwTitle.trim() || !newCwModel.trim()}
+            >
+              + New Window
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
