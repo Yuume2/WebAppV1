@@ -1,7 +1,7 @@
 import type { CreateMessageInput, Message, MessageRole } from '@webapp/types';
 import {
   isRecord,
-  readBody,
+  readJsonBody,
   respond,
   respondCreated,
   respondError,
@@ -27,12 +27,9 @@ export function listMessagesController(ctx: RequestContext): InternalResult {
 }
 
 export async function createMessageController(ctx: RequestContext): Promise<InternalResult> {
-  let body: unknown;
-  try {
-    body = await readBody(ctx.req);
-  } catch {
-    return respondError('invalid_json', 'Request body must be valid JSON');
-  }
+  const bodyResult = await readJsonBody(ctx.req);
+  if (!bodyResult.ok) return bodyResult.result;
+  const body = bodyResult.data;
 
   if (!isRecord(body)) return respondError('validation_error', 'Body must be a JSON object');
   if (typeof body.chatWindowId !== 'string' || !body.chatWindowId) {

@@ -99,4 +99,31 @@ describe('POST /v1/projects', () => {
     if (body.ok) throw new Error('expected error envelope');
     expect(body.error.code).toBe('invalid_json');
   });
+
+  it('returns 415 for wrong content-type', async () => {
+    const res = await fetch(`${harness.baseUrl}/v1/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ name: 'X' }),
+    });
+    expect(res.status).toBe(415);
+    const body = (await res.json()) as ApiResponse<unknown>;
+    expect(body.ok).toBe(false);
+    if (body.ok) throw new Error('expected error envelope');
+    expect(body.error.code).toBe('unsupported_media_type');
+  });
+
+  it('returns 413 for oversized body', async () => {
+    const oversized = JSON.stringify({ name: 'X', description: 'a'.repeat(110 * 1024) });
+    const res = await fetch(`${harness.baseUrl}/v1/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: oversized,
+    });
+    expect(res.status).toBe(413);
+    const body = (await res.json()) as ApiResponse<unknown>;
+    expect(body.ok).toBe(false);
+    if (body.ok) throw new Error('expected error envelope');
+    expect(body.error.code).toBe('payload_too_large');
+  });
 });

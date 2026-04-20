@@ -29,6 +29,20 @@ Access-Control-Allow-Headers: Content-Type
 
 ---
 
+## Request body rules (POST endpoints)
+
+All POST endpoints that read a body enforce the following:
+
+| Rule | Behaviour |
+|------|-----------|
+| `Content-Type` must be `application/json` | `415 unsupported_media_type` |
+| Body must be valid JSON | `400 invalid_json` |
+| Body must be ≤ 100 KB | `413 payload_too_large` |
+
+`/v1/dev/reset` and `/v1/dev/seed` do not read a body; these rules do not apply to them.
+
+---
+
 ## In-memory state
 
 State is held in memory and resets on server restart. No database yet.
@@ -261,13 +275,15 @@ All IDs and `createdAt` values are fixed — calling seed multiple times produce
 
 ## Error codes
 
-| code               | HTTP | meaning                                      |
-|--------------------|------|----------------------------------------------|
-| `not_found`        | 404  | Route or foreign-key entity missing          |
-| `method_not_allowed` | 405 | Method not registered for this path         |
-| `validation_error` | 400  | Missing or invalid request field             |
-| `invalid_json`     | 400  | Request body is not valid JSON               |
-| `internal_error`   | 500  | Unhandled exception                          |
+| code                    | HTTP | meaning                                      |
+|-------------------------|------|----------------------------------------------|
+| `not_found`             | 404  | Route or foreign-key entity missing          |
+| `method_not_allowed`    | 405  | Method not registered for this path          |
+| `validation_error`      | 400  | Missing or invalid request field             |
+| `invalid_json`          | 400  | Request body is not valid JSON               |
+| `payload_too_large`     | 413  | Request body exceeds 100 KB limit            |
+| `unsupported_media_type`| 415  | Content-Type is not `application/json`       |
+| `internal_error`        | 500  | Unhandled exception                          |
 
 ---
 
