@@ -1,7 +1,20 @@
 import type { ChatWindow, AIProvider } from '@webapp/types';
-import { s } from '@/app/ws-styles';
+import { s, PROVIDER_COLORS } from '@/app/ws-styles';
 
 const PROVIDERS: AIProvider[] = ['openai', 'anthropic', 'perplexity'];
+
+function ProviderBadge({ provider }: { provider: AIProvider }) {
+  const color = PROVIDER_COLORS[provider];
+  return (
+    <span style={{
+      display: 'inline-block', fontSize: '0.65rem', fontWeight: 600,
+      color, background: `${color}18`, borderRadius: '3px',
+      padding: '0.05rem 0.3rem', marginTop: '0.15rem',
+    }}>
+      {provider}
+    </span>
+  );
+}
 
 interface Props {
   chatWindows: ChatWindow[];
@@ -11,7 +24,7 @@ interface Props {
   newCwTitle: string;
   onNewCwTitle: (v: string) => void;
   newCwProvider: AIProvider;
-  onNewCwProvider: (p: AIProvider) => void;
+  onProviderChange: (p: AIProvider) => void;
   newCwModel: string;
   onNewCwModel: (v: string) => void;
   onCreateChatWindow: () => void;
@@ -20,7 +33,7 @@ interface Props {
 
 export function ChatWindowList({
   chatWindows, workspaceId, chatWindowId, onSelectChatWindow,
-  newCwTitle, onNewCwTitle, newCwProvider, onNewCwProvider,
+  newCwTitle, onNewCwTitle, newCwProvider, onProviderChange,
   newCwModel, onNewCwModel, onCreateChatWindow, busy,
 }: Props) {
   return (
@@ -36,7 +49,7 @@ export function ChatWindowList({
             onClick={() => onSelectChatWindow(cw.id)}
           >
             <span style={s.cwTitle}>{cw.title}</span>
-            <span style={s.cwBadge}>{cw.provider}</span>
+            <ProviderBadge provider={cw.provider} />
             <span style={s.cwModel}>{cw.model}</span>
           </div>
         ))}
@@ -52,9 +65,9 @@ export function ChatWindowList({
             />
             <div style={{ display: 'flex', gap: '0.3rem' }}>
               <select
-                style={{ ...s.input, flex: 'none', width: '88px' }}
+                style={{ ...s.input, flex: 'none', width: '96px' }}
                 value={newCwProvider}
-                onChange={e => onNewCwProvider(e.target.value as AIProvider)}
+                onChange={e => onProviderChange(e.target.value as AIProvider)}
                 disabled={busy}
               >
                 {PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}

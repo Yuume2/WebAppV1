@@ -195,7 +195,7 @@ function WorkspaceApp() {
             newCwTitle={newCwTitle}
             onNewCwTitle={setNewCwTitle}
             newCwProvider={newCwProvider}
-            onNewCwProvider={setNewCwProvider}
+            onProviderChange={p => { setNewCwProvider(p); setNewCwModel(DEFAULT_MODEL[p]); }}
             newCwModel={newCwModel}
             onNewCwModel={setNewCwModel}
             onCreateChatWindow={handleCreateChatWindow}

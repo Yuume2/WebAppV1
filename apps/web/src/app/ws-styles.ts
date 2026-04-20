@@ -1,3 +1,11 @@
+import type { AIProvider } from '@webapp/types';
+
+export const PROVIDER_COLORS: Record<AIProvider, string> = {
+  openai:      '#4ade80',
+  anthropic:   '#fb923c',
+  perplexity:  '#60a5fa',
+};
+
 export const s = {
   root:        { display: 'flex', flexDirection: 'column' as const, height: '100vh', overflow: 'hidden', fontFamily: 'system-ui, sans-serif', color: '#d4d4d8' },
   topbar:      { display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0 1rem', height: '48px', background: '#0d0d10', borderBottom: '1px solid #1a1a20', flexShrink: 0 },
@@ -25,13 +33,12 @@ export const s = {
   btn:        { padding: '0.4rem 0.7rem', background: '#1e1e2e', border: '1px solid #2d2d40', borderRadius: '4px', color: '#a5b4fc', fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' as const },
 
   cwTitle: { display: 'block', fontSize: '0.85rem', lineHeight: 1.3 },
-  cwBadge: { display: 'block', fontSize: '0.7rem', color: '#52525b', marginTop: '0.1rem' },
-  cwModel: { display: 'block', fontSize: '0.7rem', color: '#3f3f46' },
+  cwModel: { display: 'block', fontSize: '0.68rem', color: '#52525b', marginTop: '0.1rem' },
 
   threadEmpty:  { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   threadHeader: { padding: '0.75rem 1.25rem', borderBottom: '1px solid #1a1a20', flexShrink: 0, display: 'flex', alignItems: 'baseline', gap: '0.75rem' },
   threadTitle:  { fontSize: '0.95rem', fontWeight: 600, color: '#e4e4e7' },
-  threadMeta:   { fontSize: '0.78rem', color: '#52525b' },
+  threadMeta:   { fontSize: '0.78rem', color: '#71717a' },
   thread:       { flex: 1, overflowY: 'auto' as const, padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column' as const, gap: '0.5rem' },
 
   msg:        { display: 'flex', gap: '0.75rem', padding: '0.55rem 0.75rem', borderRadius: '6px', alignItems: 'flex-start', borderLeft: '3px solid transparent' },

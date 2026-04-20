@@ -1,6 +1,19 @@
 import type { RefObject } from 'react';
-import type { ChatWindow, Message } from '@webapp/types';
-import { s } from '@/app/ws-styles';
+import type { ChatWindow, Message, AIProvider } from '@webapp/types';
+import { s, PROVIDER_COLORS } from '@/app/ws-styles';
+
+function ProviderTag({ provider }: { provider: AIProvider }) {
+  const color = PROVIDER_COLORS[provider];
+  return (
+    <span style={{
+      fontSize: '0.7rem', fontWeight: 600, color,
+      background: `${color}18`, borderRadius: '4px',
+      padding: '0.1rem 0.4rem',
+    }}>
+      {provider}
+    </span>
+  );
+}
 
 interface Props {
   selCW: ChatWindow | null;
@@ -27,7 +40,8 @@ export function ThreadPanel({ selCW, messages, newMessage, onNewMessage, onSendM
     <div style={s.main}>
       <div style={s.threadHeader}>
         <span style={s.threadTitle}>{selCW.title}</span>
-        <span style={s.threadMeta}>{selCW.provider} · {selCW.model}</span>
+        <ProviderTag provider={selCW.provider} />
+        <span style={s.threadMeta}>{selCW.model}</span>
       </div>
 
       <div style={s.thread} ref={threadRef}>
