@@ -47,15 +47,18 @@ export async function handleRequest(
   const match = router.match(rawMethod, path);
 
   if (!match) {
-    const status = router.hasPath(path) ? 405 : 404;
-    const code = status === 405 ? 'method_not_allowed' : 'not_found';
-    const message = status === 405 ? `Method ${rawMethod} not allowed for ${path}` : `No route for ${path}`;
-    writeJson(res, status, fail(code, message), requestId);
+    const noMatchStatus = router.hasPath(path) ? 405 : 404;
+    if (noMatchStatus === 405) {
+      const allowed = router.allowedMethods(path);
+      writeJson(res, 405, fail('method_not_allowed', `Method ${rawMethod} not allowed for ${path}`), requestId, { Allow: allowed.join(', ') });
+    } else {
+      writeJson(res, 404, fail('not_found', `No route for ${path}`), requestId);
+    }
     logger.info('request handled', {
       requestId,
       method: rawMethod,
       path,
-      status,
+      status: noMatchStatus,
       durationMs: Date.now() - startedAt,
     });
     return;

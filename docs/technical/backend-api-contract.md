@@ -282,14 +282,14 @@ These are the complete set of values in `ApiErrorCode` (exported from `@webapp/t
 | code                     | HTTP | when returned                                                  |
 |--------------------------|------|----------------------------------------------------------------|
 | `not_found`              | 404  | Unknown route **or** entity/foreign-key does not exist         |
-| `method_not_allowed`     | 405  | Method not registered for this path                            |
+| `method_not_allowed`     | 405  | Method not registered for this path — response includes `Allow` header listing supported methods |
 | `validation_error`       | 400  | Missing or invalid request field (body or query param)         |
 | `invalid_json`           | 400  | Request body is not valid JSON                                 |
 | `payload_too_large`      | 413  | Request body exceeds 100 KB limit                              |
 | `unsupported_media_type` | 415  | `Content-Type` is not `application/json` on a POST endpoint    |
 | `internal_error`         | 500  | Unhandled exception                                            |
 
-> `not_found` covers both "route doesn't exist" and "referenced entity not found". Frontend should not need to distinguish the two; the HTTP status 404 is the authoritative signal.
+> `not_found` covers both "route doesn't exist" and "referenced entity not found". Frontend should not need to distinguish the two; the HTTP status 404 is the authoritative signal. Unknown routes do **not** include an `Allow` header.
 
 ---
 

@@ -66,4 +66,17 @@ export class Router {
     }
     return false;
   }
+
+  allowedMethods(path: string): HttpMethod[] {
+    const methods: HttpMethod[] = [];
+    for (const [method, table] of this.exactByMethod) {
+      if (table.has(path)) methods.push(method);
+    }
+    for (const [method, entries] of this.patternByMethod) {
+      for (const entry of entries) {
+        if (entry.pattern.test(path)) { methods.push(method); break; }
+      }
+    }
+    return methods;
+  }
 }

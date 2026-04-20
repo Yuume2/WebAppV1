@@ -56,11 +56,13 @@ export function writeJson(
   status: number,
   body: ApiResponse<unknown>,
   requestId: string,
+  extraHeaders?: Record<string, string>,
 ): void {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Request-Id': requestId,
+    ...extraHeaders,
   });
   res.end(JSON.stringify(body));
 }
