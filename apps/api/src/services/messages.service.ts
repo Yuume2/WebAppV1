@@ -4,7 +4,10 @@ import type { Message, MessageRole } from '@webapp/types';
 let store: Message[] = [];
 
 export function listMessages(chatWindowId: string): Message[] {
-  return store.filter((m) => m.chatWindowId === chatWindowId).map((m) => ({ ...m }));
+  return store
+    .filter((m) => m.chatWindowId === chatWindowId)
+    .map((m) => ({ ...m }))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 export function createMessage(chatWindowId: string, role: MessageRole, content: string): Message {

@@ -9,7 +9,9 @@ let store: Project[] = [
 ];
 
 export function listProjects(): Project[] {
-  return store.map((p) => ({ ...p }));
+  return store
+    .map((p) => ({ ...p }))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 export function createProject(name: string, description?: string): Project {

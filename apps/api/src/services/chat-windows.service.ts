@@ -5,7 +5,10 @@ import { appendWindowId } from './workspaces.service.js';
 let store: ChatWindow[] = [];
 
 export function listChatWindows(workspaceId: string): ChatWindow[] {
-  return store.filter((w) => w.workspaceId === workspaceId).map((w) => ({ ...w }));
+  return store
+    .filter((w) => w.workspaceId === workspaceId)
+    .map((w) => ({ ...w }))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 export function createChatWindow(

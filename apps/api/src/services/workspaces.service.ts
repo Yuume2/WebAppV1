@@ -6,7 +6,8 @@ let store: Workspace[] = [];
 export function listWorkspaces(projectId: string): Workspace[] {
   return store
     .filter((w) => w.projectId === projectId)
-    .map((w) => ({ ...w, windowIds: [...w.windowIds] }));
+    .map((w) => ({ ...w, windowIds: [...w.windowIds] }))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
 }
 
 export function createWorkspace(projectId: string, name: string): Workspace {

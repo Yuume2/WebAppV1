@@ -37,6 +37,17 @@ Two projects are seeded on startup: `proj-1` (Research Sprint) and `proj-2` (Con
 
 ---
 
+## List ordering guarantee
+
+All list endpoints (`GET /v1/projects`, `/v1/workspaces`, `/v1/chat-windows`, `/v1/messages`) and `/v1/state` collections return items sorted:
+
+1. `createdAt` **ascending** (ISO string comparison)
+2. `id` **ascending** as a stable tie-breaker when `createdAt` values are equal
+
+This guarantee is deterministic regardless of insertion timing or engine. Frontend must not assume any other order.
+
+---
+
 ## Canonical route surface
 
 | Rule | Value |
