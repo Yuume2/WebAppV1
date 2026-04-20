@@ -25,7 +25,13 @@ jobs:
         run: pnpm install --frozen-lockfile=false
 
       - name: Typecheck
-        run: pnpm typecheck || echo "typecheck placeholder"
+        run: pnpm typecheck
 
       - name: Lint
         run: pnpm lint || echo "lint placeholder"
+
+      - name: Backend tests
+        run: |
+          pnpm --filter @webapp/types typecheck
+          pnpm --filter @webapp/api typecheck
+          pnpm --filter @webapp/api test
