@@ -112,3 +112,17 @@ export type MessageResponse        = ApiResponse<Message>;
 export type MessageListResponse    = ApiResponse<Message[]>;
 export type StateResponse          = ApiResponse<AppState>;
 export type ApiErrorResponse       = Extract<ApiResponse<never>, { ok: false }>;
+
+// ── Canonical API route contract ─────────────────────────────────────────────
+
+export const API_HEALTH_PATH       = '/health' as const;
+export const API_PROJECTS_PATH     = '/v1/projects' as const;
+export const API_WORKSPACES_PATH   = '/v1/workspaces' as const;
+export const API_CHAT_WINDOWS_PATH = '/v1/chat-windows' as const;
+export const API_MESSAGES_PATH     = '/v1/messages' as const;
+export const API_STATE_PATH        = '/v1/state' as const;
+
+export const getProjectPath     = (id: string): string => `${API_PROJECTS_PATH}/${id}`;
+export const getWorkspacePath   = (id: string): string => `${API_WORKSPACES_PATH}/${id}`;
+export const getChatWindowPath  = (id: string): string => `${API_CHAT_WINDOWS_PATH}/${id}`;
+export const getMessagePath     = (id: string): string => `${API_MESSAGES_PATH}/${id}`;

@@ -1,4 +1,5 @@
 import type { CreateProjectInput, Project } from '@webapp/types';
+import { getProjectPath } from '@webapp/types';
 import {
   isRecord,
   readJsonBody,
@@ -27,7 +28,7 @@ export async function createProjectController(ctx: RequestContext): Promise<Inte
 
   const input = body as unknown as CreateProjectInput;
   const project: Project = createProject(input.name.trim(), input.description);
-  return respondCreated(project, `/v1/projects/${project.id}`);
+  return respondCreated(project, getProjectPath(project.id));
 }
 
 export function getProjectController(ctx: RequestContext): InternalResult {

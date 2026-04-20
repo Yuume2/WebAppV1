@@ -7,27 +7,35 @@ import { createWorkspaceController, getWorkspaceController, listWorkspacesContro
 import { env } from '../config/env.js';
 import type { RouteDefinition } from '../lib/http.js';
 import { devRoutes } from './dev.js';
+import {
+  API_HEALTH_PATH,
+  API_PROJECTS_PATH,
+  API_WORKSPACES_PATH,
+  API_CHAT_WINDOWS_PATH,
+  API_MESSAGES_PATH,
+  API_STATE_PATH,
+} from '@webapp/types';
 
 export const businessRoutes: RouteDefinition[] = [
-  { method: 'GET', path: '/health', handler: healthController },
+  { method: 'GET', path: API_HEALTH_PATH, handler: healthController },
 
-  { method: 'GET',  path: '/v1/projects',          handler: listProjectsController },
-  { method: 'POST', path: '/v1/projects',          handler: createProjectController },
-  { method: 'GET',  path: '/v1/projects/:id',      handler: getProjectController },
+  { method: 'GET',  path: API_PROJECTS_PATH,           handler: listProjectsController },
+  { method: 'POST', path: API_PROJECTS_PATH,           handler: createProjectController },
+  { method: 'GET',  path: `${API_PROJECTS_PATH}/:id`,  handler: getProjectController },
 
-  { method: 'GET',  path: '/v1/workspaces',        handler: listWorkspacesController },
-  { method: 'POST', path: '/v1/workspaces',        handler: createWorkspaceController },
-  { method: 'GET',  path: '/v1/workspaces/:id',    handler: getWorkspaceController },
+  { method: 'GET',  path: API_WORKSPACES_PATH,            handler: listWorkspacesController },
+  { method: 'POST', path: API_WORKSPACES_PATH,            handler: createWorkspaceController },
+  { method: 'GET',  path: `${API_WORKSPACES_PATH}/:id`,   handler: getWorkspaceController },
 
-  { method: 'GET',  path: '/v1/chat-windows',      handler: listChatWindowsController },
-  { method: 'POST', path: '/v1/chat-windows',      handler: createChatWindowController },
-  { method: 'GET',  path: '/v1/chat-windows/:id',  handler: getChatWindowController },
+  { method: 'GET',  path: API_CHAT_WINDOWS_PATH,            handler: listChatWindowsController },
+  { method: 'POST', path: API_CHAT_WINDOWS_PATH,            handler: createChatWindowController },
+  { method: 'GET',  path: `${API_CHAT_WINDOWS_PATH}/:id`,   handler: getChatWindowController },
 
-  { method: 'GET',  path: '/v1/messages',          handler: listMessagesController },
-  { method: 'POST', path: '/v1/messages',          handler: createMessageController },
-  { method: 'GET',  path: '/v1/messages/:id',      handler: getMessageController },
+  { method: 'GET',  path: API_MESSAGES_PATH,           handler: listMessagesController },
+  { method: 'POST', path: API_MESSAGES_PATH,           handler: createMessageController },
+  { method: 'GET',  path: `${API_MESSAGES_PATH}/:id`,  handler: getMessageController },
 
-  { method: 'GET',  path: '/v1/state',             handler: stateController },
+  { method: 'GET',  path: API_STATE_PATH, handler: stateController },
 ];
 
 export const routes: RouteDefinition[] = [

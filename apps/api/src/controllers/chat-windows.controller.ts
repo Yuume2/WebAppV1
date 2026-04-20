@@ -1,4 +1,5 @@
 import type { AIProvider, ChatWindow, CreateChatWindowInput } from '@webapp/types';
+import { getChatWindowPath } from '@webapp/types';
 import {
   isRecord,
   readJsonBody,
@@ -52,7 +53,7 @@ export async function createChatWindowController(ctx: RequestContext): Promise<I
   }
 
   const cw: ChatWindow = createChatWindow(input.workspaceId, input.title.trim(), input.provider, input.model.trim());
-  return respondCreated(cw, `/v1/chat-windows/${cw.id}`);
+  return respondCreated(cw, getChatWindowPath(cw.id));
 }
 
 export function getChatWindowController(ctx: RequestContext): InternalResult {

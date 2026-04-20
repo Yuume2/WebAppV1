@@ -1,4 +1,5 @@
 import type { CreateWorkspaceInput, Workspace } from '@webapp/types';
+import { getWorkspacePath } from '@webapp/types';
 import {
   isRecord,
   readJsonBody,
@@ -40,7 +41,7 @@ export async function createWorkspaceController(ctx: RequestContext): Promise<In
   }
 
   const ws: Workspace = createWorkspace(input.projectId, input.name.trim());
-  return respondCreated(ws, `/v1/workspaces/${ws.id}`);
+  return respondCreated(ws, getWorkspacePath(ws.id));
 }
 
 export function getWorkspaceController(ctx: RequestContext): InternalResult {

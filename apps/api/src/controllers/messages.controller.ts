@@ -1,4 +1,5 @@
 import type { CreateMessageInput, Message, MessageRole } from '@webapp/types';
+import { getMessagePath } from '@webapp/types';
 import {
   isRecord,
   readJsonBody,
@@ -49,7 +50,7 @@ export async function createMessageController(ctx: RequestContext): Promise<Inte
   }
 
   const msg: Message = createMessage(input.chatWindowId, input.role, input.content);
-  return respondCreated(msg, `/v1/messages/${msg.id}`);
+  return respondCreated(msg, getMessagePath(msg.id));
 }
 
 export function getMessageController(ctx: RequestContext): InternalResult {

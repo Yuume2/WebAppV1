@@ -86,6 +86,10 @@ This guarantee is deterministic regardless of insertion timing or engine. Fronte
 | State          | `AppState`                                                                  |
 | Responses      | `ProjectResponse`, `ProjectListResponse`, `WorkspaceResponse`, `WorkspaceListResponse`, `ChatWindowResponse`, `ChatWindowListResponse`, `MessageResponse`, `MessageListResponse`, `StateResponse` |
 | Errors         | `ApiError`, `ApiErrorCode`, `ApiResponse<T>`, `ApiErrorResponse`            |
+| **Route constants** | `API_HEALTH_PATH`, `API_PROJECTS_PATH`, `API_WORKSPACES_PATH`, `API_CHAT_WINDOWS_PATH`, `API_MESSAGES_PATH`, `API_STATE_PATH` |
+| **Route builders**  | `getProjectPath(id)`, `getWorkspacePath(id)`, `getChatWindowPath(id)`, `getMessagePath(id)` |
+
+Route constants and builders are the canonical source of truth for API paths — backend and frontend should import from `@webapp/types` rather than writing path strings manually.
 
 ---
 
