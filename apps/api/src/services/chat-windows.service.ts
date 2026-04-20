@@ -32,3 +32,11 @@ export function findChatWindow(id: string): ChatWindow | undefined {
 export function chatWindowExists(id: string): boolean {
   return store.some((w) => w.id === id);
 }
+
+export function resetChatWindowsStore(): void {
+  store = [];
+}
+
+export function insertChatWindowRaw(chatWindow: ChatWindow): void {
+  store.push(chatWindow);
+}

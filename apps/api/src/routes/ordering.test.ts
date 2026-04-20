@@ -25,63 +25,65 @@ async function get<T>(path: string): Promise<T> {
   return json.data;
 }
 
+function assertSorted(items: Array<{ createdAt: string; id: string }>): void {
+  for (let i = 1; i < items.length; i++) {
+    const a = items[i - 1];
+    const b = items[i];
+    const cmp = a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
+    expect(cmp, `item[${i - 1}] should come before item[${i}]`).toBeLessThanOrEqual(0);
+  }
+}
+
 describe('list ordering — createdAt ASC, id ASC tie-breaker', () => {
   it('GET /v1/projects — seeded projects sorted by id (same createdAt)', async () => {
     const projects = await get<Project[]>('/v1/projects');
-    // proj-1 and proj-2 share the same seeded createdAt, so id tie-breaker applies
+    // proj-1 and proj-2 share the same seeded createdAt; id tie-breaker: 'proj-1' < 'proj-2'
     const idx1 = projects.findIndex((p) => p.id === 'proj-1');
     const idx2 = projects.findIndex((p) => p.id === 'proj-2');
     expect(idx1).toBeGreaterThanOrEqual(0);
     expect(idx2).toBeGreaterThanOrEqual(0);
     expect(idx1).toBeLessThan(idx2);
+    assertSorted(projects);
   });
 
-  it('GET /v1/projects — newly created projects appear after seeded ones', async () => {
+  it('GET /v1/projects — newly created project (later timestamp) appears after seeded ones', async () => {
     const created = await post<Project>('/v1/projects', { name: 'Ordering Test' });
     const projects = await get<Project[]>('/v1/projects');
     const seededIdx = projects.findIndex((p) => p.id === 'proj-1');
     const newIdx = projects.findIndex((p) => p.id === created.id);
+    // seeded createdAt is 2026-04-18; new item is created at current time which is after
     expect(seededIdx).toBeLessThan(newIdx);
+    assertSorted(projects);
   });
 
-  it('GET /v1/workspaces — multiple workspaces returned in createdAt/id order', async () => {
-    const ws1 = await post<Workspace>('/v1/workspaces', { projectId: 'proj-1', name: 'Alpha' });
-    const ws2 = await post<Workspace>('/v1/workspaces', { projectId: 'proj-1', name: 'Beta' });
+  it('GET /v1/workspaces — list is sorted by createdAt/id', async () => {
+    await post<Workspace>('/v1/workspaces', { projectId: 'proj-1', name: 'Alpha' });
+    await post<Workspace>('/v1/workspaces', { projectId: 'proj-1', name: 'Beta' });
     const list = await get<Workspace[]>('/v1/workspaces?projectId=proj-1');
-    const i1 = list.findIndex((w) => w.id === ws1.id);
-    const i2 = list.findIndex((w) => w.id === ws2.id);
-    expect(i1).toBeGreaterThanOrEqual(0);
-    expect(i2).toBeGreaterThanOrEqual(0);
-    // ws1 created before ws2; if same ms, id tie-breaker still gives stable result
-    expect(i1).toBeLessThanOrEqual(i2);
+    expect(list.length).toBeGreaterThanOrEqual(2);
+    assertSorted(list);
   });
 
-  it('GET /v1/chat-windows — multiple windows returned in createdAt/id order', async () => {
+  it('GET /v1/chat-windows — list is sorted by createdAt/id', async () => {
     const ws = await post<Workspace>('/v1/workspaces', { projectId: 'proj-1', name: 'WS' });
-    const cw1 = await post<ChatWindow>('/v1/chat-windows', { workspaceId: ws.id, title: 'CW-A', provider: 'openai', model: 'gpt-4o' });
-    const cw2 = await post<ChatWindow>('/v1/chat-windows', { workspaceId: ws.id, title: 'CW-B', provider: 'anthropic', model: 'claude-3-5-sonnet' });
+    await post<ChatWindow>('/v1/chat-windows', { workspaceId: ws.id, title: 'CW-A', provider: 'openai', model: 'gpt-4o' });
+    await post<ChatWindow>('/v1/chat-windows', { workspaceId: ws.id, title: 'CW-B', provider: 'anthropic', model: 'claude-3-5-sonnet' });
     const list = await get<ChatWindow[]>(`/v1/chat-windows?workspaceId=${ws.id}`);
-    const i1 = list.findIndex((c) => c.id === cw1.id);
-    const i2 = list.findIndex((c) => c.id === cw2.id);
-    expect(i1).toBeGreaterThanOrEqual(0);
-    expect(i2).toBeGreaterThanOrEqual(0);
-    expect(i1).toBeLessThanOrEqual(i2);
+    expect(list.length).toBeGreaterThanOrEqual(2);
+    assertSorted(list);
   });
 
-  it('GET /v1/messages — messages returned in createdAt/id order', async () => {
+  it('GET /v1/messages — list is sorted by createdAt/id', async () => {
     const ws = await post<Workspace>('/v1/workspaces', { projectId: 'proj-1', name: 'WS' });
     const cw = await post<ChatWindow>('/v1/chat-windows', { workspaceId: ws.id, title: 'CW', provider: 'openai', model: 'gpt-4o' });
-    const m1 = await post<Message>('/v1/messages', { chatWindowId: cw.id, role: 'user', content: 'first' });
-    const m2 = await post<Message>('/v1/messages', { chatWindowId: cw.id, role: 'assistant', content: 'second' });
+    await post<Message>('/v1/messages', { chatWindowId: cw.id, role: 'user', content: 'first' });
+    await post<Message>('/v1/messages', { chatWindowId: cw.id, role: 'assistant', content: 'second' });
     const list = await get<Message[]>(`/v1/messages?chatWindowId=${cw.id}`);
-    const i1 = list.findIndex((m) => m.id === m1.id);
-    const i2 = list.findIndex((m) => m.id === m2.id);
-    expect(i1).toBeGreaterThanOrEqual(0);
-    expect(i2).toBeGreaterThanOrEqual(0);
-    expect(i1).toBeLessThanOrEqual(i2);
+    expect(list.length).toBeGreaterThanOrEqual(2);
+    assertSorted(list);
   });
 
-  it('GET /v1/state — all collections follow the same order guarantee', async () => {
+  it('GET /v1/state — all collections are sorted by createdAt/id', async () => {
     const state = await get<{
       projects: Project[];
       workspaces: Workspace[];
@@ -89,16 +91,14 @@ describe('list ordering — createdAt ASC, id ASC tie-breaker', () => {
       messages: Message[];
     }>('/v1/state');
 
-    // projects: proj-1 before proj-2 (same createdAt, id tie-breaker)
+    // seeded projects: proj-1 before proj-2 (same createdAt, id tie-breaker)
     const pi1 = state.projects.findIndex((p) => p.id === 'proj-1');
     const pi2 = state.projects.findIndex((p) => p.id === 'proj-2');
     expect(pi1).toBeLessThan(pi2);
 
-    // each collection is non-decreasing by createdAt
-    for (const items of [state.projects, state.workspaces, state.chatWindows, state.messages]) {
-      for (let i = 1; i < items.length; i++) {
-        expect(items[i].createdAt >= items[i - 1].createdAt).toBe(true);
-      }
-    }
+    assertSorted(state.projects);
+    assertSorted(state.workspaces);
+    assertSorted(state.chatWindows);
+    assertSorted(state.messages);
   });
 });

@@ -21,3 +21,11 @@ export function findMessage(id: string): Message | undefined {
   const m = store.find((m) => m.id === id);
   return m ? { ...m } : undefined;
 }
+
+export function resetMessagesStore(): void {
+  store = [];
+}
+
+export function insertMessageRaw(message: Message): void {
+  store.push(message);
+}

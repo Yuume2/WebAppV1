@@ -4,9 +4,11 @@ import { createMessageController, getMessageController, listMessagesController }
 import { createProjectController, getProjectController, listProjectsController } from '../controllers/projects.controller.js';
 import { stateController } from '../controllers/state.controller.js';
 import { createWorkspaceController, getWorkspaceController, listWorkspacesController } from '../controllers/workspaces.controller.js';
+import { env } from '../config/env.js';
 import type { RouteDefinition } from '../lib/http.js';
+import { devRoutes } from './dev.js';
 
-export const routes: RouteDefinition[] = [
+const businessRoutes: RouteDefinition[] = [
   { method: 'GET', path: '/health', handler: healthController },
 
   { method: 'GET',  path: '/v1/projects',          handler: listProjectsController },
@@ -26,4 +28,9 @@ export const routes: RouteDefinition[] = [
   { method: 'GET',  path: '/v1/messages/:id',      handler: getMessageController },
 
   { method: 'GET',  path: '/v1/state',             handler: stateController },
+];
+
+export const routes: RouteDefinition[] = [
+  ...businessRoutes,
+  ...(env.nodeEnv !== 'production' ? devRoutes : []),
 ];

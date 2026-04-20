@@ -30,3 +30,11 @@ export function appendWindowId(workspaceId: string, windowId: string): void {
   const ws = store.find((w) => w.id === workspaceId);
   if (ws) ws.windowIds.push(windowId);
 }
+
+export function resetWorkspacesStore(): void {
+  store = [];
+}
+
+export function insertWorkspaceRaw(workspace: Workspace): void {
+  store.push(workspace);
+}

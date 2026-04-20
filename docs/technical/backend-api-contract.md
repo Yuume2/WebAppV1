@@ -220,6 +220,45 @@ Full snapshot. Data shape: `AppState`.
 
 ---
 
+---
+
+## Dev-only endpoints
+
+> **These endpoints exist only when `NODE_ENV` ≠ `production`.**
+> They are excluded from the router at startup in production — any request to `/v1/dev/*` returns `404 not_found`.
+> Production and frontend integration code must not depend on them.
+
+Enabled in: `development`, `test`
+
+### POST /v1/dev/reset
+
+Clears all in-memory collections to empty.
+
+```
+200 { ok: true, data: { reset: true } }
+```
+
+### POST /v1/dev/seed
+
+Resets all collections, then inserts a deterministic demo graph:
+
+| Collection  | Count | Notable IDs |
+|-------------|-------|-------------|
+| projects    | 2     | `demo-proj-1`, `demo-proj-2` |
+| workspaces  | 2     | `demo-ws-1` (proj-1), `demo-ws-2` (proj-2) |
+| chat-windows | 3    | `demo-cw-1` (openai/gpt-4o), `demo-cw-2` (anthropic/claude-3-5-sonnet), `demo-cw-3` (perplexity/sonar) |
+| messages    | 4     | user + assistant in cw-1, user in cw-2 and cw-3 |
+
+Returns the full state snapshot after seeding.
+
+```
+200 { ok: true, data: { seeded: true; state: AppState } }
+```
+
+All IDs and `createdAt` values are fixed — calling seed multiple times produces identical state.
+
+---
+
 ## Error codes
 
 | code               | HTTP | meaning                                      |

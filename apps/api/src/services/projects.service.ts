@@ -29,3 +29,11 @@ export function findProject(id: string): Project | undefined {
 export function projectExists(id: string): boolean {
   return store.some((p) => p.id === id);
 }
+
+export function resetProjectsStore(): void {
+  store = [];
+}
+
+export function insertProjectRaw(project: Project): void {
+  store.push(project);
+}
