@@ -30,18 +30,28 @@ Every response sets `X-Request-Id`.
 
 ## Endpoints
 
-| Method | Path             | Description                       |
-| ------ | ---------------- | --------------------------------- |
-| GET    | `/health`        | Service health + uptime           |
-| GET    | `/v1/health`     | Same, under versioned prefix      |
-| GET    | `/v1/projects`   | Readonly list of projects         |
+| Method | Path                          | Description                                  |
+| ------ | ----------------------------- | -------------------------------------------- |
+| GET    | `/health`                     | Service health + uptime                      |
+| GET    | `/v1/health`                  | Same, under versioned prefix                 |
+| GET    | `/v1/projects`                | List projects                                |
+| POST   | `/v1/projects`                | Create project                               |
+| GET    | `/v1/workspaces?projectId=`   | List workspaces for a project                |
+| POST   | `/v1/workspaces`              | Create workspace                             |
+| GET    | `/v1/chat-windows?workspaceId=` | List chat windows for a workspace          |
+| POST   | `/v1/chat-windows`            | Create chat window                           |
+| GET    | `/v1/messages?chatWindowId=`  | List messages for a chat window              |
+| POST   | `/v1/messages`                | Create message                               |
+| GET    | `/v1/state`                   | Full snapshot of all in-memory collections   |
+
+See `docs/technical/backend-api-contract.md` for full request/response shapes.
 
 ## Dev
 
 ```bash
 pnpm --filter @webapp/api dev
 curl -i http://localhost:4000/health
-curl -i http://localhost:4000/v1/projects
+curl -i http://localhost:4000/v1/state
 ```
 
 ## Tests

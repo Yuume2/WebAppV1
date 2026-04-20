@@ -10,6 +10,12 @@ import { logger } from '../lib/logger.js';
 import { generateRequestId } from '../lib/request-id.js';
 import type { Router } from '../lib/router.js';
 
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': env.corsOrigin,
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
 export async function handleRequest(
   router: Router,
   req: IncomingMessage,
@@ -21,6 +27,16 @@ export async function handleRequest(
   const host = req.headers.host ?? `localhost:${env.port}`;
   const url = new URL(req.url ?? '/', `http://${host}`);
   const path = url.pathname;
+
+  for (const [k, v] of Object.entries(CORS_HEADERS)) {
+    res.setHeader(k, v);
+  }
+
+  if (rawMethod === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
   if (!isHttpMethod(rawMethod)) {
     writeJson(res, 405, fail('method_not_allowed', `Method ${rawMethod} not allowed`), requestId);
@@ -48,14 +64,13 @@ export async function handleRequest(
   const ctx: RequestContext = { method: rawMethod, path, url, requestId, req };
 
   try {
-    const result = await handler(ctx);
-    const status = result.ok ? 200 : 400;
-    writeJson(res, status, result, requestId);
+    const { httpStatus, body } = await handler(ctx);
+    writeJson(res, httpStatus, body, requestId);
     logger.info('request handled', {
       requestId,
       method: rawMethod,
       path,
-      status,
+      status: httpStatus,
       durationMs: Date.now() - startedAt,
     });
   } catch (err) {

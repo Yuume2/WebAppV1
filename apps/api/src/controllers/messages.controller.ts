@@ -1,0 +1,54 @@
+import type { Message, MessageRole } from '@webapp/types';
+import {
+  isRecord,
+  readBody,
+  respond,
+  respondCreated,
+  respondError,
+  respondNotFound,
+  type InternalResult,
+  type RequestContext,
+} from '../lib/http.js';
+import { chatWindowExists } from '../services/chat-windows.service.js';
+import { createMessage, listMessages } from '../services/messages.service.js';
+
+const MESSAGE_ROLES: MessageRole[] = ['user', 'assistant', 'system'];
+
+function isMessageRole(v: unknown): v is MessageRole {
+  return MESSAGE_ROLES.includes(v as MessageRole);
+}
+
+export function listMessagesController(ctx: RequestContext): InternalResult {
+  const chatWindowId = ctx.url.searchParams.get('chatWindowId');
+  if (!chatWindowId) {
+    return respondError('validation_error', 'Query param chatWindowId is required');
+  }
+  return respond(listMessages(chatWindowId));
+}
+
+export async function createMessageController(ctx: RequestContext): Promise<InternalResult> {
+  let body: unknown;
+  try {
+    body = await readBody(ctx.req);
+  } catch {
+    return respondError('invalid_json', 'Request body must be valid JSON');
+  }
+
+  if (!isRecord(body)) return respondError('validation_error', 'Body must be a JSON object');
+  if (typeof body.chatWindowId !== 'string' || !body.chatWindowId) {
+    return respondError('validation_error', 'chatWindowId is required');
+  }
+  if (!isMessageRole(body.role)) {
+    return respondError('validation_error', `role must be one of: ${MESSAGE_ROLES.join(', ')}`);
+  }
+  if (typeof body.content !== 'string' || !body.content) {
+    return respondError('validation_error', 'content is required and must be a non-empty string');
+  }
+
+  if (!chatWindowExists(body.chatWindowId)) {
+    return respondNotFound(`ChatWindow ${body.chatWindowId} not found`);
+  }
+
+  const msg: Message = createMessage(body.chatWindowId, body.role, body.content);
+  return respondCreated(msg);
+}

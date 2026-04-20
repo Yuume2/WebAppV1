@@ -1,9 +1,26 @@
 import { healthController } from '../controllers/health.controller.js';
-import { listProjectsController } from '../controllers/projects.controller.js';
+import { createChatWindowController, listChatWindowsController } from '../controllers/chat-windows.controller.js';
+import { createMessageController, listMessagesController } from '../controllers/messages.controller.js';
+import { createProjectController, listProjectsController } from '../controllers/projects.controller.js';
+import { stateController } from '../controllers/state.controller.js';
+import { createWorkspaceController, listWorkspacesController } from '../controllers/workspaces.controller.js';
 import type { RouteDefinition } from '../lib/http.js';
 
 export const routes: RouteDefinition[] = [
   { method: 'GET', path: '/health', handler: healthController },
   { method: 'GET', path: '/v1/health', handler: healthController },
-  { method: 'GET', path: '/v1/projects', handler: listProjectsController },
+
+  { method: 'GET',  path: '/v1/projects',     handler: listProjectsController },
+  { method: 'POST', path: '/v1/projects',     handler: createProjectController },
+
+  { method: 'GET',  path: '/v1/workspaces',   handler: listWorkspacesController },
+  { method: 'POST', path: '/v1/workspaces',   handler: createWorkspaceController },
+
+  { method: 'GET',  path: '/v1/chat-windows', handler: listChatWindowsController },
+  { method: 'POST', path: '/v1/chat-windows', handler: createChatWindowController },
+
+  { method: 'GET',  path: '/v1/messages',     handler: listMessagesController },
+  { method: 'POST', path: '/v1/messages',     handler: createMessageController },
+
+  { method: 'GET',  path: '/v1/state',        handler: stateController },
 ];

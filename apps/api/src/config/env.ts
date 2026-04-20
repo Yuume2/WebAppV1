@@ -2,6 +2,7 @@ export interface ApiEnv {
   port: number;
   nodeEnv: 'development' | 'production' | 'test';
   serviceVersion: string;
+  corsOrigin: string;
 }
 
 function parsePort(raw: string | undefined, fallback: number): number {
@@ -22,4 +23,5 @@ export const env: ApiEnv = {
   port: parsePort(process.env.API_PORT, 4000),
   nodeEnv: parseNodeEnv(process.env.NODE_ENV),
   serviceVersion: process.env.API_VERSION ?? '0.1.0',
+  corsOrigin: process.env.CORS_ORIGIN ?? '*',
 };
