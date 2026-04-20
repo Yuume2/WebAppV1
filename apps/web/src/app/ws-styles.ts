@@ -44,8 +44,11 @@ export const s = {
   msg:        { display: 'flex', gap: '0.75rem', padding: '0.55rem 0.75rem', borderRadius: '6px', alignItems: 'flex-start', borderLeft: '3px solid transparent' },
   msgUser:    { background: '#0f1729', borderLeftColor: '#3730a3' },
   msgOther:   { background: '#111116', borderLeftColor: '#1a1a20' },
-  msgRole:    { fontSize: '0.72rem', fontWeight: 600, color: '#52525b', minWidth: '52px', paddingTop: '0.15rem', flexShrink: 0 },
+  msgMeta:    { display: 'flex', flexDirection: 'column' as const, gap: '0.05rem', minWidth: '52px', flexShrink: 0, paddingTop: '0.1rem' },
+  msgRole:    { fontSize: '0.72rem', fontWeight: 600, color: '#52525b' },
+  msgTime:    { fontSize: '0.65rem', color: '#3f3f46' },
   msgContent: { fontSize: '0.875rem', color: '#d4d4d8', lineHeight: 1.55, wordBreak: 'break-word' as const },
 
-  composer: { padding: '0.75rem 1.25rem', borderTop: '1px solid #1a1a20', display: 'flex', gap: '0.5rem', flexShrink: 0 },
+  composer:      { padding: '0.75rem 1.25rem', borderTop: '1px solid #1a1a20', display: 'flex', gap: '0.5rem', flexShrink: 0, alignItems: 'flex-end' },
+  composerInput: { flex: 1, minWidth: 0, background: '#111116', border: '1px solid #22222a', borderRadius: '4px', padding: '0.55rem 0.75rem', color: '#e4e4e7', fontSize: '0.9rem', outline: 'none', resize: 'none' as const, lineHeight: 1.5, minHeight: '40px', maxHeight: '160px', overflowY: 'auto' as const, fontFamily: 'system-ui, sans-serif' },
 } as const;

@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import { useRef, useEffect } from 'react';
 import type { ChatWindow, Message, AIProvider } from '@webapp/types';
 import { s, PROVIDER_COLORS } from '@/app/ws-styles';
 
@@ -15,22 +15,50 @@ function ProviderTag({ provider }: { provider: AIProvider }) {
   );
 }
 
+function formatTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
 interface Props {
   selCW: ChatWindow | null;
   messages: Message[];
   newMessage: string;
   onNewMessage: (v: string) => void;
   onSendMessage: () => void;
-  threadRef: RefObject<HTMLDivElement | null>;
   busy: boolean;
 }
 
-export function ThreadPanel({ selCW, messages, newMessage, onNewMessage, onSendMessage, threadRef, busy }: Props) {
+export function ThreadPanel({ selCW, messages, newMessage, onNewMessage, onSendMessage, busy }: Props) {
+  const threadRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  // scroll to bottom when window changes or new messages arrive
+  useEffect(() => {
+    if (threadRef.current) {
+      threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    }
+  }, [messages.length, selCW?.id]);
+
+  // auto-resize textarea
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
+  }, [newMessage]);
+
   if (!selCW) {
     return (
       <div style={s.main}>
         <div style={s.threadEmpty}>
-          <p style={s.muted}>Select a chat window to start.</p>
+          <div style={{ textAlign: 'center' as const }}>
+            <p style={{ ...s.muted, marginBottom: '0.3rem' }}>No chat window selected.</p>
+            <p style={{ ...s.muted, fontSize: '0.75rem', color: '#333' }}>Choose a window from the list or create a new one.</p>
+          </div>
         </div>
       </div>
     );
@@ -50,19 +78,29 @@ export function ThreadPanel({ selCW, messages, newMessage, onNewMessage, onSendM
         )}
         {messages.map(m => (
           <div key={m.id} style={{ ...s.msg, ...(m.role === 'user' ? s.msgUser : s.msgOther) }}>
-            <span style={s.msgRole}>{m.role}</span>
+            <span style={s.msgMeta}>
+              <span style={s.msgRole}>{m.role}</span>
+              <span style={s.msgTime}>{formatTime(m.createdAt)}</span>
+            </span>
             <span style={s.msgContent}>{m.content}</span>
           </div>
         ))}
       </div>
 
       <div style={s.composer}>
-        <input
-          style={{ ...s.input, flex: 1, fontSize: '0.9rem', padding: '0.55rem 0.75rem' }}
-          placeholder={`Message in ${selCW.title}…`}
+        <textarea
+          ref={taRef}
+          style={s.composerInput}
+          rows={1}
+          placeholder={`Message… (Enter to send, Shift+Enter for newline)`}
           value={newMessage}
           onChange={e => onNewMessage(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSendMessage(); } }}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (!busy && newMessage.trim()) onSendMessage();
+            }
+          }}
           disabled={busy}
         />
         <button
@@ -70,7 +108,7 @@ export function ThreadPanel({ selCW, messages, newMessage, onNewMessage, onSendM
           onClick={onSendMessage}
           disabled={busy || !newMessage.trim()}
         >
-          Send
+          {busy ? 'Sending…' : 'Send'}
         </button>
       </div>
     </div>

@@ -54,8 +54,6 @@ function WorkspaceApp() {
   const [newCwModel, setNewCwModel] = useState(DEFAULT_MODEL.openai);
   const [newMessage, setNewMessage] = useState('');
 
-  const threadRef = useRef<HTMLDivElement>(null);
-
   function selectProject(id: string | null) {
     setProjectId(id); setWorkspaceId(null); setChatWindowId(null);
     router.replace(buildParams({ projectId: id }), { scroll: false });
@@ -97,10 +95,6 @@ function WorkspaceApp() {
       }
     });
   }, [reload]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
-  }, [state, chatWindowId]);
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
@@ -207,7 +201,6 @@ function WorkspaceApp() {
             newMessage={newMessage}
             onNewMessage={setNewMessage}
             onSendMessage={handleSendMessage}
-            threadRef={threadRef}
             busy={busy}
           />
         </div>
