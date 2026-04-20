@@ -32,8 +32,7 @@ Every response sets `X-Request-Id`.
 
 | Method | Path                          | Description                                  |
 | ------ | ----------------------------- | -------------------------------------------- |
-| GET    | `/health`                     | Service health + uptime                      |
-| GET    | `/v1/health`                  | Same, under versioned prefix                 |
+| GET    | `/health`                     | Service health + uptime (unversioned)        |
 | GET    | `/v1/projects`                  | List projects                                |
 | POST   | `/v1/projects`                  | Create project                               |
 | GET    | `/v1/projects/:id`              | Get project by id                            |

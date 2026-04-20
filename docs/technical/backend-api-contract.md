@@ -37,6 +37,18 @@ Two projects are seeded on startup: `proj-1` (Research Sprint) and `proj-2` (Con
 
 ---
 
+## Canonical route surface
+
+| Rule | Value |
+|------|-------|
+| Base URL | `http://localhost:4000` |
+| Health endpoint | `GET /health` — **no `/v1` prefix** |
+| All business endpoints | `GET /v1/<resource>` and `POST /v1/<resource>` |
+| Get by id | `GET /v1/<resource>/:id` |
+| No unversioned aliases for business routes | `/projects`, `/workspaces`, etc. do not exist |
+
+---
+
 ## Shared types reference (`@webapp/types`)
 
 | Category       | Exported names                                                              |
@@ -64,7 +76,7 @@ Frontend must use `chatWindowId`. **Do not use `windowId`.**
 
 ## Endpoints
 
-### GET /health · GET /v1/health
+### GET /health — unversioned, no `/v1` prefix
 
 ```
 200 { ok: true, data: HealthStatus }

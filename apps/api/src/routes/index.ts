@@ -8,7 +8,6 @@ import type { RouteDefinition } from '../lib/http.js';
 
 export const routes: RouteDefinition[] = [
   { method: 'GET', path: '/health', handler: healthController },
-  { method: 'GET', path: '/v1/health', handler: healthController },
 
   { method: 'GET',  path: '/v1/projects',          handler: listProjectsController },
   { method: 'POST', path: '/v1/projects',          handler: createProjectController },

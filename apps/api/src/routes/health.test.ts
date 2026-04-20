@@ -32,13 +32,12 @@ describe('GET /health', () => {
     expect(() => new Date(body.data.timestamp).toISOString()).not.toThrow();
   });
 
-  it('is also served under /v1/health with the same envelope', async () => {
+  it('returns 404 for /v1/health — not a registered route', async () => {
     const res = await fetch(`${harness.baseUrl}/v1/health`);
-    expect(res.status).toBe(200);
-
-    const body = (await res.json()) as ApiResponse<HealthStatus>;
-    expect(body.ok).toBe(true);
-    if (!body.ok) throw new Error('expected ok envelope');
-    expect(body.data.service).toBe('webapp-api');
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as ApiResponse<unknown>;
+    expect(body.ok).toBe(false);
+    if (body.ok) throw new Error('expected error envelope');
+    expect(body.error.code).toBe('not_found');
   });
 });
