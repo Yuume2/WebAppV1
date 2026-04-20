@@ -17,6 +17,15 @@ const DEFAULT_MODEL: Record<AIProvider, string> = {
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
+function insertSorted<T extends { createdAt: string; id: string }>(arr: T[], item: T): T[] {
+  const result = [...arr, item];
+  result.sort((a, b) => {
+    const d = a.createdAt.localeCompare(b.createdAt);
+    return d !== 0 ? d : a.id.localeCompare(b.id);
+  });
+  return result;
+}
+
 function buildParams(params: Record<string, string | null>): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) { if (v) p.set(k, v); }
@@ -107,7 +116,7 @@ function WorkspaceApp() {
     if (!newProjectName.trim()) return;
     run(async () => {
       const p = await createProject({ name: newProjectName.trim() });
-      setState(s => s ? { ...s, projects: [...s.projects, p] } : s);
+      setState(s => s ? { ...s, projects: insertSorted(s.projects, p) } : s);
       setNewProjectName('');
       selectProject(p.id);
     });
@@ -116,7 +125,7 @@ function WorkspaceApp() {
     if (!projectId || !newWorkspaceName.trim()) return;
     run(async () => {
       const ws = await createWorkspace({ projectId, name: newWorkspaceName.trim() });
-      setState(s => s ? { ...s, workspaces: [...s.workspaces, ws] } : s);
+      setState(s => s ? { ...s, workspaces: insertSorted(s.workspaces, ws) } : s);
       setNewWorkspaceName('');
       selectWorkspace(ws.id);
     });
@@ -125,7 +134,7 @@ function WorkspaceApp() {
     if (!workspaceId || !newCwTitle.trim() || !newCwModel.trim()) return;
     run(async () => {
       const cw = await createChatWindow({ workspaceId, title: newCwTitle.trim(), provider: newCwProvider, model: newCwModel.trim() });
-      setState(s => s ? { ...s, chatWindows: [...s.chatWindows, cw] } : s);
+      setState(s => s ? { ...s, chatWindows: insertSorted(s.chatWindows, cw) } : s);
       setNewCwTitle('');
       selectChatWindow(cw.id);
     });
@@ -134,7 +143,7 @@ function WorkspaceApp() {
     if (!chatWindowId || !newMessage.trim()) return;
     run(async () => {
       const m = await createMessage({ chatWindowId, role: 'user', content: newMessage.trim() });
-      setState(s => s ? { ...s, messages: [...s.messages, m] } : s);
+      setState(s => s ? { ...s, messages: insertSorted(s.messages, m) } : s);
       setNewMessage('');
     });
   };
