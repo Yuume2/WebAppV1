@@ -300,4 +300,6 @@ These are the complete set of values in `ApiErrorCode` (exported from `@webapp/t
 | `API_PORT`     | `4000`        | 1–65535                                |
 | `NODE_ENV`     | `development` | `development` \| `production` \| `test` |
 | `API_VERSION`  | `0.1.0`       | Reported by `/health`                  |
-| `CORS_ORIGIN`  | `*`           | Set to `http://localhost:3000` in dev  |
+| `CORS_ORIGIN`          | `*`           | Set to `http://localhost:3000` in dev                       |
+| `API_MAX_BODY_BYTES`   | `102400`      | Max JSON request body size in bytes (100 KB)                |
+| `ENABLE_DEV_ENDPOINTS` | auto          | `true`/`false`; defaults to `true` unless `NODE_ENV=production` |

@@ -8,7 +8,7 @@ import { env } from '../config/env.js';
 import type { RouteDefinition } from '../lib/http.js';
 import { devRoutes } from './dev.js';
 
-const businessRoutes: RouteDefinition[] = [
+export const businessRoutes: RouteDefinition[] = [
   { method: 'GET', path: '/health', handler: healthController },
 
   { method: 'GET',  path: '/v1/projects',          handler: listProjectsController },
@@ -32,5 +32,5 @@ const businessRoutes: RouteDefinition[] = [
 
 export const routes: RouteDefinition[] = [
   ...businessRoutes,
-  ...(env.nodeEnv !== 'production' ? devRoutes : []),
+  ...(env.enableDevEndpoints ? devRoutes : []),
 ];

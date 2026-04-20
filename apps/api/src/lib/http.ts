@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ApiError, ApiErrorCode, ApiResponse } from '@webapp/types';
+import { env } from '../config/env.js';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
 
@@ -124,7 +125,7 @@ export async function readJsonBody(
     return { ok: false, result: respondError('unsupported_media_type', 'Content-Type must be application/json', 415) };
   }
   try {
-    const data = await readBody(req);
+    const data = await readBody(req, env.maxBodyBytes);
     return { ok: true, data };
   } catch (err: unknown) {
     const code = (err as { code?: string }).code;

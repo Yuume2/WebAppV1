@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ApiResponse, AppState, Project } from '@webapp/types';
 import { startTestServer, type Harness } from '../test/server-harness.js';
+import { Router } from '../lib/router.js';
+import { createApiServer } from '../lib/server.js';
+import { businessRoutes } from './index.js';
+import type { AddressInfo } from 'node:net';
 
 let harness: Harness;
 
@@ -120,13 +124,23 @@ describe('POST /v1/dev/seed', () => {
     expect(ids).toContain('demo-proj-2');
   });
 
-  it('dev endpoints return 404 in production — verified via route table exclusion', () => {
-    // dev routes are conditionally registered: env.nodeEnv !== 'production'
-    // In test env (NODE_ENV=test) they are available.
-    // In production (NODE_ENV=production) they are excluded at startup — router has no entry,
-    // so any POST /v1/dev/* returns 404 not_found, same as any unknown path.
-    // This is enforced statically at buildRouter() time, no runtime branching needed.
-    expect(true).toBe(true); // documented, not re-tested here to avoid production server setup
+  it('dev endpoints return 404 when ENABLE_DEV_ENDPOINTS is false — verified via route table exclusion', async () => {
+    const router = new Router();
+    router.registerAll(businessRoutes);
+    const server = createApiServer(router);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    const baseUrl = `http://127.0.0.1:${port}`;
+    try {
+      const res = await fetch(`${baseUrl}/v1/dev/reset`, { method: 'POST' });
+      expect(res.status).toBe(404);
+      const body = (await res.json()) as ApiResponse<unknown>;
+      expect(body.ok).toBe(false);
+      if (body.ok) throw new Error('expected error');
+      expect(body.error.code).toBe('not_found');
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+    }
   });
 });
 
