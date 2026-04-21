@@ -11,7 +11,8 @@ Last verified: 2026-04-21.
 - `feat/api-foundation` — origin has one extra commit (`de398ac` — `fix(types): add "type": "module" to fix named ESM exports under Node 24`) not yet in the integration branch. Tiny, isolated to `packages/types/package.json`.
 - `feat/frontend-steps-2-5-6` — shipped to integration.
 - `feat/integration-homepage-projects` — up-to-date with origin.
-- `feat/api-project-detail` — **current**. Param router + `GET /v1/projects/:id` + `HttpError`.
+- `feat/api-project-detail` — pushed to origin. Param router + `GET /v1/projects/:id` + `HttpError`.
+- `feat/web-project-detail-api` — **current**. `/project/[id]` wired to real detail endpoint with mock fallback + error panel + source badge.
 
 ## Done
 
@@ -39,7 +40,7 @@ Last verified: 2026-04-21.
 - No project detail / workspace / chat endpoints.
 - No write endpoints (create/update/delete projects).
 - No conversation persistence.
-- Frontend project detail page uses mocks; needs API once backend serves detail + workspaces.
+- Frontend project detail page now calls `GET /v1/projects/:id`. Workspaces/windows still from mocks — needs a `GET /v1/projects/:id/workspaces` endpoint.
 
 ## Next obvious steps
 

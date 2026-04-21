@@ -13,9 +13,10 @@ Not a sprint board. Just concrete next actions. Update when you finish or add on
 
 ## Frontend
 
-- [ ] Wire `/project/[id]` page to real `GET /v1/projects/:id` (mock fallback like homepage).
-- [ ] Source badge on project detail page, matching homepage pattern.
-- [ ] Error panel for detail 404 / network errors.
+- [x] Wire `/project/[id]` page to real `GET /v1/projects/:id` (mock fallback like homepage).
+- [x] Source badge on project detail page, matching homepage pattern (shown on empty/error/invalid workspace states).
+- [x] Error panel for detail 404 / network errors.
+- [ ] Surface source badge when full workspace view is rendered (requires `headerRight` slot on `Workspace`).
 
 ## Shared / infra
 
