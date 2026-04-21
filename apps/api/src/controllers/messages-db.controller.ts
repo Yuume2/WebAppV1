@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http';
-import type { Message, MessageRole } from '@webapp/types';
+import type { AIProvider, Message, MessageRole } from '@webapp/types';
 import { getMessagePath } from '@webapp/types';
 import {
   isRecord,
@@ -14,8 +14,12 @@ import {
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db } from '../db/messages.repo.js';
 import * as messagesRepo from '../db/messages.repo.js';
+import * as chatWindowsRepo from '../db/chat-windows.repo.js';
+import { getDecryptedApiKey } from '../db/provider-connections.repo.js';
+import { createOpenAIClient } from '../providers/openai.provider.js';
+import type { ChatCompletionResult, ChatMessage } from '../providers/provider.interface.js';
 
-// ── Internal DB row shape ──────────────────────────────────────────────────────
+// ── Internal DB row shapes ────────────────────────────────────────────────────
 
 interface DbMessage {
   id: string;
@@ -23,6 +27,16 @@ interface DbMessage {
   role: MessageRole;
   content: string;
   createdAt: Date;
+}
+
+interface DbChatWindow {
+  id: string;
+  workspaceId: string;
+  title: string;
+  provider: AIProvider;
+  model: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // ── Deps ──────────────────────────────────────────────────────────────────────
@@ -33,18 +47,25 @@ interface SessionDeps {
 }
 
 export interface MessagesDeps {
-  resolveUser: (req: IncomingMessage) => Promise<{ id: string } | null>;
-  listMessages: (chatWindowId: string, userId: string) => Promise<DbMessage[] | null>;
-  createMessage: (chatWindowId: string, userId: string, role: MessageRole, content: string) => Promise<DbMessage | null>;
-  findMessage: (id: string, userId: string) => Promise<DbMessage | null>;
+  resolveUser:    (req: IncomingMessage) => Promise<{ id: string } | null>;
+  listMessages:   (chatWindowId: string, userId: string) => Promise<DbMessage[] | null>;
+  createMessage:  (chatWindowId: string, userId: string, role: MessageRole, content: string) => Promise<DbMessage | null>;
+  findMessage:    (id: string, userId: string) => Promise<DbMessage | null>;
+  // Provider generation deps — used only when posting a user message to an openai chat window.
+  findChatWindow: (chatWindowId: string, userId: string) => Promise<DbChatWindow | null>;
+  getApiKey:      (userId: string, provider: AIProvider) => Promise<string | null>;
+  generate:       (apiKey: string, messages: ChatMessage[], model: string) => Promise<ChatCompletionResult>;
 }
 
 export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps {
   return {
-    resolveUser:   (req)                             => resolveCurrentUser(req, sessionDeps),
-    listMessages:  (chatWindowId, userId)            => messagesRepo.listMessagesByChatWindowAndUser(db, chatWindowId, userId),
-    createMessage: (chatWindowId, userId, role, content) => messagesRepo.createMessage(db, chatWindowId, userId, role, content),
-    findMessage:   (id, userId)                      => messagesRepo.findMessageById(db, id, userId),
+    resolveUser:    (req)                                 => resolveCurrentUser(req, sessionDeps),
+    listMessages:   (chatWindowId, userId)                => messagesRepo.listMessagesByChatWindowAndUser(db, chatWindowId, userId),
+    createMessage:  (chatWindowId, userId, role, content) => messagesRepo.createMessage(db, chatWindowId, userId, role, content),
+    findMessage:    (id, userId)                          => messagesRepo.findMessageById(db, id, userId),
+    findChatWindow: (chatWindowId, userId)                => chatWindowsRepo.findChatWindowById(db, chatWindowId, userId),
+    getApiKey:      (userId, provider)                    => getDecryptedApiKey(db, userId, provider),
+    generate:       (apiKey, msgs, model)                 => createOpenAIClient(apiKey).createChatCompletion(msgs, model),
   };
 }
 
@@ -107,8 +128,63 @@ export async function createMessageDbController(
     return respondError('validation_error', 'content is required and must be a non-empty string');
   }
 
-  const row = await deps.createMessage(body.chatWindowId, user.id, body.role as MessageRole, body.content);
-  if (row === null) return respondNotFound(`ChatWindow ${body.chatWindowId} not found`);
+  const chatWindowId = body.chatWindowId;
+  const role = body.role as MessageRole;
+  const content = body.content;
+
+  // For user messages: resolve the chat window to determine whether to trigger AI generation.
+  if (role === 'user') {
+    const cw = await deps.findChatWindow(chatWindowId, user.id);
+    if (cw === null) return respondNotFound(`ChatWindow ${chatWindowId} not found`);
+
+    if (cw.provider === 'openai') {
+      const apiKey = await deps.getApiKey(user.id, 'openai');
+      if (!apiKey) {
+        return respondError(
+          'validation_error',
+          'No OpenAI connection configured. Add your API key in provider settings.',
+          400,
+        );
+      }
+
+      // Build context from existing messages + the new user message (not yet persisted).
+      // Generating BEFORE persisting keeps the DB clean if the provider call fails.
+      const history = await deps.listMessages(chatWindowId, user.id);
+      const contextMessages: ChatMessage[] = [
+        ...(history ?? []).map((m) => ({ role: m.role as ChatMessage['role'], content: m.content })),
+        { role: 'user', content },
+      ];
+
+      let completion: ChatCompletionResult;
+      try {
+        completion = await deps.generate(apiKey, contextMessages, cw.model);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : 'Unknown provider error';
+        return respondError('internal_error', `Provider call failed: ${detail}`, 502);
+      }
+
+      // Persist user message then assistant reply.
+      const userRow = await deps.createMessage(chatWindowId, user.id, 'user', content);
+      if (userRow === null) return respondNotFound(`ChatWindow ${chatWindowId} not found`);
+
+      const assistantRow = await deps.createMessage(chatWindowId, user.id, 'assistant', completion.content);
+      if (assistantRow === null) {
+        return respondError('internal_error', 'Failed to persist assistant message', 500);
+      }
+
+      return respondCreated(
+        { userMessage: toMessage(userRow), assistantMessage: toMessage(assistantRow) },
+        getMessagePath(userRow.id),
+      );
+    }
+
+    // Non-openai provider: persist user message only, no generation.
+    // Provider support for this window is not yet enabled.
+  }
+
+  // Default path: persist the message as-is (non-user role, or non-openai provider).
+  const row = await deps.createMessage(chatWindowId, user.id, role, content);
+  if (row === null) return respondNotFound(`ChatWindow ${chatWindowId} not found`);
   const msg = toMessage(row);
   return respondCreated(msg, getMessagePath(msg.id));
 }

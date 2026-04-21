@@ -1,13 +1,13 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { ApiResponse, Message, MessageRole } from '@webapp/types';
+import type { AIProvider, ApiResponse, GeneratedMessagePair, Message, MessageRole } from '@webapp/types';
 import { Router } from '../lib/router.js';
 import { createApiServer } from '../lib/server.js';
 import { makeMessageDbRoutes } from './messages-db.js';
 import type { MessagesDeps } from '../controllers/messages-db.controller.js';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const USER_1 = { id: 'user-1', email: 'alice@example.com' };
 const USER_2 = { id: 'user-2', email: 'bob@example.com' };
@@ -25,12 +25,28 @@ function mockMessage(chatWindowId: string, overrides: Partial<{
   };
 }
 
+function mockChatWindow(provider: AIProvider = 'anthropic', model = 'claude-3') {
+  return {
+    id:          'cw-1',
+    workspaceId: 'ws-1',
+    title:       'Test Window',
+    provider,
+    model,
+    createdAt:   new Date('2026-01-01T00:00:00Z'),
+    updatedAt:   new Date('2026-01-01T00:00:00Z'),
+  };
+}
+
 function makeDeps(overrides: Partial<MessagesDeps> = {}): MessagesDeps {
   return {
-    resolveUser:   async () => null,
-    listMessages:  async () => null,
-    createMessage: async (chatWindowId, _userId, role, content) => mockMessage(chatWindowId, { role, content }),
-    findMessage:   async () => null,
+    resolveUser:    async () => null,
+    listMessages:   async () => null,
+    createMessage:  async (chatWindowId, _userId, role, content) => mockMessage(chatWindowId, { role, content }),
+    findMessage:    async () => null,
+    // Default: non-openai window so existing tests bypass generation path.
+    findChatWindow: async () => mockChatWindow('anthropic'),
+    getApiKey:      async () => null,
+    generate:       async () => { throw new Error('should not be called in this test'); },
     ...overrides,
   };
 }
@@ -133,24 +149,44 @@ describe('GET /v1/messages — authenticated', () => {
   });
 });
 
-// ── Create message ────────────────────────────────────────────────────────────
+// ── Create message — standard path (non-openai / non-user-role) ───────────────
 
-describe('POST /v1/messages — authenticated', () => {
-  it('creates message under own chat window, returns 201 with location header', async () => {
+describe('POST /v1/messages — standard path', () => {
+  it('creates non-user-role message, returns 201 with location header', async () => {
     const { baseUrl, close } = await startServer(makeDeps({
       resolveUser:   async () => USER_1,
       createMessage: async (chatWindowId, _userId, role, content) =>
         mockMessage(chatWindowId, { id: 'new-msg', role, content }),
     }));
+    // assistant role bypasses the openai generation path
     const res = await post(baseUrl, '/v1/messages', {
-      chatWindowId: 'cw-1', role: 'user', content: 'Hello world',
+      chatWindowId: 'cw-1', role: 'assistant', content: 'Replying manually',
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as ApiResponse<Message>;
     if (!body.ok) throw new Error('expected ok');
-    expect(body.data.content).toBe('Hello world');
-    expect(body.data.role).toBe('user');
+    expect(body.data.content).toBe('Replying manually');
+    expect(body.data.role).toBe('assistant');
     expect(res.headers.get('location')).toMatch(/\/v1\/messages\//);
+    await close();
+  });
+
+  it('creates user message in non-openai window (anthropic), returns single message', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('anthropic'),
+      createMessage:  async (chatWindowId, _userId, role, content) =>
+        mockMessage(chatWindowId, { id: 'new-msg', role, content }),
+    }));
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'cw-1', role: 'user', content: 'Hello',
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as ApiResponse<Message>;
+    if (!body.ok) throw new Error('expected ok');
+    // Single message returned — no assistantMessage field
+    expect(body.data.content).toBe('Hello');
+    expect('assistantMessage' in body.data).toBe(false);
     await close();
   });
 
@@ -160,7 +196,7 @@ describe('POST /v1/messages — authenticated', () => {
       createMessage: async () => null,
     }));
     const res = await post(baseUrl, '/v1/messages', {
-      chatWindowId: 'user2-cw', role: 'user', content: 'Hi',
+      chatWindowId: 'user2-cw', role: 'assistant', content: 'Hi',
     });
     expect(res.status).toBe(404);
     await close();
@@ -181,6 +217,120 @@ describe('POST /v1/messages — authenticated', () => {
       chatWindowId: 'cw-1', role: 'user',
     });
     expect(res.status).toBe(400);
+    await close();
+  });
+});
+
+// ── Create message — OpenAI generation path ───────────────────────────────────
+
+describe('POST /v1/messages — openai generation path', () => {
+  it('user message to openai window: generates + persists assistant reply, returns both', async () => {
+    const userMsg   = mockMessage('cw-1', { id: 'user-msg',   role: 'user',      content: 'Hello AI' });
+    const assistMsg = mockMessage('cw-1', { id: 'asst-msg',   role: 'assistant', content: 'Hello human!' });
+
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-test-key',
+      listMessages:   async () => [],
+      generate:       async () => ({ content: 'Hello human!', model: 'gpt-4o-mini', usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 } }),
+      createMessage:  async (_cw, _uid, role) => role === 'user' ? userMsg : assistMsg,
+    }));
+
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'cw-1', role: 'user', content: 'Hello AI',
+    });
+    expect(res.status).toBe(201);
+    expect(res.headers.get('location')).toMatch(/\/v1\/messages\//);
+
+    const body = (await res.json()) as ApiResponse<GeneratedMessagePair>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data.userMessage.id).toBe('user-msg');
+    expect(body.data.userMessage.role).toBe('user');
+    expect(body.data.userMessage.content).toBe('Hello AI');
+    expect(body.data.assistantMessage.id).toBe('asst-msg');
+    expect(body.data.assistantMessage.role).toBe('assistant');
+    expect(body.data.assistantMessage.content).toBe('Hello human!');
+    // API key must not appear in response
+    expect(JSON.stringify(body)).not.toContain('sk-test-key');
+    await close();
+  });
+
+  it('both messages belong to the same chat window', async () => {
+    const userMsg   = mockMessage('cw-1', { id: 'u', role: 'user',      content: 'Q' });
+    const assistMsg = mockMessage('cw-1', { id: 'a', role: 'assistant', content: 'A' });
+
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-key',
+      listMessages:   async () => [],
+      generate:       async () => ({ content: 'A', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }),
+      createMessage:  async (_cw, _uid, role) => role === 'user' ? userMsg : assistMsg,
+    }));
+
+    const res = await post(baseUrl, '/v1/messages', { chatWindowId: 'cw-1', role: 'user', content: 'Q' });
+    const body = (await res.json()) as ApiResponse<GeneratedMessagePair>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data.userMessage.chatWindowId).toBe('cw-1');
+    expect(body.data.assistantMessage.chatWindowId).toBe('cw-1');
+    await close();
+  });
+
+  it('missing OpenAI connection returns 400 with explicit error', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => null,
+    }));
+
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'cw-1', role: 'user', content: 'Hi',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('validation_error');
+    expect(body.error.message).toContain('OpenAI');
+    await close();
+  });
+
+  it('provider call failure returns 502 and does not persist any messages', async () => {
+    let createCalled = false;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-key',
+      listMessages:   async () => [],
+      generate:       async () => { throw new Error('OpenAI API error: HTTP 500'); },
+      createMessage:  async () => { createCalled = true; return mockMessage('cw-1'); },
+    }));
+
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'cw-1', role: 'user', content: 'Hi',
+    });
+    expect(res.status).toBe(502);
+    // No messages persisted — generate failed before createMessage was called
+    expect(createCalled).toBe(false);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('internal_error');
+    // API key must not appear in error
+    expect(body.error.message).not.toContain('sk-key');
+    await close();
+  });
+
+  it('cross-user: posting to another user\'s openai chat window returns 404', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      // Simulate repo returning null for user-1 (window owned by user-2)
+      findChatWindow: async () => null,
+    }));
+
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'user2-cw', role: 'user', content: 'Hi',
+    });
+    expect(res.status).toBe(404);
     await close();
   });
 });

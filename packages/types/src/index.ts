@@ -141,6 +141,13 @@ export const getWorkspacePath   = (id: string): string => `${API_WORKSPACES_PATH
 export const getChatWindowPath  = (id: string): string => `${API_CHAT_WINDOWS_PATH}/${id}`;
 export const getMessagePath     = (id: string): string => `${API_MESSAGES_PATH}/${id}`;
 
+// ── AI generation ────────────────────────────────────────────────────────────
+
+export interface GeneratedMessagePair {
+  userMessage: Message;
+  assistantMessage: Message;
+}
+
 // ── Provider connections ─────────────────────────────────────────────────────
 
 export interface ProviderConnection {
