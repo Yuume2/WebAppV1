@@ -45,6 +45,8 @@ export type ApiErrorCode =
   | 'payload_too_large'
   | 'validation_error'
   | 'not_found'
+  | 'conflict'
+  | 'unauthenticated'
   | 'method_not_allowed'
   | 'internal_error';
 
@@ -121,6 +123,18 @@ export const API_WORKSPACES_PATH   = '/v1/workspaces' as const;
 export const API_CHAT_WINDOWS_PATH = '/v1/chat-windows' as const;
 export const API_MESSAGES_PATH     = '/v1/messages' as const;
 export const API_STATE_PATH        = '/v1/state' as const;
+export const API_AUTH_SIGNUP_PATH  = '/v1/auth/signup' as const;
+export const API_AUTH_LOGIN_PATH   = '/v1/auth/login' as const;
+export const API_AUTH_LOGOUT_PATH  = '/v1/auth/logout' as const;
+export const API_AUTH_ME_PATH      = '/v1/auth/me' as const;
+
+export interface SafeUser {
+  id: string;
+  email: string;
+  displayName: string | null;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
 
 export const getProjectPath     = (id: string): string => `${API_PROJECTS_PATH}/${id}`;
 export const getWorkspacePath   = (id: string): string => `${API_WORKSPACES_PATH}/${id}`;
