@@ -31,6 +31,8 @@ function makeDeps(overrides: Partial<ProviderConnectionsDeps> = {}): ProviderCon
     findConnection:   async () => null,
     listConnections:  async () => [],
     deleteConnection: async () => undefined,
+    getDecryptedKey:  async () => null,
+    generate:         async () => ({ content: 'ok', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }),
     ...overrides,
   };
 }
@@ -318,6 +320,91 @@ describe('DELETE /v1/provider-connections/:provider — authenticated', () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
     const res = await del(baseUrl, '/v1/provider-connections/unknown');
     expect(res.status).toBe(400);
+    await close();
+  });
+});
+
+// ── Test connection ───────────────────────────────────────────────────────────
+
+describe('POST /v1/provider-connections/openai/test', () => {
+  it('returns 401 when unauthenticated', async () => {
+    const { baseUrl, close } = await startServer(makeDeps());
+    const res = await fetch(`${baseUrl}/v1/provider-connections/openai/test`, { method: 'POST' });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('unauthenticated');
+    await close();
+  });
+
+  it('returns 404 when no OpenAI connection is stored', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:     async () => USER_1,
+      getDecryptedKey: async () => null,
+    }));
+    const res = await fetch(`${baseUrl}/v1/provider-connections/openai/test`, { method: 'POST' });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('not_found');
+    await close();
+  });
+
+  it('returns ok payload with provider/model/outputPreview on success', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:     async () => USER_1,
+      getDecryptedKey: async () => 'sk-stored-key',
+      generate:        async () => ({ content: 'ok', model: 'gpt-4o-mini', usage: { promptTokens: 5, completionTokens: 1, totalTokens: 6 } }),
+    }));
+    const res = await fetch(`${baseUrl}/v1/provider-connections/openai/test`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiResponse<{ provider: string; model: string; outputPreview: string }>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data.provider).toBe('openai');
+    expect(body.data.model).toBe('gpt-4o-mini');
+    expect(body.data.outputPreview).toBe('ok');
+    expect('apiKey' in body.data).toBe(false);
+    await close();
+  });
+
+  it('returns 401 provider_auth_error when generate throws auth error', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:     async () => USER_1,
+      getDecryptedKey: async () => 'sk-bad-stored-key',
+      generate:        async () => { throw new Error('OpenAI API error: 401 Unauthorized invalid_api_key'); },
+    }));
+    const res = await fetch(`${baseUrl}/v1/provider-connections/openai/test`, { method: 'POST' });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('provider_auth_error');
+    expect(body.error.message).not.toContain('sk-bad-stored-key');
+    await close();
+  });
+
+  it('returns 502 provider_error on network failure', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:     async () => USER_1,
+      getDecryptedKey: async () => 'sk-valid-key',
+      generate:        async () => { throw new Error('fetch failed: connection refused'); },
+    }));
+    const res = await fetch(`${baseUrl}/v1/provider-connections/openai/test`, { method: 'POST' });
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('provider_error');
+    await close();
+  });
+
+  it('error responses never contain the stored plaintext key', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:     async () => USER_1,
+      getDecryptedKey: async () => 'sk-ultra-secret-stored',
+      generate:        async () => { throw new Error('some error'); },
+    }));
+    const res = await fetch(`${baseUrl}/v1/provider-connections/openai/test`, { method: 'POST' });
+    const text = await res.text();
+    expect(text).not.toContain('sk-ultra-secret-stored');
     await close();
   });
 });

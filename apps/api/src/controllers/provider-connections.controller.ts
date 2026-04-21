@@ -12,7 +12,8 @@ import {
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db, ProviderConnectionMeta } from '../db/provider-connections.repo.js';
 import * as providerRepo from '../db/provider-connections.repo.js';
-import { verifyOpenAIKey } from '../providers/openai.provider.js';
+import { verifyOpenAIKey, createOpenAIClient } from '../providers/openai.provider.js';
+import type { ChatCompletionResult } from '../providers/provider.interface.js';
 
 // All recognised provider values — used to validate the :provider URL param.
 const VALID_PROVIDERS = new Set<AIProvider>(['openai', 'anthropic', 'perplexity']);
@@ -34,7 +35,12 @@ export interface ProviderConnectionsDeps {
   findConnection:   (userId: string, provider: AIProvider) => Promise<ProviderConnectionMeta | null>;
   listConnections:  (userId: string) => Promise<ProviderConnectionMeta[]>;
   deleteConnection: (userId: string, provider: AIProvider) => Promise<void>;
+  getDecryptedKey:  (userId: string, provider: AIProvider) => Promise<string | null>;
+  generate:         (apiKey: string) => Promise<ChatCompletionResult>;
 }
+
+const TEST_MODEL = 'gpt-4o-mini';
+const TEST_MESSAGES = [{ role: 'user' as const, content: 'Say "ok".' }];
 
 export function makeProviderConnectionsDeps(db: Db, sessionDeps: SessionDeps): ProviderConnectionsDeps {
   return {
@@ -44,6 +50,8 @@ export function makeProviderConnectionsDeps(db: Db, sessionDeps: SessionDeps): P
     findConnection:   (userId, provider)      => providerRepo.findProviderConnection(db, userId, provider),
     listConnections:  (userId)                => providerRepo.listProviderConnections(db, userId),
     deleteConnection: (userId, provider)      => providerRepo.deleteProviderConnection(db, userId, provider),
+    getDecryptedKey:  (userId, provider)      => providerRepo.getDecryptedApiKey(db, userId, provider),
+    generate:         (apiKey)                => createOpenAIClient(apiKey).createChatCompletion(TEST_MESSAGES, TEST_MODEL),
   };
 }
 
@@ -138,4 +146,34 @@ export async function deleteConnectionController(
 
   await deps.deleteConnection(user.id, provider);
   return respond(null);
+}
+
+export async function testConnectionController(
+  ctx: RequestContext,
+  deps: ProviderConnectionsDeps,
+): Promise<InternalResult> {
+  const user = await deps.resolveUser(ctx.req);
+  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+
+  const apiKey = await deps.getDecryptedKey(user.id, 'openai');
+  if (!apiKey) {
+    return respondError('not_found', 'No OpenAI connection configured for this account', 404);
+  }
+
+  let result: ChatCompletionResult;
+  try {
+    result = await deps.generate(apiKey);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown provider error';
+    if (/401|unauthorized|invalid.*key/i.test(msg)) {
+      return respondError('provider_auth_error', 'OpenAI rejected the stored key', 401);
+    }
+    return respondError('provider_error', `OpenAI call failed: ${msg}`, 502);
+  }
+
+  return respond({
+    provider: 'openai',
+    model: result.model,
+    outputPreview: result.content.slice(0, 120),
+  });
 }
