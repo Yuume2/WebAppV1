@@ -57,8 +57,8 @@ export function ThreadPanel({ selCW, messages, newMessage, onNewMessage, onSendM
       <div style={s.main}>
         <div style={s.threadEmpty}>
           <div style={{ textAlign: 'center' as const }}>
-            <p style={{ ...s.muted, marginBottom: '0.3rem' }}>No chat window selected.</p>
-            <p style={{ ...s.muted, fontSize: '0.75rem', color: '#333' }}>Choose a window from the list or create a new one.</p>
+            <p style={{ ...s.muted, color: '#52525b', marginBottom: '0.3rem' }}>No chat window selected.</p>
+            <p style={{ ...s.muted, fontSize: '0.75rem', color: '#3d3d4d' }}>Choose a window from the list or create a new one.</p>
           </div>
         </div>
       </div>

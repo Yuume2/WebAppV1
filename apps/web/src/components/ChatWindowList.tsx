@@ -46,6 +46,7 @@ export function ChatWindowList({
         {chatWindows.map(cw => (
           <div
             key={cw.id}
+            className={cw.id === chatWindowId ? 'nav-item nav-item-active' : 'nav-item'}
             style={{ ...s.navItem, ...(cw.id === chatWindowId ? s.navItemActive : {}) }}
             onClick={() => onSelectChatWindow(cw.id)}
           >

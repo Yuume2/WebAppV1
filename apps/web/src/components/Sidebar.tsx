@@ -36,6 +36,7 @@ export function Sidebar({
         {projects.map(p => (
           <div
             key={p.id}
+            className={p.id === projectId ? 'nav-item nav-item-active' : 'nav-item'}
             style={{ ...s.navItem, ...(p.id === projectId ? s.navItemActive : {}) }}
             onClick={() => onSelectProject(p.id)}
           >
@@ -64,6 +65,7 @@ export function Sidebar({
           {workspaces.map(ws => (
             <div
               key={ws.id}
+              className={ws.id === workspaceId ? 'nav-item nav-item-active' : 'nav-item'}
               style={{ ...s.navItem, ...(ws.id === workspaceId ? s.navItemActive : {}) }}
               onClick={() => onSelectWorkspace(ws.id)}
             >

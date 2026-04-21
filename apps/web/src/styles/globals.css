@@ -8,6 +8,31 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: #0b0b0d;
+  background: #09090c;
   color: #f5f5f5;
+}
+
+/* Thin scrollbars to match dark theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #252532 transparent;
+}
+::-webkit-scrollbar          { width: 5px; height: 5px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: #252532; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #303040; }
+
+/* Focus ring that matches the indigo palette */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 1px;
+}
+
+/* Nav item hover — inline active styles override this automatically */
+.nav-item:hover {
+  background: #141420;
+  color: #9494a8;
 }
