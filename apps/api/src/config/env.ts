@@ -5,6 +5,7 @@ export interface ApiEnv {
   corsOrigin: string;
   maxBodyBytes: number;
   enableDevEndpoints: boolean;
+  databaseUrl: string | undefined;
 }
 
 function parsePort(raw: string | undefined, fallback: number): number {
@@ -41,4 +42,5 @@ export const env: ApiEnv = {
   enableDevEndpoints: process.env.ENABLE_DEV_ENDPOINTS !== undefined
     ? process.env.ENABLE_DEV_ENDPOINTS === 'true'
     : nodeEnv !== 'production',
+  databaseUrl: process.env.DATABASE_URL,
 };
