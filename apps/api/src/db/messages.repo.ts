@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type { MessageRole } from '@webapp/types';
 import { messages } from './schema.js';
@@ -17,7 +17,9 @@ export async function listMessagesByChatWindowAndUser(
 ) {
   const cw = await findChatWindowById(db, chatWindowId, userId);
   if (!cw) return null;
-  return db.select().from(messages).where(eq(messages.chatWindowId, chatWindowId));
+  return db.select().from(messages)
+    .where(eq(messages.chatWindowId, chatWindowId))
+    .orderBy(asc(messages.createdAt));
 }
 
 /**

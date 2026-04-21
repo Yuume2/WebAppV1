@@ -7,6 +7,7 @@ export interface ApiEnv {
   enableDevEndpoints: boolean;
   databaseUrl: string | undefined;
   providerEncryptionKey: string | undefined;
+  openaiMaxContextMessages: number;
 }
 
 function parsePort(raw: string | undefined, fallback: number): number {
@@ -32,6 +33,15 @@ function parseMaxBodyBytes(raw: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function parseContextLimit(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid OPENAI_MAX_CONTEXT_MESSAGES: "${raw}" must be a positive integer`);
+  }
+  return parsed;
+}
+
 const nodeEnv = parseNodeEnv(process.env.NODE_ENV);
 
 export const env: ApiEnv = {
@@ -45,4 +55,5 @@ export const env: ApiEnv = {
     : nodeEnv !== 'production',
   databaseUrl: process.env.DATABASE_URL,
   providerEncryptionKey: process.env.PROVIDER_ENCRYPTION_KEY,
+  openaiMaxContextMessages: parseContextLimit(process.env.OPENAI_MAX_CONTEXT_MESSAGES, 20),
 };

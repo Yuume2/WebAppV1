@@ -39,14 +39,15 @@ function mockChatWindow(provider: AIProvider = 'anthropic', model = 'claude-3') 
 
 function makeDeps(overrides: Partial<MessagesDeps> = {}): MessagesDeps {
   return {
-    resolveUser:    async () => null,
-    listMessages:   async () => null,
-    createMessage:  async (chatWindowId, _userId, role, content) => mockMessage(chatWindowId, { role, content }),
-    findMessage:    async () => null,
+    resolveUser:        async () => null,
+    listMessages:       async () => null,
+    createMessage:      async (chatWindowId, _userId, role, content) => mockMessage(chatWindowId, { role, content }),
+    findMessage:        async () => null,
     // Default: non-openai window so existing tests bypass generation path.
-    findChatWindow: async () => mockChatWindow('anthropic'),
-    getApiKey:      async () => null,
-    generate:       async () => { throw new Error('should not be called in this test'); },
+    findChatWindow:     async () => mockChatWindow('anthropic'),
+    getApiKey:          async () => null,
+    generate:           async () => { throw new Error('should not be called in this test'); },
+    maxContextMessages: 20,
     ...overrides,
   };
 }
@@ -317,6 +318,103 @@ describe('POST /v1/messages — openai generation path', () => {
     expect(body.error.code).toBe('internal_error');
     // API key must not appear in error
     expect(body.error.message).not.toContain('sk-key');
+    await close();
+  });
+
+  it('context is limited to last N prior messages (chronological order preserved)', async () => {
+    const capturedMessages: Array<{ role: string; content: string }> = [];
+
+    // History has 5 messages; maxContextMessages is 3 → only last 3 should be sent.
+    const history = [
+      mockMessage('cw-1', { id: 'm1', role: 'user',      content: 'old-1', createdAt: new Date('2026-01-01T00:00:01Z') }),
+      mockMessage('cw-1', { id: 'm2', role: 'assistant', content: 'old-2', createdAt: new Date('2026-01-01T00:00:02Z') }),
+      mockMessage('cw-1', { id: 'm3', role: 'user',      content: 'old-3', createdAt: new Date('2026-01-01T00:00:03Z') }),
+      mockMessage('cw-1', { id: 'm4', role: 'assistant', content: 'old-4', createdAt: new Date('2026-01-01T00:00:04Z') }),
+      mockMessage('cw-1', { id: 'm5', role: 'user',      content: 'old-5', createdAt: new Date('2026-01-01T00:00:05Z') }),
+    ];
+
+    const userMsg   = mockMessage('cw-1', { id: 'u', role: 'user',      content: 'new-q' });
+    const assistMsg = mockMessage('cw-1', { id: 'a', role: 'assistant', content: 'reply' });
+
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:        async () => USER_1,
+      findChatWindow:     async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:          async () => 'sk-key',
+      listMessages:       async () => history,
+      maxContextMessages: 3,
+      generate: async (_, msgs) => {
+        capturedMessages.push(...msgs);
+        return { content: 'reply', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+      },
+      createMessage: async (_cw, _uid, role) => role === 'user' ? userMsg : assistMsg,
+    }));
+
+    await post(baseUrl, '/v1/messages', { chatWindowId: 'cw-1', role: 'user', content: 'new-q' });
+
+    // Should have sent: old-3, old-4, old-5 (last 3) + new user message = 4 total
+    expect(capturedMessages).toHaveLength(4);
+    expect(capturedMessages[0]!.content).toBe('old-3');
+    expect(capturedMessages[1]!.content).toBe('old-4');
+    expect(capturedMessages[2]!.content).toBe('old-5');
+    expect(capturedMessages[3]!.content).toBe('new-q');
+    expect(capturedMessages[3]!.role).toBe('user');
+    await close();
+  });
+
+  it('when history is shorter than maxContextMessages, all prior messages are sent', async () => {
+    const capturedMessages: Array<{ role: string; content: string }> = [];
+
+    const history = [
+      mockMessage('cw-1', { id: 'm1', role: 'user',      content: 'hi' }),
+      mockMessage('cw-1', { id: 'm2', role: 'assistant', content: 'hello' }),
+    ];
+    const userMsg   = mockMessage('cw-1', { id: 'u', role: 'user',      content: 'again' });
+    const assistMsg = mockMessage('cw-1', { id: 'a', role: 'assistant', content: 'ok' });
+
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:        async () => USER_1,
+      findChatWindow:     async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:          async () => 'sk-key',
+      listMessages:       async () => history,
+      maxContextMessages: 20,
+      generate: async (_, msgs) => {
+        capturedMessages.push(...msgs);
+        return { content: 'ok', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+      },
+      createMessage: async (_cw, _uid, role) => role === 'user' ? userMsg : assistMsg,
+    }));
+
+    await post(baseUrl, '/v1/messages', { chatWindowId: 'cw-1', role: 'user', content: 'again' });
+
+    // 2 history + 1 new user = 3 total
+    expect(capturedMessages).toHaveLength(3);
+    expect(capturedMessages[0]!.content).toBe('hi');
+    expect(capturedMessages[2]!.content).toBe('again');
+    await close();
+  });
+
+  it('persistence behavior is unchanged — both messages still written regardless of truncation', async () => {
+    let createCallCount = 0;
+    const userMsg   = mockMessage('cw-1', { id: 'u', role: 'user',      content: 'q' });
+    const assistMsg = mockMessage('cw-1', { id: 'a', role: 'assistant', content: 'a' });
+
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:        async () => USER_1,
+      findChatWindow:     async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:          async () => 'sk-key',
+      listMessages:       async () => [
+        mockMessage('cw-1', { id: 'x1', content: 'old' }),
+        mockMessage('cw-1', { id: 'x2', content: 'older' }),
+      ],
+      maxContextMessages: 1,
+      generate: async () => ({ content: 'a', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }),
+      createMessage: async (_cw, _uid, role) => { createCallCount++; return role === 'user' ? userMsg : assistMsg; },
+    }));
+
+    const res = await post(baseUrl, '/v1/messages', { chatWindowId: 'cw-1', role: 'user', content: 'q' });
+    expect(res.status).toBe(201);
+    // Both messages must have been persisted
+    expect(createCallCount).toBe(2);
     await close();
   });
 

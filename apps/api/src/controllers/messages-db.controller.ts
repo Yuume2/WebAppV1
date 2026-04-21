@@ -12,6 +12,7 @@ import {
   type RequestContext,
 } from '../lib/http.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
+import { env } from '../config/env.js';
 import type { Db } from '../db/messages.repo.js';
 import * as messagesRepo from '../db/messages.repo.js';
 import * as chatWindowsRepo from '../db/chat-windows.repo.js';
@@ -52,9 +53,10 @@ export interface MessagesDeps {
   createMessage:  (chatWindowId: string, userId: string, role: MessageRole, content: string) => Promise<DbMessage | null>;
   findMessage:    (id: string, userId: string) => Promise<DbMessage | null>;
   // Provider generation deps — used only when posting a user message to an openai chat window.
-  findChatWindow: (chatWindowId: string, userId: string) => Promise<DbChatWindow | null>;
-  getApiKey:      (userId: string, provider: AIProvider) => Promise<string | null>;
-  generate:       (apiKey: string, messages: ChatMessage[], model: string) => Promise<ChatCompletionResult>;
+  findChatWindow:    (chatWindowId: string, userId: string) => Promise<DbChatWindow | null>;
+  getApiKey:         (userId: string, provider: AIProvider) => Promise<string | null>;
+  generate:          (apiKey: string, messages: ChatMessage[], model: string) => Promise<ChatCompletionResult>;
+  maxContextMessages: number;
 }
 
 export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps {
@@ -63,9 +65,10 @@ export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps
     listMessages:   (chatWindowId, userId)                => messagesRepo.listMessagesByChatWindowAndUser(db, chatWindowId, userId),
     createMessage:  (chatWindowId, userId, role, content) => messagesRepo.createMessage(db, chatWindowId, userId, role, content),
     findMessage:    (id, userId)                          => messagesRepo.findMessageById(db, id, userId),
-    findChatWindow: (chatWindowId, userId)                => chatWindowsRepo.findChatWindowById(db, chatWindowId, userId),
-    getApiKey:      (userId, provider)                    => getDecryptedApiKey(db, userId, provider),
-    generate:       (apiKey, msgs, model)                 => createOpenAIClient(apiKey).createChatCompletion(msgs, model),
+    findChatWindow:    (chatWindowId, userId)              => chatWindowsRepo.findChatWindowById(db, chatWindowId, userId),
+    getApiKey:         (userId, provider)                  => getDecryptedApiKey(db, userId, provider),
+    generate:          (apiKey, msgs, model)               => createOpenAIClient(apiKey).createChatCompletion(msgs, model),
+    maxContextMessages: env.openaiMaxContextMessages,
   };
 }
 
@@ -149,9 +152,12 @@ export async function createMessageDbController(
 
       // Build context from existing messages + the new user message (not yet persisted).
       // Generating BEFORE persisting keeps the DB clean if the provider call fails.
+      // Only the most recent maxContextMessages prior messages are included to bound
+      // the context size sent to the provider.
       const history = await deps.listMessages(chatWindowId, user.id);
+      const recentHistory = (history ?? []).slice(-deps.maxContextMessages);
       const contextMessages: ChatMessage[] = [
-        ...(history ?? []).map((m) => ({ role: m.role as ChatMessage['role'], content: m.content })),
+        ...recentHistory.map((m) => ({ role: m.role as ChatMessage['role'], content: m.content })),
         { role: 'user', content },
       ];
 
