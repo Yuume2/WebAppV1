@@ -9,6 +9,7 @@ export interface RequestContext {
   url: URL;
   requestId: string;
   req: IncomingMessage;
+  params: Readonly<Record<string, string>>;
 }
 
 export type RouteHandler = (ctx: RequestContext) => Promise<ApiResponse<unknown>> | ApiResponse<unknown>;
@@ -40,6 +41,24 @@ export function writeJson(
     'X-Request-Id': requestId,
   });
   res.end(JSON.stringify(body));
+}
+
+export class HttpError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly details?: unknown;
+
+  constructor(status: number, code: string, message: string, details?: unknown) {
+    super(message);
+    this.name = 'HttpError';
+    this.status = status;
+    this.code = code;
+    if (details !== undefined) this.details = details;
+  }
+
+  static notFound(message: string, details?: unknown): HttpError {
+    return new HttpError(404, 'not_found', message, details);
+  }
 }
 
 export function isHttpMethod(method: string | undefined): method is HttpMethod {

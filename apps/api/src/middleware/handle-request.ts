@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { env } from '../config/env.js';
 import {
   fail,
+  HttpError,
   isHttpMethod,
   writeJson,
   type RequestContext,
@@ -28,9 +29,9 @@ export async function handleRequest(
     return;
   }
 
-  const handler = router.match(rawMethod, path);
+  const match = router.match(rawMethod, path);
 
-  if (!handler) {
+  if (!match) {
     const status = router.hasPath(path) ? 405 : 404;
     const code = status === 405 ? 'method_not_allowed' : 'not_found';
     const message = status === 405 ? `Method ${rawMethod} not allowed for ${path}` : `No route for ${path}`;
@@ -45,10 +46,17 @@ export async function handleRequest(
     return;
   }
 
-  const ctx: RequestContext = { method: rawMethod, path, url, requestId, req };
+  const ctx: RequestContext = {
+    method: rawMethod,
+    path,
+    url,
+    requestId,
+    req,
+    params: Object.freeze({ ...match.params }),
+  };
 
   try {
-    const result = await handler(ctx);
+    const result = await match.handler(ctx);
     const status = result.ok ? 200 : 400;
     writeJson(res, status, result, requestId);
     logger.info('request handled', {
@@ -59,6 +67,17 @@ export async function handleRequest(
       durationMs: Date.now() - startedAt,
     });
   } catch (err) {
+    if (err instanceof HttpError) {
+      writeJson(res, err.status, fail(err.code, err.message, err.details), requestId);
+      logger.info('request handled', {
+        requestId,
+        method: rawMethod,
+        path,
+        status: err.status,
+        durationMs: Date.now() - startedAt,
+      });
+      return;
+    }
     const message = err instanceof Error ? err.message : 'Unknown error';
     writeJson(res, 500, fail('internal_error', 'Internal server error'), requestId);
     logger.error('request failed', {

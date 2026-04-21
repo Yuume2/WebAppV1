@@ -22,3 +22,8 @@ const store: readonly Project[] = Object.freeze([
 export function listProjects(): Project[] {
   return store.map((p) => ({ ...p }));
 }
+
+export function getProjectById(id: string): Project | undefined {
+  const hit = store.find((p) => p.id === id);
+  return hit ? { ...hit } : undefined;
+}
