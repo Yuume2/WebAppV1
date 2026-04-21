@@ -4,8 +4,10 @@ Newest first. One line per commit. Update at end of a session or via `tools/upda
 
 ## 2026-04-21
 
+- (pending commit on `feat/api-project-detail`) feat(api): `GET /v1/projects/:id` + `HttpError` + param router wiring + 4 new tests.
+- 26c9ad6 docs(memory): add Claude restart workflow note
+- 7cb01aa chore(memory): correct WIP state — working tree, not stash
 - c4ae1ac chore(memory): add project-memory system and refresh tooling
-- Local WIP in working tree (uncommitted, unstashed): dynamic path params in api `Router` + `RequestContext.params` (`apps/api/src/lib/{http,router}.ts`).
 
 ## 2026-04-18
 

@@ -4,11 +4,12 @@ Base: `http://localhost:<API_PORT|4000>`. Envelope: `ApiResponse<T>` from `@weba
 
 ## Endpoints
 
-| Method | Path           | Controller                  | Service             | Response         |
-|--------|----------------|-----------------------------|---------------------|------------------|
-| GET    | /health        | healthController            | —                   | `HealthStatus`   |
-| GET    | /v1/health     | healthController            | —                   | `HealthStatus`   |
-| GET    | /v1/projects   | listProjectsController      | `listProjects()`    | `Project[]`      |
+| Method | Path               | Controller                  | Service                 | Response         |
+|--------|--------------------|-----------------------------|-------------------------|------------------|
+| GET    | /health            | healthController            | —                       | `HealthStatus`   |
+| GET    | /v1/health         | healthController            | —                       | `HealthStatus`   |
+| GET    | /v1/projects       | listProjectsController      | `listProjects()`        | `Project[]`      |
+| GET    | /v1/projects/:id   | getProjectController        | `getProjectById(id)`    | `Project`        |
 
 All responses:
 
@@ -22,6 +23,7 @@ Status mapping (set by `handle-request`):
 - `ok:false` returned by controller → 400
 - Unknown path → 404 `not_found`
 - Known path, wrong method → 405 `method_not_allowed`
+- Controller throws `HttpError` → custom status + `fail(code, message)` envelope (e.g. 404 `not_found` for unknown resource id).
 - Unhandled throw → 500 `internal_error`
 
 Headers:
@@ -35,7 +37,7 @@ Headers:
 - Controllers: `apps/api/src/controllers/*.controller.ts`
 - Services: `apps/api/src/services/*.service.ts`
 - Envelope helpers (`ok`, `fail`, `writeJson`): `apps/api/src/lib/http.ts`
-- Router: `apps/api/src/lib/router.ts` (literal paths only; param support WIP stashed)
+- Router: `apps/api/src/lib/router.ts` (literal + `:param` segments, returns `RouteMatch { handler, params }`)
 - Middleware: `apps/api/src/middleware/handle-request.ts`
 - Env parser: `apps/api/src/config/env.ts`
 - Server factory: `apps/api/src/lib/server.ts`

@@ -48,15 +48,15 @@ apps/api/src
 
 ## Sensitive zones
 
-- `lib/router.ts` — path matching; change carefully. Local WIP adds `:param` support.
-- `lib/http.ts` — envelope contract; do not break shape (web depends on it).
+- `lib/router.ts` — path matching; change carefully. Supports `:param` segments (decoded per-segment). `match` returns `RouteMatch { handler, params }`.
+- `lib/http.ts` — envelope contract; do not break shape (web depends on it). Exports `HttpError` for status-bearing throws from controllers.
 - `services/projects.service.ts` — in-memory store; will be swapped for DB. Keep interface narrow.
 - `middleware/handle-request.ts` — global error path; any throw must become a proper `ApiResponse` + status.
 
 ## Tests
 
 - Vitest, integration-style via `server-harness` spinning a real `http.Server` on ephemeral port.
-- 6 tests pass as of 2026-04-18. Run: `pnpm --filter @webapp/api test`.
+- 10 tests pass as of 2026-04-21. Run: `pnpm --filter @webapp/api test`.
 
 ## Env
 

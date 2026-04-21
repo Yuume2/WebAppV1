@@ -2,28 +2,34 @@
 
 Last verified: 2026-04-21.
 
+> Update (2026-04-21, later): WIP param router landed on `feat/api-project-detail`.
+> `GET /v1/projects/:id` + `HttpError` + tests added. 10/10 API tests pass.
+
 ## Branches
 
 - `main` — stable, pushed.
 - `feat/api-foundation` — origin has one extra commit (`de398ac` — `fix(types): add "type": "module" to fix named ESM exports under Node 24`) not yet in the integration branch. Tiny, isolated to `packages/types/package.json`.
 - `feat/frontend-steps-2-5-6` — shipped to integration.
-- `feat/integration-homepage-projects` — **current**, up-to-date with origin.
+- `feat/integration-homepage-projects` — up-to-date with origin.
+- `feat/api-project-detail` — **current**. Param router + `GET /v1/projects/:id` + `HttpError`.
 
 ## Done
 
 - Monorepo scaffold (pnpm, turbo, tsconfig base, CI stub).
 - Shared types (`@webapp/types`): `Project`, `Workspace`, `ChatWindow`, `AIProvider`, `ApiError`, `ApiResponse<T>`, `HealthStatus`.
 - Backend foundation: env parser, logger, request-id, Router, `handleRequest` middleware, `createApiServer`.
-- Endpoints: `GET /health`, `GET /v1/health`, `GET /v1/projects` (seed store, 2 items).
-- Vitest setup + 6 integration tests (health + projects) passing.
+- Endpoints: `GET /health`, `GET /v1/health`, `GET /v1/projects`, `GET /v1/projects/:id` (seed store, 2 items).
+- Vitest setup + 10 integration tests passing (health + projects list + projects detail + dispatch errors).
+- `HttpError` class in `lib/http.ts`: status-bearing throws → middleware converts to `ApiResponse` envelope.
+- Param router: `:id` compiled segments, `RouteMatch { handler, params }`, `ctx.params` frozen.
 - Frontend UI: AppShell, Panel, Button; Workspace feature (sidebar, canvas, composer, toolbar); Chat feature (ChatWindow, useChatSessions); window creation with presets + inline rename.
 - Frontend data boundary (`lib/data`) mocked.
 - Frontend API client (`lib/api/client`, `lib/api/projects`) + homepage wired to real `GET /v1/projects` with mock fallback + source badge (`api`, `api error`, `mock data`).
 
 ## In progress
 
-- Local uncommitted WIP in working tree on `apps/api/src/lib/http.ts` + `router.ts`: dynamic path params (`:id`). Adds `RequestContext.params` and a compiled-segment matcher to `Router`. Not staged, not stashed. Needs a feature branch + tests before landing.
 - `feat/api-foundation` has a newer commit on origin (`de398ac`) not merged into the integration branch yet.
+- `feat/api-project-detail` not yet pushed; needs PR into `feat/integration-homepage-projects` (or `main`).
 
 ## Blocked / missing
 
