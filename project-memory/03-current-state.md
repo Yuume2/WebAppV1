@@ -12,15 +12,16 @@ Last verified: 2026-04-21.
 - `feat/frontend-steps-2-5-6` — shipped to integration.
 - `feat/integration-homepage-projects` — up-to-date with origin.
 - `feat/api-project-detail` — pushed to origin. Param router + `GET /v1/projects/:id` + `HttpError`.
-- `feat/web-project-detail-api` — **current**. `/project/[id]` wired to real detail endpoint with mock fallback + error panel + source badge.
+- `feat/web-project-detail-api` — pushed. `/project/[id]` wired to real detail endpoint with mock fallback + error panel + source badge.
+- `feat/api-project-workspaces` — **current**. `GET /v1/projects/:id/workspaces` + seeded store (ids aligned with web mocks) + 3 new tests (13 total, all green).
 
 ## Done
 
 - Monorepo scaffold (pnpm, turbo, tsconfig base, CI stub).
 - Shared types (`@webapp/types`): `Project`, `Workspace`, `ChatWindow`, `AIProvider`, `ApiError`, `ApiResponse<T>`, `HealthStatus`.
 - Backend foundation: env parser, logger, request-id, Router, `handleRequest` middleware, `createApiServer`.
-- Endpoints: `GET /health`, `GET /v1/health`, `GET /v1/projects`, `GET /v1/projects/:id` (seed store, 2 items).
-- Vitest setup + 10 integration tests passing (health + projects list + projects detail + dispatch errors).
+- Endpoints: `GET /health`, `GET /v1/health`, `GET /v1/projects`, `GET /v1/projects/:id`, `GET /v1/projects/:id/workspaces` (seed stores).
+- Vitest setup + 13 integration tests passing (health + projects list + projects detail + project workspaces + dispatch errors).
 - `HttpError` class in `lib/http.ts`: status-bearing throws → middleware converts to `ApiResponse` envelope.
 - Param router: `:id` compiled segments, `RouteMatch { handler, params }`, `ctx.params` frozen.
 - Frontend UI: AppShell, Panel, Button; Workspace feature (sidebar, canvas, composer, toolbar); Chat feature (ChatWindow, useChatSessions); window creation with presets + inline rename.
@@ -40,7 +41,7 @@ Last verified: 2026-04-21.
 - No project detail / workspace / chat endpoints.
 - No write endpoints (create/update/delete projects).
 - No conversation persistence.
-- Frontend project detail page now calls `GET /v1/projects/:id`. Workspaces/windows still from mocks — needs a `GET /v1/projects/:id/workspaces` endpoint.
+- Frontend project detail page now calls `GET /v1/projects/:id`. Workspaces endpoint exists on `feat/api-project-workspaces` but frontend not yet wired to it. Windows still mock-only (no endpoint).
 
 ## Next obvious steps
 

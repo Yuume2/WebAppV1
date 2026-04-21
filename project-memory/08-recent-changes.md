@@ -4,7 +4,8 @@ Newest first. One line per commit. Update at end of a session or via `tools/upda
 
 ## 2026-04-21
 
-- (pending commit on `feat/web-project-detail-api`) feat(web): wire `/project/[id]` to real `GET /v1/projects/:id` with mock fallback, 404-aware error panel, source badge.
+- (pending commit on `feat/api-project-workspaces`) feat(api): add `GET /v1/projects/:id/workspaces` with seeded store aligned with web mocks + 3 tests (13 total green).
+- (on `feat/web-project-detail-api`, pushed) feat(web): wire `/project/[id]` to real `GET /v1/projects/:id` with mock fallback, 404-aware error panel, source badge.
 - (on `feat/api-project-detail`, pushed) feat(api): `GET /v1/projects/:id` + `HttpError` + param router wiring + 4 new tests.
 - 26c9ad6 docs(memory): add Claude restart workflow note
 - 7cb01aa chore(memory): correct WIP state — working tree, not stash

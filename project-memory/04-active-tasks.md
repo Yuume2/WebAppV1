@@ -7,9 +7,12 @@ Not a sprint board. Just concrete next actions. Update when you finish or add on
 - [x] Finish param router (`:id`), land on a feature branch (`feat/api-project-detail`).
 - [x] `GET /v1/projects/:id` — 404 via `HttpError` → `fail('not_found', …)` envelope.
 - [x] Tests for param router + detail endpoint (4 new, 10 total, all green).
-- [ ] Decide workspace storage shape; add `GET /v1/projects/:id/workspaces`.
+- [x] Decide workspace storage shape; add `GET /v1/projects/:id/workspaces` (seeded readonly store on `feat/api-project-workspaces`).
 - [ ] Sync origin `feat/api-foundation` (`de398ac`) into integration branch.
-- [ ] Push `feat/api-project-detail` + open PR.
+- [x] Push `feat/api-project-detail`.
+- [ ] Open PR for `feat/api-project-detail` → `feat/integration-homepage-projects` (manual; no `gh` CLI).
+- [ ] Open PR for `feat/web-project-detail-api` → `feat/integration-homepage-projects` (manual).
+- [ ] Open PR for `feat/api-project-workspaces` → `feat/integration-homepage-projects` (manual).
 
 ## Frontend
 

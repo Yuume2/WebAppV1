@@ -10,6 +10,7 @@ Base: `http://localhost:<API_PORT|4000>`. Envelope: `ApiResponse<T>` from `@weba
 | GET    | /v1/health         | healthController            | —                       | `HealthStatus`   |
 | GET    | /v1/projects       | listProjectsController      | `listProjects()`        | `Project[]`      |
 | GET    | /v1/projects/:id   | getProjectController        | `getProjectById(id)`    | `Project`        |
+| GET    | /v1/projects/:id/workspaces | listProjectWorkspacesController | `listWorkspacesByProjectId(projectId)` | `Workspace[]` |
 
 All responses:
 
