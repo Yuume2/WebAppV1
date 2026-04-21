@@ -76,6 +76,24 @@ export function parseProviderEncryptionKey(
   return undefined;
 }
 
+/**
+ * Returns a list of actionable warning strings for misconfigured-but-not-fatal
+ * startup conditions. Call once at startup and log each entry.
+ */
+export function getStartupWarnings(cfg: Pick<ApiEnv, 'databaseUrl' | 'corsOrigin'>): string[] {
+  const warnings: string[] = [];
+
+  if (cfg.databaseUrl && cfg.corsOrigin === '*') {
+    warnings.push(
+      'CORS_ORIGIN is set to "*" but DATABASE_URL is configured. ' +
+      'Browser cookie-based session auth will not work cross-origin with a wildcard origin. ' +
+      'Set CORS_ORIGIN to an explicit URL (e.g. http://localhost:3000).',
+    );
+  }
+
+  return warnings;
+}
+
 const nodeEnv = parseNodeEnv(process.env.NODE_ENV);
 const databaseUrl = process.env.DATABASE_URL;
 

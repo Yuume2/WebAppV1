@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { parseProviderEncryptionKey } from './env.js';
+import { parseProviderEncryptionKey, getStartupWarnings } from './env.js';
 
 describe('parseProviderEncryptionKey', () => {
   const validHex = randomBytes(32).toString('hex');
@@ -43,5 +43,22 @@ describe('parseProviderEncryptionKey', () => {
     try { parseProviderEncryptionKey(badKey, undefined); } catch (e) { caught = e as Error; }
     expect(caught).toBeDefined();
     expect(caught?.message).not.toContain(badKey);
+  });
+});
+
+describe('getStartupWarnings', () => {
+  it('returns no warnings when DB is absent', () => {
+    expect(getStartupWarnings({ databaseUrl: undefined, corsOrigin: '*' })).toHaveLength(0);
+  });
+
+  it('returns no warnings when DB is set and CORS_ORIGIN is explicit', () => {
+    expect(getStartupWarnings({ databaseUrl: 'postgres://localhost/db', corsOrigin: 'http://localhost:3000' })).toHaveLength(0);
+  });
+
+  it('returns a warning when DATABASE_URL is set and CORS_ORIGIN is "*"', () => {
+    const warnings = getStartupWarnings({ databaseUrl: 'postgres://localhost/db', corsOrigin: '*' });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('CORS_ORIGIN');
+    expect(warnings[0]).toContain('cookie');
   });
 });
