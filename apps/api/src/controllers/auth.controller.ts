@@ -146,10 +146,11 @@ export async function logoutController(ctx: RequestContext, deps: AuthDeps): Pro
     await deps.deleteSession(hashSessionToken(token));
   }
 
+  const secure = env.nodeEnv === 'production';
   return {
     httpStatus: 200,
     body:    { ok: true, data: null },
-    headers: { 'Set-Cookie': clearCookieHeader(SESSION_COOKIE_NAME) },
+    headers: { 'Set-Cookie': clearCookieHeader(SESSION_COOKIE_NAME, secure) },
   };
 }
 

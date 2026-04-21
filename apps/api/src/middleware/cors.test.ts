@@ -1,6 +1,21 @@
+import type { AddressInfo } from 'node:net';
+import type { Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { API_PROJECTS_PATH, API_HEALTH_PATH } from '@webapp/types';
 import { startTestServer, type Harness } from '../test/server-harness.js';
+import { buildRouter, createApiServer } from '../lib/server.js';
+
+async function startServerWithOrigin(corsOrigin: string): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+  const server: Server = createApiServer(buildRouter(), corsOrigin);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    close: () => new Promise<void>((resolve, reject) =>
+      server.close((err) => (err ? reject(err) : resolve())),
+    ),
+  };
+}
 
 describe('CORS headers', () => {
   let harness: Harness;
@@ -85,5 +100,60 @@ describe('OPTIONS preflight', () => {
     const res = await fetch(`${harness.baseUrl}${API_HEALTH_PATH}`, { method: 'OPTIONS' });
     const text = await res.text();
     expect(text).toBe('');
+  });
+});
+
+describe('CORS with explicit origin — credentialed auth', () => {
+  const EXPLICIT_ORIGIN = 'http://localhost:3000';
+  let s: { baseUrl: string; close: () => Promise<void> };
+
+  beforeAll(async () => { s = await startServerWithOrigin(EXPLICIT_ORIGIN); });
+  afterAll(async () => { await s.close(); });
+
+  it('emits the configured explicit origin, not wildcard', async () => {
+    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`);
+    expect(res.headers.get('access-control-allow-origin')).toBe(EXPLICIT_ORIGIN);
+  });
+
+  it('emits Access-Control-Allow-Credentials: true', async () => {
+    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`);
+    expect(res.headers.get('access-control-allow-credentials')).toBe('true');
+  });
+
+  it('emits Vary: Origin so caches do not serve the wrong response', async () => {
+    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`);
+    expect(res.headers.get('vary')).toContain('Origin');
+  });
+
+  it('preflight also carries credentials + explicit origin', async () => {
+    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`, { method: 'OPTIONS' });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe(EXPLICIT_ORIGIN);
+    expect(res.headers.get('access-control-allow-credentials')).toBe('true');
+  });
+
+  it('never echoes an arbitrary request Origin', async () => {
+    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`, {
+      headers: { Origin: 'http://attacker.example.com' },
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBe(EXPLICIT_ORIGIN);
+  });
+});
+
+describe('CORS with wildcard — non-credentialed default', () => {
+  let harness: Harness;
+
+  beforeAll(async () => { harness = await startTestServer(); });
+  afterAll(async () => { await harness.close(); });
+
+  it('emits wildcard origin when CORS_ORIGIN is not configured', async () => {
+    expect(process.env['CORS_ORIGIN']).toBeFalsy();
+    const res = await fetch(`${harness.baseUrl}${API_HEALTH_PATH}`);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('does NOT emit Access-Control-Allow-Credentials for wildcard', async () => {
+    const res = await fetch(`${harness.baseUrl}${API_HEALTH_PATH}`);
+    expect(res.headers.get('access-control-allow-credentials')).toBeNull();
   });
 });

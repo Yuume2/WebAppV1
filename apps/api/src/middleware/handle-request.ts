@@ -10,16 +10,29 @@ import { logger } from '../lib/logger.js';
 import { generateRequestId } from '../lib/request-id.js';
 import type { Router } from '../lib/router.js';
 
-const CORS_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Origin': env.corsOrigin,
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+function buildCorsHeaders(origin: string): Record<string, string> {
+  if (origin === '*') {
+    return {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    };
+  }
+  // Explicit origin: enable credentials (required for cookie-based auth).
+  return {
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin',
+  };
+}
 
 export async function handleRequest(
   router: Router,
   req: IncomingMessage,
   res: ServerResponse,
+  corsOrigin = env.corsOrigin,
 ): Promise<void> {
   const requestId = generateRequestId();
   const startedAt = Date.now();
@@ -28,7 +41,7 @@ export async function handleRequest(
   const url = new URL(req.url ?? '/', `http://${host}`);
   const path = url.pathname;
 
-  for (const [k, v] of Object.entries(CORS_HEADERS)) {
+  for (const [k, v] of Object.entries(buildCorsHeaders(corsOrigin))) {
     res.setHeader(k, v);
   }
 

@@ -90,10 +90,11 @@ Vitest spins up the real server on an ephemeral port per suite and asserts on th
 
 ## Env vars
 
-| Name                | Default                                              | Notes                                   |
-| ------------------- | ---------------------------------------------------- | --------------------------------------- |
-| `API_PORT`          | `4000`                                               | 1–65535                                 |
-| `NODE_ENV`          | `development`                                        | `development` \| `production` \| `test` |
-| `API_VERSION`       | `0.1.0`                                              | Reported by `/health`                   |
-| `DATABASE_URL`      | _(none)_                                             | Required for DB-backed routes           |
-| `API_MAX_BODY_BYTES`| `102400`                                             | Max JSON body size in bytes             |
+| Name                | Default       | Notes                                                              |
+| ------------------- | ------------- | ------------------------------------------------------------------ |
+| `API_PORT`          | `4000`        | 1–65535                                                            |
+| `NODE_ENV`          | `development` | `development` \| `production` \| `test`                           |
+| `API_VERSION`       | `0.1.0`       | Reported by `/health`                                              |
+| `DATABASE_URL`      | _(none)_      | Required for auth routes (signup/login/logout/me)                  |
+| `CORS_ORIGIN`       | `*`           | Set to an explicit URL (e.g. `http://localhost:3000`) for cookie auth |
+| `API_MAX_BODY_BYTES`| `102400`      | Max JSON body size in bytes                                        |

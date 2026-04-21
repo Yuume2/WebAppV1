@@ -29,6 +29,8 @@ export function serializeSetCookie(name: string, value: string, secure: boolean)
   return parts.join('; ');
 }
 
-export function clearCookieHeader(name: string): string {
-  return `${name}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax`;
+export function clearCookieHeader(name: string, secure: boolean): string {
+  const parts = [`${name}=`, 'Max-Age=0', 'Path=/', 'HttpOnly', 'SameSite=Lax'];
+  if (secure) parts.push('Secure');
+  return parts.join('; ');
 }
