@@ -4,9 +4,12 @@ import {
   readJsonBody,
   respond,
   respondError,
+  respondRateLimited,
+  getClientIp,
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
+import { RateLimiter, type RateLimitResult } from '../lib/rate-limiter.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { generateSessionToken, hashSessionToken, sessionExpiresAt } from '../lib/session-token.js';
 import { SESSION_COOKIE_NAME } from '../config/auth.js';
@@ -43,7 +46,11 @@ export interface AuthDeps {
   createSession:   (tokenHash: string, userId: string, expiresAt: Date) => Promise<DbSession>;
   findSessionByTokenHash: (tokenHash: string) => Promise<DbSession | null>;
   deleteSession:   (tokenHash: string) => Promise<void>;
+  checkRateLimit:  (key: string) => RateLimitResult;
 }
+
+// 10 attempts per IP per 15 minutes for both signup and login.
+const authLimiter = new RateLimiter(10, 15 * 60 * 1000);
 
 /** Bind the real DB to the AuthDeps interface. */
 export function makeAuthDeps(db: Db): AuthDeps {
@@ -54,6 +61,7 @@ export function makeAuthDeps(db: Db): AuthDeps {
     createSession:          (tokenHash, userId, expiresAt) => sessionsRepo.createSession(db, tokenHash, userId, expiresAt),
     findSessionByTokenHash: (tokenHash)                    => sessionsRepo.findSessionByTokenHash(db, tokenHash),
     deleteSession:          (tokenHash)                    => sessionsRepo.deleteSession(db, tokenHash),
+    checkRateLimit:         (key)                          => authLimiter.check(key),
   };
 }
 
@@ -77,6 +85,9 @@ function cookieHeader(token: string): Record<string, string> {
 // ── Controllers ───────────────────────────────────────────────────────────────
 
 export async function signupController(ctx: RequestContext, deps: AuthDeps): Promise<InternalResult> {
+  const rl = deps.checkRateLimit(getClientIp(ctx.req));
+  if (!rl.ok) return respondRateLimited(rl.retryAfterSecs);
+
   const bodyResult = await readJsonBody(ctx.req);
   if (!bodyResult.ok) return bodyResult.result;
   const body = bodyResult.data;
@@ -111,6 +122,9 @@ export async function signupController(ctx: RequestContext, deps: AuthDeps): Pro
 }
 
 export async function loginController(ctx: RequestContext, deps: AuthDeps): Promise<InternalResult> {
+  const rl = deps.checkRateLimit(getClientIp(ctx.req));
+  if (!rl.ok) return respondRateLimited(rl.retryAfterSecs);
+
   const bodyResult = await readJsonBody(ctx.req);
   if (!bodyResult.ok) return bodyResult.result;
   const body = bodyResult.data;

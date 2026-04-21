@@ -50,7 +50,8 @@ export type ApiErrorCode =
   | 'method_not_allowed'
   | 'internal_error'
   | 'provider_auth_error'
-  | 'provider_error';
+  | 'provider_error'
+  | 'rate_limited';
 
 export interface ApiError {
   code: ApiErrorCode;

@@ -46,6 +46,7 @@ function makeDeps(overrides: Partial<AuthDeps> = {}): AuthDeps {
       ({ id: tokenHash, userId, expiresAt, createdAt: new Date() }),
     findSessionByTokenHash: async () => null,
     deleteSession:          async () => {},
+    checkRateLimit:         () => ({ ok: true, retryAfterSecs: 0 }),
     ...overrides,
   };
 }
@@ -294,6 +295,47 @@ describe('POST /v1/auth/logout', () => {
     });
     expect(after.status).toBe(401);
 
+    await close();
+  });
+});
+
+// ── Rate limiting ─────────────────────────────────────────────────────────────
+
+describe('rate limiting — signup', () => {
+  it('returns 429 when checkRateLimit signals limited', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      checkRateLimit: () => ({ ok: false, retryAfterSecs: 60 }),
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'a@b.com', password: 'password123' });
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('rate_limited');
+    expect(res.headers.get('retry-after')).toBe('60');
+    await close();
+  });
+
+  it('succeeds when checkRateLimit allows', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      checkRateLimit: () => ({ ok: true, retryAfterSecs: 0 }),
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'new@example.com', password: 'password123' });
+    expect(res.status).toBe(201);
+    await close();
+  });
+});
+
+describe('rate limiting — login', () => {
+  it('returns 429 when checkRateLimit signals limited', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      checkRateLimit: () => ({ ok: false, retryAfterSecs: 120 }),
+    }));
+    const res = await post(baseUrl, '/v1/auth/login', { email: 'a@b.com', password: 'pw' });
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('rate_limited');
+    expect(res.headers.get('retry-after')).toBe('120');
     await close();
   });
 });

@@ -33,6 +33,7 @@ function makeDeps(overrides: Partial<ProviderConnectionsDeps> = {}): ProviderCon
     deleteConnection: async () => undefined,
     getDecryptedKey:  async () => null,
     generate:         async () => ({ content: 'ok', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }),
+    checkRateLimit:   () => ({ ok: true, retryAfterSecs: 0 }),
     ...overrides,
   };
 }
@@ -405,6 +406,20 @@ describe('POST /v1/provider-connections/openai/test', () => {
     const res = await fetch(`${baseUrl}/v1/provider-connections/openai/test`, { method: 'POST' });
     const text = await res.text();
     expect(text).not.toContain('sk-ultra-secret-stored');
+    await close();
+  });
+
+  it('returns 429 when rate limit is exceeded', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      checkRateLimit: () => ({ ok: false, retryAfterSecs: 3600 }),
+    }));
+    const res = await fetch(`${baseUrl}/v1/provider-connections/openai/test`, { method: 'POST' });
+    expect(res.status).toBe(429);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('rate_limited');
+    expect(res.headers.get('retry-after')).toBe('3600');
     await close();
   });
 });

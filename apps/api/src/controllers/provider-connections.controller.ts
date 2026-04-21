@@ -14,6 +14,8 @@ import type { Db, ProviderConnectionMeta } from '../db/provider-connections.repo
 import * as providerRepo from '../db/provider-connections.repo.js';
 import { verifyOpenAIKey, createOpenAIClient } from '../providers/openai.provider.js';
 import type { ChatCompletionResult } from '../providers/provider.interface.js';
+import { RateLimiter, type RateLimitResult } from '../lib/rate-limiter.js';
+import { respondRateLimited } from '../lib/http.js';
 
 // All recognised provider values — used to validate the :provider URL param.
 const VALID_PROVIDERS = new Set<AIProvider>(['openai', 'anthropic', 'perplexity']);
@@ -37,10 +39,14 @@ export interface ProviderConnectionsDeps {
   deleteConnection: (userId: string, provider: AIProvider) => Promise<void>;
   getDecryptedKey:  (userId: string, provider: AIProvider) => Promise<string | null>;
   generate:         (apiKey: string) => Promise<ChatCompletionResult>;
+  checkRateLimit:   (key: string) => RateLimitResult;
 }
 
 const TEST_MODEL = 'gpt-4o-mini';
 const TEST_MESSAGES = [{ role: 'user' as const, content: 'Say "ok".' }];
+
+// 10 test calls per user per hour.
+const providerTestLimiter = new RateLimiter(10, 60 * 60 * 1000);
 
 export function makeProviderConnectionsDeps(db: Db, sessionDeps: SessionDeps): ProviderConnectionsDeps {
   return {
@@ -52,6 +58,7 @@ export function makeProviderConnectionsDeps(db: Db, sessionDeps: SessionDeps): P
     deleteConnection: (userId, provider)      => providerRepo.deleteProviderConnection(db, userId, provider),
     getDecryptedKey:  (userId, provider)      => providerRepo.getDecryptedApiKey(db, userId, provider),
     generate:         (apiKey)                => createOpenAIClient(apiKey).createChatCompletion(TEST_MESSAGES, TEST_MODEL),
+    checkRateLimit:   (key)                   => providerTestLimiter.check(key),
   };
 }
 
@@ -154,6 +161,9 @@ export async function testConnectionController(
 ): Promise<InternalResult> {
   const user = await deps.resolveUser(ctx.req);
   if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+
+  const rl = deps.checkRateLimit(user.id);
+  if (!rl.ok) return respondRateLimited(rl.retryAfterSecs);
 
   const apiKey = await deps.getDecryptedKey(user.id, 'openai');
   if (!apiKey) {

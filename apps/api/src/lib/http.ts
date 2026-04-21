@@ -53,6 +53,20 @@ export function respondNotFound(message: string): InternalResult {
   return { httpStatus: 404, body: fail('not_found', message) };
 }
 
+export function respondRateLimited(retryAfterSecs: number): InternalResult {
+  return {
+    httpStatus: 429,
+    body: fail('rate_limited', 'Too many requests — please try again later'),
+    headers: { 'Retry-After': String(retryAfterSecs) },
+  };
+}
+
+export function getClientIp(req: IncomingMessage): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') return forwarded.split(',')[0]?.trim() ?? 'unknown';
+  return req.socket?.remoteAddress ?? 'unknown';
+}
+
 export function writeJson(
   res: ServerResponse,
   status: number,
