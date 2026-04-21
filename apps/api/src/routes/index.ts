@@ -5,11 +5,13 @@ import { createProjectController, getProjectController, listProjectsController }
 import { stateController } from '../controllers/state.controller.js';
 import { createWorkspaceController, getWorkspaceController, listWorkspacesController } from '../controllers/workspaces.controller.js';
 import { makeAuthDeps } from '../controllers/auth.controller.js';
+import { makeProjectsDeps } from '../controllers/projects-db.controller.js';
 import { createDb } from '../lib/db.js';
 import { env } from '../config/env.js';
 import type { RouteDefinition } from '../lib/http.js';
 import { devRoutes } from './dev.js';
 import { makeAuthRoutes } from './auth.js';
+import { makeProjectDbRoutes } from './projects-db.js';
 import {
   API_HEALTH_PATH,
   API_PROJECTS_PATH,
@@ -19,12 +21,29 @@ import {
   API_STATE_PATH,
 } from '@webapp/types';
 
+// Single shared DB instance — only created when DATABASE_URL is configured.
+const db = env.databaseUrl ? createDb() : null;
+const authDeps = db ? makeAuthDeps(db) : null;
+
+// Auth routes require DB. Without DATABASE_URL they are simply absent.
+const authRoutes: RouteDefinition[] = authDeps
+  ? makeAuthRoutes(authDeps)
+  : [];
+
+// Project routes: DB-backed user-scoped when DB is available, in-memory fallback otherwise.
+// The fallback keeps existing tests and MVP dev session unaffected.
+const projectRoutes: RouteDefinition[] = (db && authDeps)
+  ? makeProjectDbRoutes(makeProjectsDeps(db, authDeps))
+  : [
+    { method: 'GET',  path: API_PROJECTS_PATH,          handler: listProjectsController },
+    { method: 'POST', path: API_PROJECTS_PATH,          handler: createProjectController },
+    { method: 'GET',  path: `${API_PROJECTS_PATH}/:id`, handler: getProjectController },
+  ];
+
 export const businessRoutes: RouteDefinition[] = [
   { method: 'GET', path: API_HEALTH_PATH, handler: healthController },
 
-  { method: 'GET',  path: API_PROJECTS_PATH,           handler: listProjectsController },
-  { method: 'POST', path: API_PROJECTS_PATH,           handler: createProjectController },
-  { method: 'GET',  path: `${API_PROJECTS_PATH}/:id`,  handler: getProjectController },
+  ...projectRoutes,
 
   { method: 'GET',  path: API_WORKSPACES_PATH,            handler: listWorkspacesController },
   { method: 'POST', path: API_WORKSPACES_PATH,            handler: createWorkspaceController },
@@ -40,12 +59,6 @@ export const businessRoutes: RouteDefinition[] = [
 
   { method: 'GET',  path: API_STATE_PATH, handler: stateController },
 ];
-
-// Auth routes are only registered when DATABASE_URL is configured.
-// Without it they are simply absent (existing tests are unaffected).
-const authRoutes: RouteDefinition[] = env.databaseUrl
-  ? makeAuthRoutes(makeAuthDeps(createDb()))
-  : [];
 
 export const routes: RouteDefinition[] = [
   ...businessRoutes,
