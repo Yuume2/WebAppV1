@@ -113,5 +113,5 @@ export const messages = pgTable('messages', {
   content:      text('content').notNull(),
   createdAt:    timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
-  index('messages_chat_window_id_idx').on(t.chatWindowId),
+  index('messages_chat_window_id_created_at_idx').on(t.chatWindowId, t.createdAt),
 ]);
