@@ -18,9 +18,9 @@ export const s = {
   muted:       { fontSize: '0.8rem', color: '#52525b', margin: '0.25rem 0' },
   columns:     { display: 'flex', flex: 1, overflow: 'hidden' },
 
-  sidebar: { width: '220px', flexShrink: 0, overflowY: 'auto' as const, borderRight: '1px solid #1a1a22', background: '#0a0a0d' },
-  middle:  { width: '230px', flexShrink: 0, overflowY: 'auto' as const, borderRight: '1px solid #1a1a22', background: '#0a0a0d' },
-  main:    { flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#09090c' },
+  sidebar: { width: '220px', minWidth: '175px', flexShrink: 1, overflowY: 'auto' as const, borderRight: '1px solid #1a1a22', background: '#0a0a0d' },
+  middle:  { width: '230px', minWidth: '185px', flexShrink: 1, overflowY: 'auto' as const, borderRight: '1px solid #1a1a22', background: '#0a0a0d' },
+  main:    { flex: 1, minWidth: '320px', display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', background: '#09090c' },
 
   colSection: { padding: '0.85rem 0.75rem', borderBottom: '1px solid #141418' },
   colLabel:   { fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: '#55555f', margin: '0 0 0.6rem' },
