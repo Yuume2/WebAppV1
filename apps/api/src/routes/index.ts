@@ -7,6 +7,7 @@ import { createWorkspaceController, getWorkspaceController, listWorkspacesContro
 import { makeAuthDeps } from '../controllers/auth.controller.js';
 import { makeProjectsDeps } from '../controllers/projects-db.controller.js';
 import { makeWorkspacesDeps } from '../controllers/workspaces-db.controller.js';
+import { makeChatWindowsDeps } from '../controllers/chat-windows-db.controller.js';
 import { createDb } from '../lib/db.js';
 import { env } from '../config/env.js';
 import type { RouteDefinition } from '../lib/http.js';
@@ -14,6 +15,7 @@ import { devRoutes } from './dev.js';
 import { makeAuthRoutes } from './auth.js';
 import { makeProjectDbRoutes } from './projects-db.js';
 import { makeWorkspaceDbRoutes } from './workspaces-db.js';
+import { makeChatWindowDbRoutes } from './chat-windows-db.js';
 import {
   API_HEALTH_PATH,
   API_PROJECTS_PATH,
@@ -51,6 +53,15 @@ const workspaceRoutes: RouteDefinition[] = (db && authDeps)
     { method: 'GET',  path: `${API_WORKSPACES_PATH}/:id`,   handler: getWorkspaceController },
   ];
 
+// Chat-window routes: DB-backed user-scoped when DB is available, in-memory fallback otherwise.
+const chatWindowRoutes: RouteDefinition[] = (db && authDeps)
+  ? makeChatWindowDbRoutes(makeChatWindowsDeps(db, authDeps))
+  : [
+    { method: 'GET',  path: API_CHAT_WINDOWS_PATH,            handler: listChatWindowsController },
+    { method: 'POST', path: API_CHAT_WINDOWS_PATH,            handler: createChatWindowController },
+    { method: 'GET',  path: `${API_CHAT_WINDOWS_PATH}/:id`,   handler: getChatWindowController },
+  ];
+
 export const businessRoutes: RouteDefinition[] = [
   { method: 'GET', path: API_HEALTH_PATH, handler: healthController },
 
@@ -58,9 +69,7 @@ export const businessRoutes: RouteDefinition[] = [
 
   ...workspaceRoutes,
 
-  { method: 'GET',  path: API_CHAT_WINDOWS_PATH,            handler: listChatWindowsController },
-  { method: 'POST', path: API_CHAT_WINDOWS_PATH,            handler: createChatWindowController },
-  { method: 'GET',  path: `${API_CHAT_WINDOWS_PATH}/:id`,   handler: getChatWindowController },
+  ...chatWindowRoutes,
 
   { method: 'GET',  path: API_MESSAGES_PATH,           handler: listMessagesController },
   { method: 'POST', path: API_MESSAGES_PATH,           handler: createMessageController },
