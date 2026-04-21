@@ -10,6 +10,7 @@ import { makeWorkspacesDeps } from '../controllers/workspaces-db.controller.js';
 import { makeChatWindowsDeps } from '../controllers/chat-windows-db.controller.js';
 import { makeMessagesDeps } from '../controllers/messages-db.controller.js';
 import { makeStateDeps, stateDbController } from '../controllers/state-db.controller.js';
+import { makeProviderConnectionsDeps } from '../controllers/provider-connections.controller.js';
 import { createDb } from '../lib/db.js';
 import { env } from '../config/env.js';
 import type { RouteDefinition } from '../lib/http.js';
@@ -19,6 +20,7 @@ import { makeProjectDbRoutes } from './projects-db.js';
 import { makeWorkspaceDbRoutes } from './workspaces-db.js';
 import { makeChatWindowDbRoutes } from './chat-windows-db.js';
 import { makeMessageDbRoutes } from './messages-db.js';
+import { makeProviderConnectionRoutes } from './provider-connections.js';
 import {
   API_HEALTH_PATH,
   API_PROJECTS_PATH,
@@ -74,6 +76,11 @@ const messageRoutes: RouteDefinition[] = (db && authDeps)
     { method: 'GET',  path: `${API_MESSAGES_PATH}/:id`,   handler: getMessageController },
   ];
 
+// Provider-connection routes: DB-backed auth-required, absent without a DB.
+const providerConnectionRoutes: RouteDefinition[] = (db && authDeps)
+  ? makeProviderConnectionRoutes(makeProviderConnectionsDeps(db, authDeps))
+  : [];
+
 // State handler: DB-backed (auth-required) when DB is available, in-memory fallback otherwise.
 const stateHandler = (db && authDeps)
   ? (ctx: Parameters<typeof stateDbController>[0]) => stateDbController(ctx, makeStateDeps(db, authDeps))
@@ -89,6 +96,8 @@ export const businessRoutes: RouteDefinition[] = [
   ...chatWindowRoutes,
 
   ...messageRoutes,
+
+  ...providerConnectionRoutes,
 
   { method: 'GET',  path: API_STATE_PATH, handler: stateHandler },
 ];

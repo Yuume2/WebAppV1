@@ -140,3 +140,15 @@ export const getProjectPath     = (id: string): string => `${API_PROJECTS_PATH}/
 export const getWorkspacePath   = (id: string): string => `${API_WORKSPACES_PATH}/${id}`;
 export const getChatWindowPath  = (id: string): string => `${API_CHAT_WINDOWS_PATH}/${id}`;
 export const getMessagePath     = (id: string): string => `${API_MESSAGES_PATH}/${id}`;
+
+// ── Provider connections ─────────────────────────────────────────────────────
+
+export interface ProviderConnection {
+  id: string;
+  provider: AIProvider;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
+
+export const API_PROVIDER_CONNECTIONS_PATH = '/v1/provider-connections' as const;
+export const getProviderConnectionPath = (provider: string): string => `${API_PROVIDER_CONNECTIONS_PATH}/${provider}`;
