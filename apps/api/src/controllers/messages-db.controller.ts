@@ -51,6 +51,7 @@ export interface MessagesDeps {
   resolveUser:    (req: IncomingMessage) => Promise<{ id: string } | null>;
   listMessages:   (chatWindowId: string, userId: string) => Promise<DbMessage[] | null>;
   createMessage:  (chatWindowId: string, userId: string, role: MessageRole, content: string) => Promise<DbMessage | null>;
+  persistMessagePair: (chatWindowId: string, userId: string, userContent: string, assistantContent: string) => Promise<{ userRow: DbMessage; assistantRow: DbMessage } | null>;
   findMessage:    (id: string, userId: string) => Promise<DbMessage | null>;
   // Provider generation deps — used only when posting a user message to an openai chat window.
   findChatWindow:    (chatWindowId: string, userId: string) => Promise<DbChatWindow | null>;
@@ -64,6 +65,7 @@ export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps
     resolveUser:    (req)                                 => resolveCurrentUser(req, sessionDeps),
     listMessages:   (chatWindowId, userId)                => messagesRepo.listMessagesByChatWindowAndUser(db, chatWindowId, userId),
     createMessage:  (chatWindowId, userId, role, content) => messagesRepo.createMessage(db, chatWindowId, userId, role, content),
+    persistMessagePair: (chatWindowId, userId, userContent, assistantContent) => messagesRepo.insertMessagePair(db, chatWindowId, userId, userContent, assistantContent),
     findMessage:    (id, userId)                          => messagesRepo.findMessageById(db, id, userId),
     findChatWindow:    (chatWindowId, userId)              => chatWindowsRepo.findChatWindowById(db, chatWindowId, userId),
     getApiKey:         (userId, provider)                  => getDecryptedApiKey(db, userId, provider),
@@ -169,18 +171,13 @@ export async function createMessageDbController(
         return respondError('internal_error', `Provider call failed: ${detail}`, 502);
       }
 
-      // Persist user message then assistant reply.
-      const userRow = await deps.createMessage(chatWindowId, user.id, 'user', content);
-      if (userRow === null) return respondNotFound(`ChatWindow ${chatWindowId} not found`);
-
-      const assistantRow = await deps.createMessage(chatWindowId, user.id, 'assistant', completion.content);
-      if (assistantRow === null) {
-        return respondError('internal_error', 'Failed to persist assistant message', 500);
-      }
+      // Persist both messages atomically — if either insert fails, neither is committed.
+      const pair = await deps.persistMessagePair(chatWindowId, user.id, content, completion.content);
+      if (pair === null) return respondNotFound(`ChatWindow ${chatWindowId} not found`);
 
       return respondCreated(
-        { userMessage: toMessage(userRow), assistantMessage: toMessage(assistantRow) },
-        getMessagePath(userRow.id),
+        { userMessage: toMessage(pair.userRow), assistantMessage: toMessage(pair.assistantRow) },
+        getMessagePath(pair.userRow.id),
       );
     }
 

@@ -43,6 +43,33 @@ export async function createMessage(
 }
 
 /**
+ * Inserts a user message and assistant message atomically.
+ * Returns null if the chat window doesn't exist or isn't owned by userId.
+ * Either both rows are written or neither.
+ */
+export async function insertMessagePair(
+  db: Db,
+  chatWindowId: string,
+  userId: string,
+  userContent: string,
+  assistantContent: string,
+): Promise<{ userRow: typeof messages.$inferSelect; assistantRow: typeof messages.$inferSelect } | null> {
+  const cw = await findChatWindowById(db, chatWindowId, userId);
+  if (!cw) return null;
+  return db.transaction(async (tx) => {
+    const [userRow] = await tx
+      .insert(messages)
+      .values({ chatWindowId, role: 'user', content: userContent })
+      .returning();
+    const [assistantRow] = await tx
+      .insert(messages)
+      .values({ chatWindowId, role: 'assistant', content: assistantContent })
+      .returning();
+    return { userRow: userRow!, assistantRow: assistantRow! };
+  });
+}
+
+/**
  * Returns the message, or null if it doesn't exist or its parent chat-window
  * chain is not owned by userId.
  */

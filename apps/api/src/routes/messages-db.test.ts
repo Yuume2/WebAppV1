@@ -37,11 +37,20 @@ function mockChatWindow(provider: AIProvider = 'anthropic', model = 'claude-3') 
   };
 }
 
+function mockPair(chatWindowId: string, userContent: string, assistantContent: string) {
+  return {
+    userRow:      mockMessage(chatWindowId, { id: 'user-msg',   role: 'user',      content: userContent }),
+    assistantRow: mockMessage(chatWindowId, { id: 'asst-msg',   role: 'assistant', content: assistantContent }),
+  };
+}
+
 function makeDeps(overrides: Partial<MessagesDeps> = {}): MessagesDeps {
   return {
     resolveUser:        async () => null,
     listMessages:       async () => null,
     createMessage:      async (chatWindowId, _userId, role, content) => mockMessage(chatWindowId, { role, content }),
+    persistMessagePair: async (chatWindowId, _userId, userContent, assistantContent) =>
+      mockPair(chatWindowId, userContent, assistantContent),
     findMessage:        async () => null,
     // Default: non-openai window so existing tests bypass generation path.
     findChatWindow:     async () => mockChatWindow('anthropic'),
@@ -225,17 +234,17 @@ describe('POST /v1/messages — standard path', () => {
 // ── Create message — OpenAI generation path ───────────────────────────────────
 
 describe('POST /v1/messages — openai generation path', () => {
-  it('user message to openai window: generates + persists assistant reply, returns both', async () => {
+  it('user message to openai window: generates + persists assistant reply atomically, returns both', async () => {
     const userMsg   = mockMessage('cw-1', { id: 'user-msg',   role: 'user',      content: 'Hello AI' });
     const assistMsg = mockMessage('cw-1', { id: 'asst-msg',   role: 'assistant', content: 'Hello human!' });
 
     const { baseUrl, close } = await startServer(makeDeps({
-      resolveUser:    async () => USER_1,
-      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
-      getApiKey:      async () => 'sk-test-key',
-      listMessages:   async () => [],
-      generate:       async () => ({ content: 'Hello human!', model: 'gpt-4o-mini', usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 } }),
-      createMessage:  async (_cw, _uid, role) => role === 'user' ? userMsg : assistMsg,
+      resolveUser:        async () => USER_1,
+      findChatWindow:     async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:          async () => 'sk-test-key',
+      listMessages:       async () => [],
+      generate:           async () => ({ content: 'Hello human!', model: 'gpt-4o-mini', usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 } }),
+      persistMessagePair: async () => ({ userRow: userMsg, assistantRow: assistMsg }),
     }));
 
     const res = await post(baseUrl, '/v1/messages', {
@@ -262,12 +271,12 @@ describe('POST /v1/messages — openai generation path', () => {
     const assistMsg = mockMessage('cw-1', { id: 'a', role: 'assistant', content: 'A' });
 
     const { baseUrl, close } = await startServer(makeDeps({
-      resolveUser:    async () => USER_1,
-      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
-      getApiKey:      async () => 'sk-key',
-      listMessages:   async () => [],
-      generate:       async () => ({ content: 'A', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }),
-      createMessage:  async (_cw, _uid, role) => role === 'user' ? userMsg : assistMsg,
+      resolveUser:        async () => USER_1,
+      findChatWindow:     async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:          async () => 'sk-key',
+      listMessages:       async () => [],
+      generate:           async () => ({ content: 'A', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }),
+      persistMessagePair: async () => ({ userRow: userMsg, assistantRow: assistMsg }),
     }));
 
     const res = await post(baseUrl, '/v1/messages', { chatWindowId: 'cw-1', role: 'user', content: 'Q' });
@@ -297,27 +306,45 @@ describe('POST /v1/messages — openai generation path', () => {
   });
 
   it('provider call failure returns 502 and does not persist any messages', async () => {
-    let createCalled = false;
+    let persistCalled = false;
     const { baseUrl, close } = await startServer(makeDeps({
-      resolveUser:    async () => USER_1,
-      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
-      getApiKey:      async () => 'sk-key',
-      listMessages:   async () => [],
-      generate:       async () => { throw new Error('OpenAI API error: HTTP 500'); },
-      createMessage:  async () => { createCalled = true; return mockMessage('cw-1'); },
+      resolveUser:        async () => USER_1,
+      findChatWindow:     async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:          async () => 'sk-key',
+      listMessages:       async () => [],
+      generate:           async () => { throw new Error('OpenAI API error: HTTP 500'); },
+      persistMessagePair: async () => { persistCalled = true; return mockPair('cw-1', 'Hi', 'ok'); },
     }));
 
     const res = await post(baseUrl, '/v1/messages', {
       chatWindowId: 'cw-1', role: 'user', content: 'Hi',
     });
     expect(res.status).toBe(502);
-    // No messages persisted — generate failed before createMessage was called
-    expect(createCalled).toBe(false);
+    // Transaction not called — generate failed before persistence
+    expect(persistCalled).toBe(false);
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('internal_error');
     // API key must not appear in error
     expect(body.error.message).not.toContain('sk-key');
+    await close();
+  });
+
+  it('transaction failure returns 500 and neither message is persisted', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:        async () => USER_1,
+      findChatWindow:     async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:          async () => 'sk-key',
+      listMessages:       async () => [],
+      generate:           async () => ({ content: 'reply', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }),
+      persistMessagePair: async () => { throw new Error('DB connection lost'); },
+    }));
+
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'cw-1', role: 'user', content: 'Hi',
+    });
+    // Unhandled repo throw surfaces as 500
+    expect(res.status).toBe(500);
     await close();
   });
 
@@ -346,7 +373,7 @@ describe('POST /v1/messages — openai generation path', () => {
         capturedMessages.push(...msgs);
         return { content: 'reply', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
       },
-      createMessage: async (_cw, _uid, role) => role === 'user' ? userMsg : assistMsg,
+      persistMessagePair: async () => ({ userRow: userMsg, assistantRow: assistMsg }),
     }));
 
     await post(baseUrl, '/v1/messages', { chatWindowId: 'cw-1', role: 'user', content: 'new-q' });
@@ -381,7 +408,7 @@ describe('POST /v1/messages — openai generation path', () => {
         capturedMessages.push(...msgs);
         return { content: 'ok', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
       },
-      createMessage: async (_cw, _uid, role) => role === 'user' ? userMsg : assistMsg,
+      persistMessagePair: async () => ({ userRow: userMsg, assistantRow: assistMsg }),
     }));
 
     await post(baseUrl, '/v1/messages', { chatWindowId: 'cw-1', role: 'user', content: 'again' });
@@ -393,8 +420,8 @@ describe('POST /v1/messages — openai generation path', () => {
     await close();
   });
 
-  it('persistence behavior is unchanged — both messages still written regardless of truncation', async () => {
-    let createCallCount = 0;
+  it('both messages are written atomically regardless of context truncation', async () => {
+    let pairCalled = false;
     const userMsg   = mockMessage('cw-1', { id: 'u', role: 'user',      content: 'q' });
     const assistMsg = mockMessage('cw-1', { id: 'a', role: 'assistant', content: 'a' });
 
@@ -408,13 +435,13 @@ describe('POST /v1/messages — openai generation path', () => {
       ],
       maxContextMessages: 1,
       generate: async () => ({ content: 'a', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } }),
-      createMessage: async (_cw, _uid, role) => { createCallCount++; return role === 'user' ? userMsg : assistMsg; },
+      persistMessagePair: async () => { pairCalled = true; return { userRow: userMsg, assistantRow: assistMsg }; },
     }));
 
     const res = await post(baseUrl, '/v1/messages', { chatWindowId: 'cw-1', role: 'user', content: 'q' });
     expect(res.status).toBe(201);
-    // Both messages must have been persisted
-    expect(createCallCount).toBe(2);
+    // Single atomic pair call must have happened
+    expect(pairCalled).toBe(true);
     await close();
   });
 
