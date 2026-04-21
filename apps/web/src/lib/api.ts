@@ -49,4 +49,5 @@ export const createChatWindow = (input: CreateChatWindowInput): Promise<ChatWind
 export const createMessage = (input: CreateMessageInput): Promise<Message> =>
   post<Message>(API_MESSAGES_PATH, input);
 
-export const devSeed = (): Promise<unknown> => post('/v1/dev/seed', {});
+export const devSeed  = (): Promise<unknown> => post('/v1/dev/seed',  {});
+export const devReset = (): Promise<unknown> => post('/v1/dev/reset', {});

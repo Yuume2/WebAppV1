@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import type { AppState, AIProvider } from '@webapp/types';
 import {
   fetchState, createProject, createWorkspace,
-  createChatWindow, createMessage, devSeed,
+  createChatWindow, createMessage, devSeed, devReset,
 } from '@/lib/api';
 import { Sidebar } from '@/components/Sidebar';
 import { ChatWindowList } from '@/components/ChatWindowList';
@@ -59,6 +59,8 @@ function WorkspaceApp() {
   const createChatWindowM = useMutation();
   const sendMessageM      = useMutation();
   const seedM             = useMutation();
+  const resetM            = useMutation();
+  const [reloading, setReloading] = useState(false);
 
   const [projectId, setProjectId] = useState<string | null>(sp.get('projectId'));
   const [workspaceId, setWorkspaceId] = useState<string | null>(sp.get('workspaceId'));
@@ -155,6 +157,18 @@ function WorkspaceApp() {
       router.replace('/', { scroll: false });
     });
   };
+  const handleReset = () => {
+    resetM.run(async () => {
+      await devReset(); await reload();
+      setProjectId(null); setWorkspaceId(null); setChatWindowId(null);
+      router.replace('/', { scroll: false });
+    });
+  };
+  const handleReload = async () => {
+    setReloading(true);
+    await reload();
+    setReloading(false);
+  };
 
   const projects    = state?.projects ?? [];
   const workspaces  = state?.workspaces.filter(ws => ws.projectId === projectId) ?? [];
@@ -167,10 +181,29 @@ function WorkspaceApp() {
       <div style={s.topbar}>
         <span style={s.appName}>AI Workspace</span>
         {loadError && <span style={s.topError}>⚠ {loadError}</span>}
-        {seedM.error && <span style={s.topError}>⚠ {seedM.error}</span>}
-        <button style={s.seedBtn} onClick={handleSeed} disabled={seedM.pending} title="Dev only — resets all data">
-          {seedM.pending ? 'Seeding…' : 'Seed demo data'}
-        </button>
+        {process.env.NODE_ENV !== 'production' && (
+          <div style={s.devBar}>
+            <span style={s.devLabel}>Dev</span>
+            {(seedM.error || resetM.error) && (
+              <span style={s.topError}>⚠ {seedM.error ?? resetM.error}</span>
+            )}
+            <button style={s.devBtn} onClick={handleSeed}
+              disabled={seedM.pending || resetM.pending || reloading}
+              title="Seed demo projects, workspaces and messages">
+              {seedM.pending ? 'Seeding…' : 'Seed'}
+            </button>
+            <button style={s.devBtn} onClick={handleReset}
+              disabled={seedM.pending || resetM.pending || reloading}
+              title="Clear all data">
+              {resetM.pending ? 'Resetting…' : 'Reset'}
+            </button>
+            <button style={s.devBtn} onClick={handleReload}
+              disabled={seedM.pending || resetM.pending || reloading}
+              title="Reload state from server">
+              {reloading ? 'Reloading…' : 'Reload'}
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
