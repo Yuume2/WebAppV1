@@ -49,6 +49,29 @@ Every response sets `X-Request-Id`.
 
 See `docs/technical/backend-api-contract.md` for full request/response shapes.
 
+## Local database
+
+Requires Docker. From the repo root:
+
+```bash
+# Start Postgres
+docker compose up -d
+
+# Apply migrations (first time, or after db:generate)
+pnpm --filter @webapp/api db:migrate
+
+# Optional: open Drizzle Studio to browse the schema
+pnpm --filter @webapp/api db:studio
+```
+
+Copy `.env.example` to `.env.local` and leave `DATABASE_URL` as-is — it matches the Docker Compose defaults:
+
+```
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/webapp_dev
+```
+
+To stop and remove the volume: `docker compose down -v`
+
 ## Dev
 
 ```bash
@@ -67,8 +90,10 @@ Vitest spins up the real server on an ephemeral port per suite and asserts on th
 
 ## Env vars
 
-| Name           | Default       | Notes                              |
-| -------------- | ------------- | ---------------------------------- |
-| `API_PORT`     | `4000`        | 1–65535                            |
-| `NODE_ENV`     | `development` | `development` \| `production` \| `test` |
-| `API_VERSION`  | `0.1.0`       | Reported by `/health`              |
+| Name                | Default                                              | Notes                                   |
+| ------------------- | ---------------------------------------------------- | --------------------------------------- |
+| `API_PORT`          | `4000`                                               | 1–65535                                 |
+| `NODE_ENV`          | `development`                                        | `development` \| `production` \| `test` |
+| `API_VERSION`       | `0.1.0`                                              | Reported by `/health`                   |
+| `DATABASE_URL`      | _(none)_                                             | Required for DB-backed routes           |
+| `API_MAX_BODY_BYTES`| `102400`                                             | Max JSON body size in bytes             |
