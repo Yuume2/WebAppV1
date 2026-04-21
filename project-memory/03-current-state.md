@@ -22,7 +22,7 @@ Last verified: 2026-04-21.
 
 ## In progress
 
-- Local uncommitted WIP on `apps/api/src/lib/http.ts` + `router.ts`: dynamic path params (`:id`). **Stashed** as `wip: param router before memory system`. Recover with `git stash list` → `git stash pop`.
+- Local uncommitted WIP in working tree on `apps/api/src/lib/http.ts` + `router.ts`: dynamic path params (`:id`). Adds `RequestContext.params` and a compiled-segment matcher to `Router`. Not staged, not stashed. Needs a feature branch + tests before landing.
 - `feat/api-foundation` has a newer commit on origin (`de398ac`) not merged into the integration branch yet.
 
 ## Blocked / missing

@@ -4,8 +4,8 @@ Newest first. One line per commit. Update at end of a session or via `tools/upda
 
 ## 2026-04-21
 
-- Memory system scaffolding added: `CLAUDE.md`, `project-memory/`, `tools/update-memory.sh`.
-- Local WIP stashed: dynamic path params in api `Router` + `RequestContext.params` (`apps/api/src/lib/{http,router}.ts`). Not committed.
+- c4ae1ac chore(memory): add project-memory system and refresh tooling
+- Local WIP in working tree (uncommitted, unstashed): dynamic path params in api `Router` + `RequestContext.params` (`apps/api/src/lib/{http,router}.ts`).
 
 ## 2026-04-18
 
