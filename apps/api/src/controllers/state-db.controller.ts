@@ -54,10 +54,17 @@ async function loadUserState(db: ProjectsDb, userId: string): Promise<AppState> 
   const workspaceIds = dbWorkspaces.map((w) => w.id);
   const dbChatWindows = await db.select().from(chatWindows).where(inArray(chatWindows.workspaceId, workspaceIds));
 
+  const windowIdsByWorkspace = new Map<string, string[]>();
+  for (const cw of dbChatWindows) {
+    const arr = windowIdsByWorkspace.get(cw.workspaceId) ?? [];
+    arr.push(cw.id);
+    windowIdsByWorkspace.set(cw.workspaceId, arr);
+  }
+
   if (dbChatWindows.length === 0) {
     return {
       projects:    dbProjects.map(toProject),
-      workspaces:  dbWorkspaces.map(toWorkspace),
+      workspaces:  dbWorkspaces.map((w) => toWorkspace(w, [])),
       chatWindows: [],
       messages:    [],
     };
@@ -68,7 +75,7 @@ async function loadUserState(db: ProjectsDb, userId: string): Promise<AppState> 
 
   return {
     projects:    dbProjects.map(toProject),
-    workspaces:  dbWorkspaces.map(toWorkspace),
+    workspaces:  dbWorkspaces.map((w) => toWorkspace(w, windowIdsByWorkspace.get(w.id) ?? [])),
     chatWindows: dbChatWindows.map(toChatWindow),
     messages:    dbMessages.map(toMessage),
   };
@@ -86,12 +93,12 @@ function toProject(row: { id: string; name: string; description: string | null; 
   };
 }
 
-function toWorkspace(row: { id: string; projectId: string; name: string; createdAt: Date; updatedAt: Date }): Workspace {
+function toWorkspace(row: { id: string; projectId: string; name: string; createdAt: Date; updatedAt: Date }, windowIds: string[]): Workspace {
   return {
     id:        row.id,
     projectId: row.projectId,
     name:      row.name,
-    windowIds: [],
+    windowIds,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type { AIProvider } from '@webapp/types';
 import { chatWindows } from './schema.js';
@@ -39,6 +39,21 @@ export async function createChatWindow(
     .values({ workspaceId, title, provider, model })
     .returning();
   return row!;
+}
+
+/**
+ * Returns id + workspaceId for all chat windows belonging to the given workspace IDs.
+ * Used to populate windowIds on Workspace responses without loading full rows.
+ */
+export async function listWindowIdsByWorkspaceIds(
+  db: PostgresJsDatabase,
+  workspaceIds: string[],
+): Promise<Array<{ id: string; workspaceId: string }>> {
+  if (workspaceIds.length === 0) return [];
+  return db
+    .select({ id: chatWindows.id, workspaceId: chatWindows.workspaceId })
+    .from(chatWindows)
+    .where(inArray(chatWindows.workspaceId, workspaceIds));
 }
 
 /**

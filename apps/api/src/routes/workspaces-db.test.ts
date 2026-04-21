@@ -31,6 +31,7 @@ function makeDeps(overrides: Partial<WorkspacesDeps> = {}): WorkspacesDeps {
     listWorkspaces:  async () => null,
     createWorkspace: async (projectId, _userId, name) => mockWorkspace(projectId, { name }),
     findWorkspace:   async () => null,
+    listWindowIds:   async () => [],
     ...overrides,
   };
 }
@@ -208,6 +209,65 @@ describe('GET /v1/workspaces/:id — user isolation', () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
     const res = await get(baseUrl, '/v1/workspaces/does-not-exist');
     expect(res.status).toBe(404);
+    await close();
+  });
+
+  it('populates windowIds from listWindowIds result', async () => {
+    const ws = mockWorkspace('proj-1', { id: 'ws-with-windows' });
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:   async () => USER_1,
+      findWorkspace: async (id) => id === 'ws-with-windows' ? ws : null,
+      listWindowIds: async () => [
+        { id: 'cw-1', workspaceId: 'ws-with-windows' },
+        { id: 'cw-2', workspaceId: 'ws-with-windows' },
+      ],
+    }));
+    const res = await get(baseUrl, '/v1/workspaces/ws-with-windows');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiResponse<Workspace>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data.windowIds).toEqual(['cw-1', 'cw-2']);
+    await close();
+  });
+});
+
+// ── windowIds population ──────────────────────────────────────────────────────
+
+describe('GET /v1/workspaces — windowIds derived from chat windows', () => {
+  it('returns windowIds populated for each workspace', async () => {
+    const ws1 = mockWorkspace('proj-1', { id: 'ws-1' });
+    const ws2 = mockWorkspace('proj-1', { id: 'ws-2' });
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      listWorkspaces: async () => [ws1, ws2],
+      listWindowIds:  async () => [
+        { id: 'cw-a', workspaceId: 'ws-1' },
+        { id: 'cw-b', workspaceId: 'ws-1' },
+        { id: 'cw-c', workspaceId: 'ws-2' },
+      ],
+    }));
+    const res = await get(baseUrl, '/v1/workspaces?projectId=proj-1');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiResponse<Workspace[]>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data).toHaveLength(2);
+    expect(body.data.find((w) => w.id === 'ws-1')!.windowIds).toEqual(['cw-a', 'cw-b']);
+    expect(body.data.find((w) => w.id === 'ws-2')!.windowIds).toEqual(['cw-c']);
+    await close();
+  });
+
+  it('returns empty windowIds when workspace has no chat windows', async () => {
+    const ws = mockWorkspace('proj-1', { id: 'ws-empty' });
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      listWorkspaces: async () => [ws],
+      listWindowIds:  async () => [],
+    }));
+    const res = await get(baseUrl, '/v1/workspaces?projectId=proj-1');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiResponse<Workspace[]>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data[0]!.windowIds).toEqual([]);
     await close();
   });
 });

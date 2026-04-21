@@ -16,7 +16,7 @@ const EMPTY_STATE: AppState = { projects: [], workspaces: [], chatWindows: [], m
 
 const SEEDED_STATE: AppState = {
   projects: [{ id: 'p1', name: 'Alpha', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }],
-  workspaces: [{ id: 'w1', projectId: 'p1', name: 'WS', windowIds: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }],
+  workspaces: [{ id: 'w1', projectId: 'p1', name: 'WS', windowIds: ['cw1'], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }],
   chatWindows: [{ id: 'cw1', workspaceId: 'w1', title: 'Chat', provider: 'openai', model: 'gpt-4o', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }],
   messages: [{ id: 'm1', chatWindowId: 'cw1', role: 'user', content: 'Hello', createdAt: '2026-01-01T00:00:00.000Z' }],
 };
@@ -95,6 +95,7 @@ describe('GET /v1/state — authenticated returns user graph', () => {
     expect(body.data.chatWindows).toHaveLength(1);
     expect(body.data.messages).toHaveLength(1);
     expect(body.data.projects[0]!.id).toBe('p1');
+    expect(body.data.workspaces[0]!.windowIds).toEqual(['cw1']);
     await close();
   });
 });

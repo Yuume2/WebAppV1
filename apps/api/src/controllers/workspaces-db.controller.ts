@@ -14,6 +14,7 @@ import {
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db } from '../db/workspaces.repo.js';
 import * as workspacesRepo from '../db/workspaces.repo.js';
+import { listWindowIdsByWorkspaceIds } from '../db/chat-windows.repo.js';
 
 // ── Internal DB row shape ──────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ export interface WorkspacesDeps {
   listWorkspaces: (projectId: string, userId: string) => Promise<DbWorkspace[] | null>;
   createWorkspace: (projectId: string, userId: string, name: string) => Promise<DbWorkspace | null>;
   findWorkspace: (id: string, userId: string) => Promise<DbWorkspace | null>;
+  listWindowIds: (workspaceIds: string[]) => Promise<Array<{ id: string; workspaceId: string }>>;
 }
 
 export function makeWorkspacesDeps(db: Db, sessionDeps: SessionDeps): WorkspacesDeps {
@@ -45,20 +47,31 @@ export function makeWorkspacesDeps(db: Db, sessionDeps: SessionDeps): Workspaces
     listWorkspaces:  (projectId, userId)         => workspacesRepo.listWorkspacesByProjectAndUser(db, projectId, userId),
     createWorkspace: (projectId, userId, name)   => workspacesRepo.createWorkspace(db, projectId, userId, name),
     findWorkspace:   (id, userId)                => workspacesRepo.findWorkspaceById(db, id, userId),
+    listWindowIds:   (workspaceIds)              => listWindowIdsByWorkspaceIds(db, workspaceIds),
   };
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
-function toWorkspace(row: DbWorkspace): Workspace {
+function toWorkspace(row: DbWorkspace, windowIds: string[]): Workspace {
   return {
     id:        row.id,
     projectId: row.projectId,
     name:      row.name,
-    windowIds: [],
+    windowIds,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function buildWindowMap(rows: Array<{ id: string; workspaceId: string }>): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  for (const row of rows) {
+    const arr = map.get(row.workspaceId) ?? [];
+    arr.push(row.id);
+    map.set(row.workspaceId, arr);
+  }
+  return map;
 }
 
 // ── Controllers ───────────────────────────────────────────────────────────────
@@ -75,7 +88,9 @@ export async function listWorkspacesDbController(
 
   const rows = await deps.listWorkspaces(projectId, user.id);
   if (rows === null) return respondNotFound(`Project ${projectId} not found`);
-  return respond(rows.map(toWorkspace));
+  const windowRows = await deps.listWindowIds(rows.map((r) => r.id));
+  const windowMap = buildWindowMap(windowRows);
+  return respond(rows.map((r) => toWorkspace(r, windowMap.get(r.id) ?? [])));
 }
 
 export async function createWorkspaceDbController(
@@ -99,8 +114,7 @@ export async function createWorkspaceDbController(
 
   const row = await deps.createWorkspace(body.projectId, user.id, body.name.trim());
   if (row === null) return respondNotFound(`Project ${body.projectId} not found`);
-  const workspace = toWorkspace(row);
-  return respondCreated(workspace, getWorkspacePath(workspace.id));
+  return respondCreated(toWorkspace(row, []), getWorkspacePath(row.id));
 }
 
 export async function getWorkspaceDbController(
@@ -112,5 +126,7 @@ export async function getWorkspaceDbController(
 
   const id = ctx.params['id'] ?? '';
   const row = await deps.findWorkspace(id, user.id);
-  return row ? respond(toWorkspace(row)) : respondNotFound(`Workspace ${id} not found`);
+  if (!row) return respondNotFound(`Workspace ${id} not found`);
+  const windowRows = await deps.listWindowIds([row.id]);
+  return respond(toWorkspace(row, windowRows.map((cw) => cw.id)));
 }
