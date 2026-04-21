@@ -6,6 +6,7 @@ export interface ApiEnv {
   maxBodyBytes: number;
   enableDevEndpoints: boolean;
   databaseUrl: string | undefined;
+  providerEncryptionKey: string | undefined;
 }
 
 function parsePort(raw: string | undefined, fallback: number): number {
@@ -43,4 +44,5 @@ export const env: ApiEnv = {
     ? process.env.ENABLE_DEV_ENDPOINTS === 'true'
     : nodeEnv !== 'production',
   databaseUrl: process.env.DATABASE_URL,
+  providerEncryptionKey: process.env.PROVIDER_ENCRYPTION_KEY,
 };
