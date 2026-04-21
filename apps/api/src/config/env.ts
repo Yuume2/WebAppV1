@@ -7,6 +7,7 @@ export interface ApiEnv {
   enableDevEndpoints: boolean;
   databaseUrl: string | undefined;
   providerEncryptionKey: string | undefined;
+  providerEncryptionKeyBuffer: Buffer | undefined;
   openaiMaxContextMessages: number;
 }
 
@@ -42,7 +43,41 @@ function parseContextLimit(raw: string | undefined, fallback: number): number {
   return parsed;
 }
 
+/**
+ * Validates and parses PROVIDER_ENCRYPTION_KEY.
+ *
+ * Rules:
+ * - If set: must be exactly 64 hex characters (32 bytes). Throws immediately if malformed.
+ * - If absent AND databaseUrl is set: throws — DB mode requires the key so provider
+ *   connections can be encrypted and decrypted at startup, not on first use.
+ * - If both absent: returns undefined (in-memory / keyless mode is intentional).
+ */
+export function parseProviderEncryptionKey(
+  raw: string | undefined,
+  databaseUrl: string | undefined,
+): Buffer | undefined {
+  if (raw) {
+    if (raw.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(raw)) {
+      throw new Error(
+        'PROVIDER_ENCRYPTION_KEY must be a 64-character hex string (32 bytes). ' +
+        'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+      );
+    }
+    return Buffer.from(raw, 'hex');
+  }
+
+  if (databaseUrl) {
+    throw new Error(
+      'PROVIDER_ENCRYPTION_KEY is required when DATABASE_URL is set. ' +
+      'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+    );
+  }
+
+  return undefined;
+}
+
 const nodeEnv = parseNodeEnv(process.env.NODE_ENV);
+const databaseUrl = process.env.DATABASE_URL;
 
 export const env: ApiEnv = {
   port: parsePort(process.env.API_PORT, 4000),
@@ -53,7 +88,8 @@ export const env: ApiEnv = {
   enableDevEndpoints: process.env.ENABLE_DEV_ENDPOINTS !== undefined
     ? process.env.ENABLE_DEV_ENDPOINTS === 'true'
     : nodeEnv !== 'production',
-  databaseUrl: process.env.DATABASE_URL,
+  databaseUrl,
   providerEncryptionKey: process.env.PROVIDER_ENCRYPTION_KEY,
+  providerEncryptionKeyBuffer: parseProviderEncryptionKey(process.env.PROVIDER_ENCRYPTION_KEY, databaseUrl),
   openaiMaxContextMessages: parseContextLimit(process.env.OPENAI_MAX_CONTEXT_MESSAGES, 20),
 };

@@ -1,30 +1,24 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { env } from '../config/env.js';
 
 const ALGORITHM = 'aes-256-gcm';
-const KEY_BYTES = 32;
 const IV_BYTES = 12;
 
 // ── Key loading ───────────────────────────────────────────────────────────────
 
 /**
- * Reads PROVIDER_ENCRYPTION_KEY from process.env and returns a 32-byte Buffer.
- * Throws clearly if the env var is absent or malformed.
- *
- * Generate a valid key with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ * Returns the pre-validated encryption key from env.
+ * Throws if the key was not configured (should have already failed at startup).
  */
 export function getEncryptionKey(): Buffer {
-  const raw = process.env.PROVIDER_ENCRYPTION_KEY;
-  if (!raw || raw.length !== KEY_BYTES * 2) {
+  const key = env.providerEncryptionKeyBuffer;
+  if (!key) {
     throw new Error(
-      'PROVIDER_ENCRYPTION_KEY must be set to a 64-character hex string (32 bytes). ' +
+      'PROVIDER_ENCRYPTION_KEY is not configured. ' +
       'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
     );
   }
-  const buf = Buffer.from(raw, 'hex');
-  if (buf.length !== KEY_BYTES) {
-    throw new Error('PROVIDER_ENCRYPTION_KEY contains invalid hex characters');
-  }
-  return buf;
+  return key;
 }
 
 // ── Pure cipher functions (key passed explicitly — easy to unit-test) ─────────

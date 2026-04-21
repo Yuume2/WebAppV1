@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   encryptWithKey,
   decryptWithKey,
@@ -7,6 +7,12 @@ import {
   encryptApiKey,
   decryptApiKey,
 } from './api-key-cipher.js';
+
+vi.mock('../config/env.js', () => ({
+  env: { providerEncryptionKeyBuffer: undefined },
+}));
+
+import { env } from '../config/env.js';
 
 // ── Pure cipher roundtrips ────────────────────────────────────────────────────
 
@@ -66,43 +72,31 @@ describe('encryptWithKey / decryptWithKey', () => {
 // ── Env-aware wrappers ────────────────────────────────────────────────────────
 
 describe('getEncryptionKey', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it('throws when PROVIDER_ENCRYPTION_KEY is not set', () => {
-    vi.stubEnv('PROVIDER_ENCRYPTION_KEY', '');
+  it('throws when providerEncryptionKeyBuffer is undefined', () => {
+    (env as Record<string, unknown>).providerEncryptionKeyBuffer = undefined;
     expect(() => getEncryptionKey()).toThrow('PROVIDER_ENCRYPTION_KEY');
   });
 
-  it('throws when PROVIDER_ENCRYPTION_KEY is too short', () => {
-    vi.stubEnv('PROVIDER_ENCRYPTION_KEY', 'deadbeef');
-    expect(() => getEncryptionKey()).toThrow('PROVIDER_ENCRYPTION_KEY');
-  });
-
-  it('returns a 32-byte Buffer for a valid 64-char hex key', () => {
-    const validKey = randomBytes(32).toString('hex');
-    vi.stubEnv('PROVIDER_ENCRYPTION_KEY', validKey);
-    const buf = getEncryptionKey();
-    expect(buf.length).toBe(32);
+  it('returns the buffer from env when configured', () => {
+    const key = randomBytes(32);
+    (env as Record<string, unknown>).providerEncryptionKeyBuffer = key;
+    const result = getEncryptionKey();
+    expect(result).toBe(key);
+    expect(result.length).toBe(32);
   });
 });
 
 describe('encryptApiKey / decryptApiKey (env-aware)', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it('roundtrip via env-aware wrappers', () => {
-    const validKey = randomBytes(32).toString('hex');
-    vi.stubEnv('PROVIDER_ENCRYPTION_KEY', validKey);
+    const key = randomBytes(32);
+    (env as Record<string, unknown>).providerEncryptionKeyBuffer = key;
     const plain = 'sk-env-wrapper-test';
     const stored = encryptApiKey(plain);
     expect(decryptApiKey(stored)).toBe(plain);
   });
 
-  it('encryptApiKey throws when key env var is missing', () => {
-    vi.stubEnv('PROVIDER_ENCRYPTION_KEY', '');
+  it('encryptApiKey throws when key is not configured', () => {
+    (env as Record<string, unknown>).providerEncryptionKeyBuffer = undefined;
     expect(() => encryptApiKey('anything')).toThrow('PROVIDER_ENCRYPTION_KEY');
   });
 });
