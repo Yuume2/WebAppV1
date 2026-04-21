@@ -11,18 +11,20 @@ interface Props {
   newProjectName: string;
   onNewProjectName: (v: string) => void;
   onCreateProject: () => void;
+  projectPending: boolean;
+  projectError: string | null;
   newWorkspaceName: string;
   onNewWorkspaceName: (v: string) => void;
   onCreateWorkspace: () => void;
-  busy: boolean;
+  workspacePending: boolean;
+  workspaceError: string | null;
 }
 
 export function Sidebar({
   projects, workspaces, projectId, workspaceId,
   onSelectProject, onSelectWorkspace,
-  newProjectName, onNewProjectName, onCreateProject,
-  newWorkspaceName, onNewWorkspaceName, onCreateWorkspace,
-  busy,
+  newProjectName, onNewProjectName, onCreateProject, projectPending, projectError,
+  newWorkspaceName, onNewWorkspaceName, onCreateWorkspace, workspacePending, workspaceError,
 }: Props) {
   const selProject = projects.find(p => p.id === projectId);
 
@@ -47,10 +49,11 @@ export function Sidebar({
             value={newProjectName}
             onChange={e => onNewProjectName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && onCreateProject()}
-            disabled={busy}
+            disabled={projectPending}
           />
-          <button style={s.iconBtn} onClick={onCreateProject} disabled={busy || !newProjectName.trim()}>+</button>
+          <button style={s.iconBtn} onClick={onCreateProject} disabled={projectPending || !newProjectName.trim()}>+</button>
         </div>
+        {projectError && <p style={s.errText}>{projectError}</p>}
       </div>
 
       {selProject && (
@@ -74,10 +77,11 @@ export function Sidebar({
               value={newWorkspaceName}
               onChange={e => onNewWorkspaceName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && onCreateWorkspace()}
-              disabled={busy}
+              disabled={workspacePending}
             />
-            <button style={s.iconBtn} onClick={onCreateWorkspace} disabled={busy || !newWorkspaceName.trim()}>+</button>
+            <button style={s.iconBtn} onClick={onCreateWorkspace} disabled={workspacePending || !newWorkspaceName.trim()}>+</button>
           </div>
+          {workspaceError && <p style={s.errText}>{workspaceError}</p>}
         </div>
       )}
     </div>

@@ -51,4 +51,6 @@ export const s = {
 
   composer:      { padding: '0.75rem 1.25rem', borderTop: '1px solid #1a1a20', display: 'flex', gap: '0.5rem', flexShrink: 0, alignItems: 'flex-end' },
   composerInput: { flex: 1, minWidth: 0, background: '#111116', border: '1px solid #22222a', borderRadius: '4px', padding: '0.55rem 0.75rem', color: '#e4e4e7', fontSize: '0.9rem', outline: 'none', resize: 'none' as const, lineHeight: 1.5, minHeight: '40px', maxHeight: '160px', overflowY: 'auto' as const, fontFamily: 'system-ui, sans-serif' },
+
+  errText: { fontSize: '0.72rem', color: '#f87171', margin: '0.25rem 0 0', lineHeight: 1.4 },
 } as const;

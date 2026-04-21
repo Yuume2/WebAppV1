@@ -29,10 +29,11 @@ interface Props {
   newMessage: string;
   onNewMessage: (v: string) => void;
   onSendMessage: () => void;
-  busy: boolean;
+  pending: boolean;
+  error: string | null;
 }
 
-export function ThreadPanel({ selCW, messages, newMessage, onNewMessage, onSendMessage, busy }: Props) {
+export function ThreadPanel({ selCW, messages, newMessage, onNewMessage, onSendMessage, pending, error }: Props) {
   const threadRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -87,6 +88,7 @@ export function ThreadPanel({ selCW, messages, newMessage, onNewMessage, onSendM
         ))}
       </div>
 
+      {error && <p style={{ ...s.errText, margin: '0', padding: '0.3rem 1.25rem 0' }}>{error}</p>}
       <div style={s.composer}>
         <textarea
           ref={taRef}
@@ -98,17 +100,17 @@ export function ThreadPanel({ selCW, messages, newMessage, onNewMessage, onSendM
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              if (!busy && newMessage.trim()) onSendMessage();
+              if (!pending && newMessage.trim()) onSendMessage();
             }
           }}
-          disabled={busy}
+          disabled={pending}
         />
         <button
           style={{ ...s.btn, padding: '0.55rem 1.1rem' }}
           onClick={onSendMessage}
-          disabled={busy || !newMessage.trim()}
+          disabled={pending || !newMessage.trim()}
         >
-          {busy ? 'Sending…' : 'Send'}
+          {pending ? 'Sending…' : 'Send'}
         </button>
       </div>
     </div>

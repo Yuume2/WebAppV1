@@ -28,13 +28,14 @@ interface Props {
   newCwModel: string;
   onNewCwModel: (v: string) => void;
   onCreateChatWindow: () => void;
-  busy: boolean;
+  pending: boolean;
+  error: string | null;
 }
 
 export function ChatWindowList({
   chatWindows, workspaceId, chatWindowId, onSelectChatWindow,
   newCwTitle, onNewCwTitle, newCwProvider, onProviderChange,
-  newCwModel, onNewCwModel, onCreateChatWindow, busy,
+  newCwModel, onNewCwModel, onCreateChatWindow, pending, error,
 }: Props) {
   return (
     <div style={s.middle}>
@@ -61,14 +62,14 @@ export function ChatWindowList({
               placeholder="Window title…"
               value={newCwTitle}
               onChange={e => onNewCwTitle(e.target.value)}
-              disabled={busy}
+              disabled={pending}
             />
             <div style={{ display: 'flex', gap: '0.3rem' }}>
               <select
                 style={{ ...s.input, flex: 'none', width: '96px' }}
                 value={newCwProvider}
                 onChange={e => onProviderChange(e.target.value as AIProvider)}
-                disabled={busy}
+                disabled={pending}
               >
                 {PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
@@ -77,16 +78,17 @@ export function ChatWindowList({
                 placeholder="model"
                 value={newCwModel}
                 onChange={e => onNewCwModel(e.target.value)}
-                disabled={busy}
+                disabled={pending}
               />
             </div>
             <button
               style={{ ...s.btn, width: '100%' }}
               onClick={onCreateChatWindow}
-              disabled={busy || !newCwTitle.trim() || !newCwModel.trim()}
+              disabled={pending || !newCwTitle.trim() || !newCwModel.trim()}
             >
-              + New Window
+              {pending ? 'Creating…' : '+ New Window'}
             </button>
+            {error && <p style={s.errText}>{error}</p>}
           </div>
         )}
       </div>

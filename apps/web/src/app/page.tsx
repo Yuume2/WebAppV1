@@ -12,6 +12,18 @@ import { ChatWindowList } from '@/components/ChatWindowList';
 import { ThreadPanel } from '@/components/ThreadPanel';
 import { s } from './ws-styles';
 
+function useMutation() {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function run(fn: () => Promise<void>) {
+    setPending(true); setError(null);
+    try { await fn(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Error'); }
+    finally { setPending(false); }
+  }
+  return { pending, error, run };
+}
+
 const DEFAULT_MODEL: Record<AIProvider, string> = {
   openai: 'gpt-4o',
   anthropic: 'claude-3-5-sonnet-20241022',
@@ -40,8 +52,13 @@ function WorkspaceApp() {
 
   const [state, setState] = useState<AppState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const createProjectM    = useMutation();
+  const createWorkspaceM  = useMutation();
+  const createChatWindowM = useMutation();
+  const sendMessageM      = useMutation();
+  const seedM             = useMutation();
 
   const [projectId, setProjectId] = useState<string | null>(sp.get('projectId'));
   const [workspaceId, setWorkspaceId] = useState<string | null>(sp.get('workspaceId'));
@@ -70,9 +87,9 @@ function WorkspaceApp() {
   const reload = useCallback(async () => {
     try {
       const s = await fetchState();
-      setState(s); setError(null); return s;
+      setState(s); setLoadError(null); return s;
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load'); return null;
+      setLoadError(e instanceof Error ? e.message : 'Failed to load'); return null;
     }
   }, []);
 
@@ -96,16 +113,9 @@ function WorkspaceApp() {
     });
   }, [reload]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function run(fn: () => Promise<void>) {
-    setBusy(true);
-    try { await fn(); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Error'); }
-    finally { setBusy(false); }
-  }
-
   const handleCreateProject = () => {
     if (!newProjectName.trim()) return;
-    run(async () => {
+    createProjectM.run(async () => {
       const p = await createProject({ name: newProjectName.trim() });
       setState(s => s ? { ...s, projects: insertSorted(s.projects, p) } : s);
       setNewProjectName('');
@@ -114,7 +124,7 @@ function WorkspaceApp() {
   };
   const handleCreateWorkspace = () => {
     if (!projectId || !newWorkspaceName.trim()) return;
-    run(async () => {
+    createWorkspaceM.run(async () => {
       const ws = await createWorkspace({ projectId, name: newWorkspaceName.trim() });
       setState(s => s ? { ...s, workspaces: insertSorted(s.workspaces, ws) } : s);
       setNewWorkspaceName('');
@@ -123,7 +133,7 @@ function WorkspaceApp() {
   };
   const handleCreateChatWindow = () => {
     if (!workspaceId || !newCwTitle.trim() || !newCwModel.trim()) return;
-    run(async () => {
+    createChatWindowM.run(async () => {
       const cw = await createChatWindow({ workspaceId, title: newCwTitle.trim(), provider: newCwProvider, model: newCwModel.trim() });
       setState(s => s ? { ...s, chatWindows: insertSorted(s.chatWindows, cw) } : s);
       setNewCwTitle('');
@@ -132,14 +142,14 @@ function WorkspaceApp() {
   };
   const handleSendMessage = () => {
     if (!chatWindowId || !newMessage.trim()) return;
-    run(async () => {
+    sendMessageM.run(async () => {
       const m = await createMessage({ chatWindowId, role: 'user', content: newMessage.trim() });
       setState(s => s ? { ...s, messages: insertSorted(s.messages, m) } : s);
       setNewMessage('');
     });
   };
   const handleSeed = () => {
-    run(async () => {
+    seedM.run(async () => {
       await devSeed(); await reload();
       setProjectId(null); setWorkspaceId(null); setChatWindowId(null);
       router.replace('/', { scroll: false });
@@ -156,9 +166,10 @@ function WorkspaceApp() {
     <div style={s.root}>
       <div style={s.topbar}>
         <span style={s.appName}>AI Workspace</span>
-        {error && <span style={s.topError}>⚠ {error}</span>}
-        <button style={s.seedBtn} onClick={handleSeed} disabled={busy} title="Dev only — resets all data">
-          Seed demo data
+        {loadError && <span style={s.topError}>⚠ {loadError}</span>}
+        {seedM.error && <span style={s.topError}>⚠ {seedM.error}</span>}
+        <button style={s.seedBtn} onClick={handleSeed} disabled={seedM.pending} title="Dev only — resets all data">
+          {seedM.pending ? 'Seeding…' : 'Seed demo data'}
         </button>
       </div>
 
@@ -176,10 +187,13 @@ function WorkspaceApp() {
             newProjectName={newProjectName}
             onNewProjectName={setNewProjectName}
             onCreateProject={handleCreateProject}
+            projectPending={createProjectM.pending}
+            projectError={createProjectM.error}
             newWorkspaceName={newWorkspaceName}
             onNewWorkspaceName={setNewWorkspaceName}
             onCreateWorkspace={handleCreateWorkspace}
-            busy={busy}
+            workspacePending={createWorkspaceM.pending}
+            workspaceError={createWorkspaceM.error}
           />
           <ChatWindowList
             chatWindows={chatWindows}
@@ -193,7 +207,8 @@ function WorkspaceApp() {
             newCwModel={newCwModel}
             onNewCwModel={setNewCwModel}
             onCreateChatWindow={handleCreateChatWindow}
-            busy={busy}
+            pending={createChatWindowM.pending}
+            error={createChatWindowM.error}
           />
           <ThreadPanel
             selCW={selCW}
@@ -201,7 +216,8 @@ function WorkspaceApp() {
             newMessage={newMessage}
             onNewMessage={setNewMessage}
             onSendMessage={handleSendMessage}
-            busy={busy}
+            pending={sendMessageM.pending}
+            error={sendMessageM.error}
           />
         </div>
       )}
