@@ -26,6 +26,7 @@ function mockMeta(overrides: Partial<ProviderConnectionMeta> = {}): ProviderConn
 function makeDeps(overrides: Partial<ProviderConnectionsDeps> = {}): ProviderConnectionsDeps {
   return {
     resolveUser:      async () => null,
+    verifyKey:        async () => 'ok',
     upsertConnection: async () => mockMeta(),
     findConnection:   async () => null,
     listConnections:  async () => [],
@@ -248,6 +249,49 @@ describe('PUT /v1/provider-connections/:provider — authenticated', () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
     const res = await put(baseUrl, '/v1/provider-connections/gpt99', { apiKey: 'sk-test' });
     expect(res.status).toBe(400);
+    await close();
+  });
+
+  it('invalid key — returns 401 provider_auth_error, upsertConnection not called', async () => {
+    let upsertCalled = false;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:      async () => USER_1,
+      verifyKey:        async () => 'unauthorized',
+      upsertConnection: async () => { upsertCalled = true; return mockMeta(); },
+    }));
+    const res = await put(baseUrl, '/v1/provider-connections/openai', { apiKey: 'sk-bad-key' });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('provider_auth_error');
+    expect(upsertCalled).toBe(false);
+    await close();
+  });
+
+  it('provider network error — returns 502 provider_error, upsertConnection not called', async () => {
+    let upsertCalled = false;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:      async () => USER_1,
+      verifyKey:        async () => 'provider_error',
+      upsertConnection: async () => { upsertCalled = true; return mockMeta(); },
+    }));
+    const res = await put(baseUrl, '/v1/provider-connections/openai', { apiKey: 'sk-any-key' });
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('provider_error');
+    expect(upsertCalled).toBe(false);
+    await close();
+  });
+
+  it('error responses do not contain the plaintext key', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser: async () => USER_1,
+      verifyKey:   async () => 'unauthorized',
+    }));
+    const res = await put(baseUrl, '/v1/provider-connections/openai', { apiKey: 'sk-super-secret-value' });
+    const text = await res.text();
+    expect(text).not.toContain('sk-super-secret-value');
     await close();
   });
 });

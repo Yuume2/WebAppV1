@@ -1,6 +1,27 @@
 import type { ChatCompletionResult, ChatMessage, ProviderClient } from './provider.interface.js';
 import { ProviderError } from './provider.interface.js';
 
+// ── Key verification ──────────────────────────────────────────────────────────
+
+export type OpenAIVerifyResult = 'ok' | 'unauthorized' | 'provider_error';
+
+const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
+
+export async function verifyOpenAIKey(apiKey: string): Promise<OpenAIVerifyResult> {
+  let res: Response;
+  try {
+    res = await fetch(OPENAI_MODELS_URL, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+  } catch {
+    return 'provider_error';
+  }
+  if (res.status === 200) return 'ok';
+  if (res.status === 401) return 'unauthorized';
+  return 'provider_error';
+}
+
 // ── OpenAI wire types (subset of actual response) ─────────────────────────────
 
 interface OpenAIUsage {

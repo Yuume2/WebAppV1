@@ -12,6 +12,7 @@ import {
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db, ProviderConnectionMeta } from '../db/provider-connections.repo.js';
 import * as providerRepo from '../db/provider-connections.repo.js';
+import { verifyOpenAIKey } from '../providers/openai.provider.js';
 
 // All recognised provider values — used to validate the :provider URL param.
 const VALID_PROVIDERS = new Set<AIProvider>(['openai', 'anthropic', 'perplexity']);
@@ -28,6 +29,7 @@ interface SessionDeps {
 
 export interface ProviderConnectionsDeps {
   resolveUser:      (req: IncomingMessage) => Promise<{ id: string } | null>;
+  verifyKey:        (provider: AIProvider, apiKey: string) => Promise<'ok' | 'unauthorized' | 'provider_error'>;
   upsertConnection: (userId: string, provider: AIProvider, apiKey: string) => Promise<ProviderConnectionMeta>;
   findConnection:   (userId: string, provider: AIProvider) => Promise<ProviderConnectionMeta | null>;
   listConnections:  (userId: string) => Promise<ProviderConnectionMeta[]>;
@@ -37,6 +39,7 @@ export interface ProviderConnectionsDeps {
 export function makeProviderConnectionsDeps(db: Db, sessionDeps: SessionDeps): ProviderConnectionsDeps {
   return {
     resolveUser:      (req)                   => resolveCurrentUser(req, sessionDeps),
+    verifyKey:        (_provider, apiKey)     => verifyOpenAIKey(apiKey),
     upsertConnection: (userId, provider, key) => providerRepo.upsertProviderConnection(db, userId, provider, key),
     findConnection:   (userId, provider)      => providerRepo.findProviderConnection(db, userId, provider),
     listConnections:  (userId)                => providerRepo.listProviderConnections(db, userId),
@@ -109,7 +112,17 @@ export async function upsertConnectionController(
     return respondError('validation_error', 'apiKey is required and must be a non-empty string');
   }
 
-  const meta = await deps.upsertConnection(user.id, provider, body['apiKey'].trim());
+  const apiKey = body['apiKey'].trim();
+
+  const verifyResult = await deps.verifyKey(provider, apiKey);
+  if (verifyResult === 'unauthorized') {
+    return respondError('provider_auth_error', 'API key is invalid or unauthorized', 401);
+  }
+  if (verifyResult === 'provider_error') {
+    return respondError('provider_error', 'Could not reach the provider to validate the key — try again later', 502);
+  }
+
+  const meta = await deps.upsertConnection(user.id, provider, apiKey);
   return respond(toResponse(meta));
 }
 

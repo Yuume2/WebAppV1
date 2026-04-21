@@ -48,7 +48,9 @@ export type ApiErrorCode =
   | 'conflict'
   | 'unauthenticated'
   | 'method_not_allowed'
-  | 'internal_error';
+  | 'internal_error'
+  | 'provider_auth_error'
+  | 'provider_error';
 
 export interface ApiError {
   code: ApiErrorCode;
