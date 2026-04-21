@@ -8,6 +8,8 @@ import { makeAuthDeps } from '../controllers/auth.controller.js';
 import { makeProjectsDeps } from '../controllers/projects-db.controller.js';
 import { makeWorkspacesDeps } from '../controllers/workspaces-db.controller.js';
 import { makeChatWindowsDeps } from '../controllers/chat-windows-db.controller.js';
+import { makeMessagesDeps } from '../controllers/messages-db.controller.js';
+import { makeStateDeps, stateDbController } from '../controllers/state-db.controller.js';
 import { createDb } from '../lib/db.js';
 import { env } from '../config/env.js';
 import type { RouteDefinition } from '../lib/http.js';
@@ -16,6 +18,7 @@ import { makeAuthRoutes } from './auth.js';
 import { makeProjectDbRoutes } from './projects-db.js';
 import { makeWorkspaceDbRoutes } from './workspaces-db.js';
 import { makeChatWindowDbRoutes } from './chat-windows-db.js';
+import { makeMessageDbRoutes } from './messages-db.js';
 import {
   API_HEALTH_PATH,
   API_PROJECTS_PATH,
@@ -62,6 +65,20 @@ const chatWindowRoutes: RouteDefinition[] = (db && authDeps)
     { method: 'GET',  path: `${API_CHAT_WINDOWS_PATH}/:id`,   handler: getChatWindowController },
   ];
 
+// Message routes: DB-backed user-scoped when DB is available, in-memory fallback otherwise.
+const messageRoutes: RouteDefinition[] = (db && authDeps)
+  ? makeMessageDbRoutes(makeMessagesDeps(db, authDeps))
+  : [
+    { method: 'GET',  path: API_MESSAGES_PATH,            handler: listMessagesController },
+    { method: 'POST', path: API_MESSAGES_PATH,            handler: createMessageController },
+    { method: 'GET',  path: `${API_MESSAGES_PATH}/:id`,   handler: getMessageController },
+  ];
+
+// State handler: DB-backed (auth-required) when DB is available, in-memory fallback otherwise.
+const stateHandler = (db && authDeps)
+  ? (ctx: Parameters<typeof stateDbController>[0]) => stateDbController(ctx, makeStateDeps(db, authDeps))
+  : stateController;
+
 export const businessRoutes: RouteDefinition[] = [
   { method: 'GET', path: API_HEALTH_PATH, handler: healthController },
 
@@ -71,11 +88,9 @@ export const businessRoutes: RouteDefinition[] = [
 
   ...chatWindowRoutes,
 
-  { method: 'GET',  path: API_MESSAGES_PATH,           handler: listMessagesController },
-  { method: 'POST', path: API_MESSAGES_PATH,           handler: createMessageController },
-  { method: 'GET',  path: `${API_MESSAGES_PATH}/:id`,  handler: getMessageController },
+  ...messageRoutes,
 
-  { method: 'GET',  path: API_STATE_PATH, handler: stateController },
+  { method: 'GET',  path: API_STATE_PATH, handler: stateHandler },
 ];
 
 export const routes: RouteDefinition[] = [
