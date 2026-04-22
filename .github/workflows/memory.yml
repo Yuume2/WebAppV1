@@ -1,0 +1,33 @@
+name: project-memory refresh (check)
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'docs/**'
+      - 'tools/update-memory.sh'
+      - '.github/workflows/memory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run memory update
+        run: bash tools/update-memory.sh
+
+      - name: Report drift
+        run: |
+          if [[ -n "$(git status --porcelain project-memory)" ]]; then
+            echo "::warning::project-memory/auto is out of date. Run 'bash tools/update-memory.sh' locally and commit the result."
+            git --no-pager diff -- project-memory || true
+          else
+            echo "project-memory auto files are up to date."
+          fi
