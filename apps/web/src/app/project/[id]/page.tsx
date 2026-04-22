@@ -14,7 +14,9 @@ import {
 import { getApiBaseUrl } from '@/lib/api/env';
 import { fetchProject } from '@/lib/api/projects';
 import { fetchProjectWorkspaces } from '@/lib/api/workspaces';
+import { fetchWorkspaceWindows } from '@/lib/api/windows';
 import type { ApiCallError } from '@/lib/api/client';
+import type { ChatWindow } from '@webapp/types';
 
 interface ProjectPageProps {
   params: Promise<{ id: string }>;
@@ -31,6 +33,14 @@ type WorkspacesSource = 'api' | 'mock' | 'api error';
 interface WorkspacesLoad {
   source: WorkspacesSource;
   workspaces: WorkspaceType[];
+  message?: string;
+}
+
+type WindowsSource = 'api' | 'mock' | 'api error';
+
+interface WindowsLoad {
+  source: WindowsSource;
+  windows: ChatWindow[];
   message?: string;
 }
 
@@ -65,6 +75,23 @@ async function loadWorkspaces(projectId: string, projectFromApi: boolean): Promi
     return {
       source: 'api error',
       workspaces: listWorkspacesForProject(projectId),
+      message: e.message ?? 'Unknown error',
+    };
+  }
+}
+
+async function loadWindows(workspaceId: string, workspacesFromApi: boolean): Promise<WindowsLoad> {
+  if (!workspacesFromApi || !getApiBaseUrl()) {
+    return { source: 'mock', windows: getWindowsForWorkspace(workspaceId) };
+  }
+  try {
+    const windows = await fetchWorkspaceWindows(workspaceId);
+    return { source: 'api', windows };
+  } catch (err) {
+    const e = err as ApiCallError;
+    return {
+      source: 'api error',
+      windows: getWindowsForWorkspace(workspaceId),
       message: e.message ?? 'Unknown error',
     };
   }
@@ -147,7 +174,8 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
     );
   }
 
-  const ws = getWindowsForWorkspace(activeWorkspace.id);
+  const winLoad = await loadWindows(activeWorkspace.id, wsLoad.source === 'api');
+  const ws = winLoad.windows;
   const messagesByWindow: Record<string, MockMessage[]> = {};
   for (const w of ws) messagesByWindow[w.id] = getMessagesForWindow(w.id);
 
