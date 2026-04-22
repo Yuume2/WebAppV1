@@ -71,3 +71,7 @@ const store: readonly ChatWindow[] = Object.freeze([
 export function listWindowsByWorkspaceId(workspaceId: string): ChatWindow[] {
   return store.filter((w) => w.workspaceId === workspaceId).map((w) => ({ ...w }));
 }
+
+export function windowExists(windowId: string): boolean {
+  return store.some((w) => w.id === windowId);
+}

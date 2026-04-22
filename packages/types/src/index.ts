@@ -29,6 +29,16 @@ export interface ChatWindow {
   updatedAt: ISODateString;
 }
 
+export type MessageRole = 'user' | 'assistant';
+
+export interface Message {
+  id: string;
+  windowId: string;
+  role: MessageRole;
+  content: string;
+  createdAt: ISODateString;
+}
+
 export interface ApiError {
   code: string;
   message: string;
