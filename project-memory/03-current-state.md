@@ -14,7 +14,9 @@ Last verified: 2026-04-21.
 - `feat/api-project-detail` — pushed to origin. Param router + `GET /v1/projects/:id` + `HttpError`.
 - `feat/web-project-detail-api` — pushed. `/project/[id]` wired to real detail endpoint with mock fallback + error panel + source badge.
 - `feat/api-project-workspaces` — pushed. `GET /v1/projects/:id/workspaces` + seeded store (ids aligned with web mocks) + 3 new tests (13 total, all green).
-- `feat/web-project-workspaces-api` — **current**. `/project/[id]` workspaces fetched from real API with mock fallback + dual source badges (project + workspaces) + workspaces error panel.
+- `feat/web-project-workspaces-api` — pushed. `/project/[id]` workspaces fetched from real API with mock fallback + dual source badges (project + workspaces) + workspaces error panel. **Integrated** into `feat/integration-homepage-projects` on 2026-04-22 (fast-forward).
+- `feat/integration-homepage-projects` — **current**. Fast-forwarded to tip of `feat/web-project-workspaces-api`. Carries everything: GET projects, GET projects/:id, GET projects/:id/workspaces, web wiring + mock fallback + badges. Tests green (13/13). Build green. Ready to open a PR against `main`.
+- `origin/feat/api-foundation` — **parallel unmerged V1 track, 53 commits ahead of our integration branch** (last: `de398ac`). Contains a different, much larger V1: Postgres+Drizzle migrations, auth (signup/login/logout/me, session cookies), encrypted provider-connection storage, OpenAI provider adapter, live key test, rate limiting, `/v1/state`, full CRUD, per-user scoping, atomic message persistence, web 3-column layout, dev seed/reset toolbar. **Architecturally incompatible** with the mock-fallback track — uses `/v1/state` and auth cookies, not per-resource reads with mock fallback. No decision made on which track wins.
 
 ## Done
 
@@ -31,8 +33,10 @@ Last verified: 2026-04-21.
 
 ## In progress
 
-- `feat/api-foundation` has a newer commit on origin (`de398ac`) not merged into the integration branch yet.
-- `feat/api-project-detail` not yet pushed; needs PR into `feat/integration-homepage-projects` (or `main`).
+- **Track decision pending.** Two V1 paths exist:
+  - Track A (our line): read-only mock-fallback UI, small backend. `feat/integration-homepage-projects` now carries the full A work and is PR-ready against `main`.
+  - Track B: `origin/feat/api-foundation` — full DB+auth+provider V1, unmerged, unmentioned in prior memory, not yet verified by this session.
+- PRs **not opened** (no `gh` CLI): integration → `main`, and the 4 feature branches landed into integration are now redundant (but kept for history).
 
 ## Blocked / missing
 
@@ -46,7 +50,6 @@ Last verified: 2026-04-21.
 
 ## Next obvious steps
 
-1. Merge/clean up WIP param router, ship `GET /v1/projects/:id`.
-2. Merge/cherry-pick `de398ac` from `feat/api-foundation` into the integration branch (ESM fix for `@webapp/types`).
-3. Wire frontend project detail to real API once detail endpoint lands.
-4. Decide DB + persistence story.
+1. **Decide the V1 track with Yume** before coding more. Track A (integration branch) is ready to PR. Track B (`feat/api-foundation`) is a bigger V1 already built but in parallel — needs evaluation, not just a merge.
+2. If Track A wins: open PR `feat/integration-homepage-projects` → `main`, then design windows endpoint + frontend wiring to drop the last mock.
+3. If Track B wins: review `feat/api-foundation`, confirm it runs locally (needs Postgres via `docker-compose`), decide fate of Track A commits (archive or port useful pieces), rebase memory around Track B reality.

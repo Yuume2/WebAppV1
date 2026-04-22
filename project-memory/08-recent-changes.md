@@ -4,7 +4,9 @@ Newest first. One line per commit. Update at end of a session or via `tools/upda
 
 ## 2026-04-22
 
-- (pending commit on `feat/web-project-workspaces-api`) feat(web): wire `/project/[id]` workspaces to real `GET /v1/projects/:id/workspaces` with mock fallback, dual source badges (project + workspaces), workspaces error panel.
+- Fast-forward merged `feat/web-project-workspaces-api` (and transitively all 4 feat branches) into `feat/integration-homepage-projects`. Tests 13/13 green, web build green. Integration branch now carries the full Track A surface.
+- **Discovered `origin/feat/api-foundation` is 53 commits ahead** of the integration branch with a parallel DB+auth+OpenAI V1. Not merged this session. Flagged as a track decision needed in `03-current-state.md`.
+- 7824866 feat(web): wire `/project/[id]` workspaces to real `GET /v1/projects/:id/workspaces` (mock fallback, dual badges, workspaces error panel).
 
 ## 2026-04-21
 

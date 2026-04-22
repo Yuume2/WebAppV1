@@ -8,11 +8,11 @@ Not a sprint board. Just concrete next actions. Update when you finish or add on
 - [x] `GET /v1/projects/:id` — 404 via `HttpError` → `fail('not_found', …)` envelope.
 - [x] Tests for param router + detail endpoint (4 new, 10 total, all green).
 - [x] Decide workspace storage shape; add `GET /v1/projects/:id/workspaces` (seeded readonly store on `feat/api-project-workspaces`).
-- [ ] Sync origin `feat/api-foundation` (`de398ac`) into integration branch.
-- [x] Push `feat/api-project-detail`.
-- [ ] Open PR for `feat/api-project-detail` → `feat/integration-homepage-projects` (manual; no `gh` CLI).
-- [ ] Open PR for `feat/web-project-detail-api` → `feat/integration-homepage-projects` (manual).
-- [ ] Open PR for `feat/api-project-workspaces` → `feat/integration-homepage-projects` (manual).
+- [x] Fast-forward merge all 4 feature branches into `feat/integration-homepage-projects` (done 2026-04-22, tests + build green).
+- [ ] **Decide V1 track with Yume** (Track A integration vs Track B `feat/api-foundation`). Blocks further coding.
+- [ ] If Track A wins: open PR `feat/integration-homepage-projects` → `main` (manual, no `gh` CLI).
+- [ ] If Track A wins: windows endpoint `GET /v1/workspaces/:id/windows` + frontend wiring.
+- [ ] If Track B wins: audit `feat/api-foundation` locally, port docs, decide Track A commit fate.
 
 ## Frontend
 
