@@ -11,6 +11,8 @@ Base: `http://localhost:<API_PORT|4000>`. Envelope: `ApiResponse<T>` from `@weba
 | GET    | /v1/projects       | listProjectsController      | `listProjects()`        | `Project[]`      |
 | GET    | /v1/projects/:id   | getProjectController        | `getProjectById(id)`    | `Project`        |
 | GET    | /v1/projects/:id/workspaces | listProjectWorkspacesController | `listWorkspacesByProjectId(projectId)` | `Workspace[]` |
+| GET    | /v1/workspaces/:id/windows  | listWorkspaceWindowsController  | `listWindowsByWorkspaceId(workspaceId)` | `ChatWindow[]` |
+| GET    | /v1/windows/:id/messages    | listWindowMessagesController    | `listMessagesByWindowId(windowId)` | `Message[]` |
 
 All responses:
 
@@ -60,6 +62,8 @@ From `@webapp/types`:
 - `Project` = `{ id, name, description?, createdAt, updatedAt }`
 - `Workspace` = `{ id, projectId, name, windowIds, createdAt, updatedAt }`
 - `ChatWindow` = `{ id, workspaceId, title, provider, model, createdAt, updatedAt }`
+- `Message` = `{ id, windowId, role, content, createdAt }`
+- `MessageRole` = `'user' | 'assistant'`
 - `AIProvider` = `'openai' | 'anthropic' | 'perplexity'`
 
 ## Backend env

@@ -27,12 +27,20 @@ apps/api/src
 ├── routes/
 │   ├── index.ts             RouteDefinition[]
 │   ├── health.test.ts
-│   └── projects.test.ts
+│   ├── projects.test.ts
+│   ├── workspaces.test.ts
+│   ├── windows.test.ts
+│   └── messages.test.ts
 ├── controllers/
 │   ├── health.controller.ts
-│   └── projects.controller.ts
+│   ├── projects.controller.ts
+│   ├── workspaces.controller.ts
+│   └── messages.controller.ts
 ├── services/
-│   └── projects.service.ts  in-memory frozen seed
+│   ├── projects.service.ts   in-memory frozen seed
+│   ├── workspaces.service.ts in-memory frozen seed (+ workspaceExists)
+│   ├── windows.service.ts    in-memory frozen seed (+ windowExists)
+│   └── messages.service.ts   in-memory frozen seed
 ├── test/
 │   └── server-harness.ts    boots http.Server for tests
 └── types/                   (placeholder)
@@ -56,7 +64,7 @@ apps/api/src
 ## Tests
 
 - Vitest, integration-style via `server-harness` spinning a real `http.Server` on ephemeral port.
-- 10 tests pass as of 2026-04-21. Run: `pnpm --filter @webapp/api test`.
+- 19 tests pass as of 2026-04-22. Run: `pnpm --filter @webapp/api test`.
 
 ## Env
 

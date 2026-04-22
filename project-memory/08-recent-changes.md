@@ -2,6 +2,15 @@
 
 Newest first. One line per commit. Update at end of a session or via `tools/update-memory.sh`.
 
+## 2026-04-22 (session pm)
+
+- 5708b9a merge(integration): feat/api-window-messages into feat/integration-homepage-projects (no conflict).
+- 97418e0 merge(integration): feat/api-workspace-windows into feat/integration-homepage-projects (no conflict).
+- f1903e7 feat(api): add `GET /v1/windows/:id/messages` + seed store + `Message`/`MessageRole` types + frontend `lib/api/messages.ts` + per-window parallel fetch in `/project/[id]` with mock fallback. 3 new API tests (19 total).
+- 152b5a1 feat(web): wire workspace view to real `GET /v1/workspaces/:id/windows` with `lib/api/windows.ts` and mock fallback.
+- 128ae4d feat(api): add `GET /v1/workspaces/:id/windows` + seeded store + `workspaceExists` helper + 3 new tests (16 total at that point).
+- Integration branch now carries the full Track A read path end-to-end: projects → workspaces → windows → messages. Tests 19/19 green, typecheck green, web build green.
+
 ## 2026-04-22
 
 - Fast-forward merged `feat/web-project-workspaces-api` (and transitively all 4 feat branches) into `feat/integration-homepage-projects`. Tests 13/13 green, web build green. Integration branch now carries the full Track A surface.

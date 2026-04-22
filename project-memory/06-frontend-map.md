@@ -7,7 +7,7 @@ App: `apps/web`. Next.js 15 App Router. TS strict. Path alias `@/* → src/*`.
 | Route               | File                                    | Data source                                     |
 |---------------------|-----------------------------------------|-------------------------------------------------|
 | `/`                 | `src/app/page.tsx`                      | `lib/api/projects` if `NEXT_PUBLIC_API_URL`, else `lib/mocks` |
-| `/project/[id]`     | `src/app/project/[id]/page.tsx`         | `fetchProject(id)` + `fetchProjectWorkspaces(id)` if `NEXT_PUBLIC_API_URL`, mock fallback; windows/messages still from `lib/data` |
+| `/project/[id]`     | `src/app/project/[id]/page.tsx`         | `fetchProject(id)` + `fetchProjectWorkspaces(id)` + `fetchWorkspaceWindows(activeWsId)` + per-window `fetchWindowMessages(winId)` (parallel). Mock fallback at every layer. |
 
 Layout: `src/app/layout.tsx`.
 
@@ -33,6 +33,8 @@ Layout: `src/app/layout.tsx`.
 - `lib/api/client.ts` — `apiFetch<T>(path, { timeoutMs?, signal?, cache? })`; default 5s timeout, `cache: 'no-store'`; validates envelope, throws `ApiCallError` with `code`/`status` on failure.
 - `lib/api/projects.ts` — `fetchProjects(signal?)`, `fetchProject(id, signal?)`.
 - `lib/api/workspaces.ts` — `fetchProjectWorkspaces(projectId, signal?)`.
+- `lib/api/windows.ts` — `fetchWorkspaceWindows(workspaceId, signal?)`.
+- `lib/api/messages.ts` — `fetchWindowMessages(windowId, signal?)`.
 - `lib/data/index.ts` — mock-backed read API for projects, workspaces, windows; used by routes other than homepage.
 - `lib/data/presets.ts` — window preset definitions.
 - `lib/mocks/fixtures.ts` — static mock data.
