@@ -34,3 +34,7 @@ export function listWorkspacesByProjectId(projectId: string): Workspace[] {
     .filter((w) => w.projectId === projectId)
     .map((w) => ({ ...w, windowIds: [...w.windowIds] }));
 }
+
+export function workspaceExists(workspaceId: string): boolean {
+  return store.some((w) => w.id === workspaceId);
+}
