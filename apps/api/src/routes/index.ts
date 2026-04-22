@@ -7,6 +7,7 @@ import {
   listProjectWorkspacesController,
   listWorkspaceWindowsController,
 } from '../controllers/workspaces.controller.js';
+import { listWindowMessagesController } from '../controllers/messages.controller.js';
 import type { RouteDefinition } from '../lib/http.js';
 
 export const routes: RouteDefinition[] = [
@@ -23,5 +24,10 @@ export const routes: RouteDefinition[] = [
     method: 'GET',
     path: '/v1/workspaces/:id/windows',
     handler: listWorkspaceWindowsController,
+  },
+  {
+    method: 'GET',
+    path: '/v1/windows/:id/messages',
+    handler: listWindowMessagesController,
   },
 ];

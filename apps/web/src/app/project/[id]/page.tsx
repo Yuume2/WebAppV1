@@ -15,6 +15,7 @@ import { getApiBaseUrl } from '@/lib/api/env';
 import { fetchProject } from '@/lib/api/projects';
 import { fetchProjectWorkspaces } from '@/lib/api/workspaces';
 import { fetchWorkspaceWindows } from '@/lib/api/windows';
+import { fetchWindowMessages } from '@/lib/api/messages';
 import type { ApiCallError } from '@/lib/api/client';
 import type { ChatWindow } from '@webapp/types';
 
@@ -97,6 +98,28 @@ async function loadWindows(workspaceId: string, workspacesFromApi: boolean): Pro
   }
 }
 
+async function loadMessagesForWindows(
+  windows: ChatWindow[],
+  windowsFromApi: boolean,
+): Promise<Record<string, MockMessage[]>> {
+  const out: Record<string, MockMessage[]> = {};
+  if (!windowsFromApi || !getApiBaseUrl()) {
+    for (const w of windows) out[w.id] = getMessagesForWindow(w.id);
+    return out;
+  }
+  const results = await Promise.all(
+    windows.map(async (w) => {
+      try {
+        return [w.id, await fetchWindowMessages(w.id)] as const;
+      } catch {
+        return [w.id, getMessagesForWindow(w.id)] as const;
+      }
+    }),
+  );
+  for (const [id, msgs] of results) out[id] = msgs;
+  return out;
+}
+
 export default async function ProjectPage({ params, searchParams }: ProjectPageProps) {
   const { id } = await params;
   const { workspace: workspaceParam } = await searchParams;
@@ -176,8 +199,7 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
 
   const winLoad = await loadWindows(activeWorkspace.id, wsLoad.source === 'api');
   const ws = winLoad.windows;
-  const messagesByWindow: Record<string, MockMessage[]> = {};
-  for (const w of ws) messagesByWindow[w.id] = getMessagesForWindow(w.id);
+  const messagesByWindow = await loadMessagesForWindows(ws, winLoad.source === 'api');
 
   return (
     <Workspace
