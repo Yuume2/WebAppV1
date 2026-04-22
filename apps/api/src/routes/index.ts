@@ -3,7 +3,10 @@ import {
   getProjectController,
   listProjectsController,
 } from '../controllers/projects.controller.js';
-import { listProjectWorkspacesController } from '../controllers/workspaces.controller.js';
+import {
+  listProjectWorkspacesController,
+  listWorkspaceWindowsController,
+} from '../controllers/workspaces.controller.js';
 import type { RouteDefinition } from '../lib/http.js';
 
 export const routes: RouteDefinition[] = [
@@ -15,5 +18,10 @@ export const routes: RouteDefinition[] = [
     method: 'GET',
     path: '/v1/projects/:id/workspaces',
     handler: listProjectWorkspacesController,
+  },
+  {
+    method: 'GET',
+    path: '/v1/workspaces/:id/windows',
+    handler: listWorkspaceWindowsController,
   },
 ];
