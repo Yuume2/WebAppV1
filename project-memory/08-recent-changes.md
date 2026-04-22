@@ -2,6 +2,10 @@
 
 Newest first. One line per commit. Update at end of a session or via `tools/update-memory.sh`.
 
+## 2026-04-22
+
+- (pending commit on `feat/web-project-workspaces-api`) feat(web): wire `/project/[id]` workspaces to real `GET /v1/projects/:id/workspaces` with mock fallback, dual source badges (project + workspaces), workspaces error panel.
+
 ## 2026-04-21
 
 - (pending commit on `feat/api-project-workspaces`) feat(api): add `GET /v1/projects/:id/workspaces` with seeded store aligned with web mocks + 3 tests (13 total green).
@@ -49,3 +53,16 @@ Script appends the last N commits to this file under a new dated heading, and re
 - 478080f feat(web): workspace sidebar with shared window manager
 - e27eb40 feat(web): frontend data boundary with mock-backed read API
 - 9ff07c2 feat(web): workspace state hook, toolbar, focus and empty states
+
+## 2026-04-22 (auto)
+
+- 101c416 feat(api): add GET /v1/projects/:id/workspaces
+- 910bc91 feat(web): wire project detail page to real GET /v1/projects/:id
+- e711a44 chore(memory): reflect project detail endpoint and HttpError
+- 550c744 feat(api): add GET /v1/projects/:id with param router and HttpError
+- 26c9ad6 docs(memory): add Claude restart workflow note
+- 7cb01aa chore(memory): correct WIP state — working tree, not stash
+- c4ae1ac chore(memory): add project-memory system and refresh tooling
+- 497f0db feat(web): wire homepage project list to real GET /v1/projects
+- aaf644f merge: bring feat/api-foundation into integration branch
+- 67bda4e feat(api): readonly /v1/projects and vitest coverage for the foundation

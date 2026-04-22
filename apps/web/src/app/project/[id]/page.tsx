@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import type { Project } from '@webapp/types';
+import type { Project, Workspace as WorkspaceType } from '@webapp/types';
 import { AppShell } from '@/components/AppShell';
 import { Panel } from '@/components/Panel';
 import { Workspace } from '@/features/workspace/Workspace';
@@ -13,6 +13,7 @@ import {
 } from '@/lib/data';
 import { getApiBaseUrl } from '@/lib/api/env';
 import { fetchProject } from '@/lib/api/projects';
+import { fetchProjectWorkspaces } from '@/lib/api/workspaces';
 import type { ApiCallError } from '@/lib/api/client';
 
 interface ProjectPageProps {
@@ -24,6 +25,14 @@ type ProjectLoad =
   | { source: 'api'; project: Project }
   | { source: 'mock'; project: Project }
   | { source: 'error'; message: string; project: Project | null };
+
+type WorkspacesSource = 'api' | 'mock' | 'api error';
+
+interface WorkspacesLoad {
+  source: WorkspacesSource;
+  workspaces: WorkspaceType[];
+  message?: string;
+}
 
 async function loadProject(id: string): Promise<ProjectLoad> {
   if (!getApiBaseUrl()) {
@@ -44,6 +53,23 @@ async function loadProject(id: string): Promise<ProjectLoad> {
   }
 }
 
+async function loadWorkspaces(projectId: string, projectFromApi: boolean): Promise<WorkspacesLoad> {
+  if (!projectFromApi || !getApiBaseUrl()) {
+    return { source: 'mock', workspaces: listWorkspacesForProject(projectId) };
+  }
+  try {
+    const workspaces = await fetchProjectWorkspaces(projectId);
+    return { source: 'api', workspaces };
+  } catch (err) {
+    const e = err as ApiCallError;
+    return {
+      source: 'api error',
+      workspaces: listWorkspacesForProject(projectId),
+      message: e.message ?? 'Unknown error',
+    };
+  }
+}
+
 export default async function ProjectPage({ params, searchParams }: ProjectPageProps) {
   const { id } = await params;
   const { workspace: workspaceParam } = await searchParams;
@@ -58,18 +84,24 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
     );
   }
 
+
+
   if (load.source === 'mock' && !load.project) {
     notFound();
   }
 
   const project = load.project!;
-  const projectWorkspaces = listWorkspacesForProject(project.id);
+  const wsLoad = await loadWorkspaces(project.id, load.source === 'api');
+  const projectWorkspaces = wsLoad.workspaces;
 
   if (projectWorkspaces.length === 0) {
     return (
-      <AppShell subtitle="Project" right={<SourceBadge load={load} />}>
+      <AppShell subtitle="Project" right={<BadgeRow load={load} ws={wsLoad} />}>
         {load.source === 'error' ? (
           <ErrorPanel title="Using cached project" message={load.message} />
+        ) : null}
+        {wsLoad.source === 'api error' ? (
+          <ErrorPanel title="Using cached workspaces" message={wsLoad.message ?? ''} />
         ) : null}
         <CenteredMessage
           title={project.name}
@@ -90,7 +122,7 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
   if (invalid) {
     const fallback = projectWorkspaces[0]!;
     return (
-      <AppShell subtitle="Project" right={<SourceBadge load={load} />}>
+      <AppShell subtitle="Project" right={<BadgeRow load={load} ws={wsLoad} />}>
         <CenteredMessage
           title="Workspace not found"
           subtitle={`The workspace "${workspaceParam}" does not belong to ${project.name}.`}
@@ -129,6 +161,57 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
       windows={ws}
       messagesByWindow={messagesByWindow}
     />
+  );
+}
+
+function BadgeRow({ load, ws }: { load: ProjectLoad; ws: WorkspacesLoad }) {
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+      <SourceBadge load={load} />
+      <WorkspacesBadge ws={ws} />
+    </span>
+  );
+}
+
+function WorkspacesBadge({ ws }: { ws: WorkspacesLoad }) {
+  const config =
+    ws.source === 'api'
+      ? { label: 'workspaces: api', color: '#10a37f' }
+      : ws.source === 'mock'
+        ? { label: 'workspaces: mock', color: '#8a8a95' }
+        : { label: 'workspaces: api error', color: '#d97757' };
+  const title =
+    ws.source === 'api error'
+      ? ws.message ?? 'Workspaces fetch failed; showing mock data'
+      : ws.source === 'mock'
+        ? 'Workspaces from local mock data'
+        : 'Workspaces fetched from the API';
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '2px 8px',
+        fontSize: '0.7rem',
+        color: '#e8e8ef',
+        background: `${config.color}1a`,
+        border: `1px solid ${config.color}55`,
+        borderRadius: 999,
+      }}
+      title={title}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: config.color,
+          display: 'inline-block',
+        }}
+      />
+      {config.label}
+    </span>
   );
 }
 

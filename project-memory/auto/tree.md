@@ -1,6 +1,6 @@
 # auto/tree.md
 
-Generated: 2026-04-21. Do not edit by hand.
+Generated: 2026-04-22. Do not edit by hand.
 
 ```
 .github/workflows/ci.yml
@@ -11,6 +11,7 @@ apps/api/src/config/env.ts
 apps/api/src/controllers/.gitkeep
 apps/api/src/controllers/health.controller.ts
 apps/api/src/controllers/projects.controller.ts
+apps/api/src/controllers/workspaces.controller.ts
 apps/api/src/index.ts
 apps/api/src/lib/.gitkeep
 apps/api/src/lib/http.ts
@@ -25,8 +26,10 @@ apps/api/src/routes/.gitkeep
 apps/api/src/routes/health.test.ts
 apps/api/src/routes/index.ts
 apps/api/src/routes/projects.test.ts
+apps/api/src/routes/workspaces.test.ts
 apps/api/src/services/.gitkeep
 apps/api/src/services/projects.service.ts
+apps/api/src/services/workspaces.service.ts
 apps/api/src/test/server-harness.ts
 apps/api/src/types/.gitkeep
 apps/api/tsconfig.json
@@ -56,6 +59,7 @@ apps/web/src/lib/.gitkeep
 apps/web/src/lib/api/client.ts
 apps/web/src/lib/api/env.ts
 apps/web/src/lib/api/projects.ts
+apps/web/src/lib/api/workspaces.ts
 apps/web/src/lib/data/index.ts
 apps/web/src/lib/data/presets.ts
 apps/web/src/lib/mocks/fixtures.ts

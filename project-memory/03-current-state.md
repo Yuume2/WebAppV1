@@ -13,7 +13,8 @@ Last verified: 2026-04-21.
 - `feat/integration-homepage-projects` — up-to-date with origin.
 - `feat/api-project-detail` — pushed to origin. Param router + `GET /v1/projects/:id` + `HttpError`.
 - `feat/web-project-detail-api` — pushed. `/project/[id]` wired to real detail endpoint with mock fallback + error panel + source badge.
-- `feat/api-project-workspaces` — **current**. `GET /v1/projects/:id/workspaces` + seeded store (ids aligned with web mocks) + 3 new tests (13 total, all green).
+- `feat/api-project-workspaces` — pushed. `GET /v1/projects/:id/workspaces` + seeded store (ids aligned with web mocks) + 3 new tests (13 total, all green).
+- `feat/web-project-workspaces-api` — **current**. `/project/[id]` workspaces fetched from real API with mock fallback + dual source badges (project + workspaces) + workspaces error panel.
 
 ## Done
 
@@ -41,7 +42,7 @@ Last verified: 2026-04-21.
 - No project detail / workspace / chat endpoints.
 - No write endpoints (create/update/delete projects).
 - No conversation persistence.
-- Frontend project detail page now calls `GET /v1/projects/:id`. Workspaces endpoint exists on `feat/api-project-workspaces` but frontend not yet wired to it. Windows still mock-only (no endpoint).
+- Frontend project detail page now calls `GET /v1/projects/:id` and `GET /v1/projects/:id/workspaces` (with mock fallback). Windows still mock-only (no endpoint).
 
 ## Next obvious steps
 
