@@ -14,13 +14,20 @@ const USER_2 = { id: 'user-2', email: 'bob@example.com' };
 
 function mockMessage(chatWindowId: string, overrides: Partial<{
   id: string; role: MessageRole; content: string; createdAt: Date;
+  provider: AIProvider | null; model: string | null;
+  promptTokens: number | null; completionTokens: number | null; latencyMs: number | null;
 }> = {}) {
   return {
-    id:           'msg-1',
+    id:               'msg-1',
     chatWindowId,
-    role:         'user' as MessageRole,
-    content:      'Hello',
-    createdAt:    new Date('2026-01-01T00:00:00Z'),
+    role:             'user' as MessageRole,
+    content:          'Hello',
+    provider:         null as AIProvider | null,
+    model:            null as string | null,
+    promptTokens:     null as number | null,
+    completionTokens: null as number | null,
+    latencyMs:        null as number | null,
+    createdAt:        new Date('2026-01-01T00:00:00Z'),
     ...overrides,
   };
 }
@@ -263,6 +270,55 @@ describe('POST /v1/messages — openai generation path', () => {
     expect(body.data.assistantMessage.content).toBe('Hello human!');
     // API key must not appear in response
     expect(JSON.stringify(body)).not.toContain('sk-test-key');
+    await close();
+  });
+
+  it('persists provider metadata on the assistant row (provider, model, tokens, latencyMs)', async () => {
+    let capturedMetadata: unknown = undefined;
+    const userMsg = mockMessage('cw-1', { id: 'u', role: 'user', content: 'Hi' });
+    // assistantRow echoes the metadata persisted by the repo.
+    const assistMsg = mockMessage('cw-1', {
+      id: 'a', role: 'assistant', content: 'Hello!',
+      provider: 'openai', model: 'gpt-4o-mini',
+      promptTokens: 12, completionTokens: 7, latencyMs: 42,
+    });
+
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-key',
+      listMessages:   async () => [],
+      generate:       async () => ({ content: 'Hello!', model: 'gpt-4o-mini', usage: { promptTokens: 12, completionTokens: 7, totalTokens: 19 } }),
+      persistMessagePair: async (_cw, _uid, _uc, _ac, metadata) => {
+        capturedMetadata = metadata;
+        return { userRow: userMsg, assistantRow: assistMsg };
+      },
+    }));
+
+    const res = await post(baseUrl, '/v1/messages', { chatWindowId: 'cw-1', role: 'user', content: 'Hi' });
+    expect(res.status).toBe(201);
+
+    // Metadata must be forwarded to the repo.
+    expect(capturedMetadata).toBeDefined();
+    const meta = capturedMetadata as Record<string, unknown>;
+    expect(meta['provider']).toBe('openai');
+    expect(meta['model']).toBe('gpt-4o-mini');
+    expect(meta['promptTokens']).toBe(12);
+    expect(meta['completionTokens']).toBe(7);
+    expect(typeof meta['latencyMs']).toBe('number');
+    expect(meta['latencyMs'] as number).toBeGreaterThanOrEqual(0);
+
+    // And it must surface back on the assistant message in the response.
+    const body = (await res.json()) as ApiResponse<GeneratedMessagePair>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data.assistantMessage.provider).toBe('openai');
+    expect(body.data.assistantMessage.model).toBe('gpt-4o-mini');
+    expect(body.data.assistantMessage.promptTokens).toBe(12);
+    expect(body.data.assistantMessage.completionTokens).toBe(7);
+    expect(body.data.assistantMessage.latencyMs).toBe(42);
+    // User message carries no metadata.
+    expect(body.data.userMessage.provider).toBeNull();
+    expect(body.data.userMessage.promptTokens).toBeNull();
     await close();
   });
 

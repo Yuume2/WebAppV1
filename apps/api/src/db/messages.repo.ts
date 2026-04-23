@@ -1,10 +1,23 @@
 import { asc, eq } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import type { MessageRole } from '@webapp/types';
+import type { AIProvider, MessageRole } from '@webapp/types';
 import { messages } from './schema.js';
 import { findChatWindowById } from './chat-windows.repo.js';
 
 export type Db = PostgresJsDatabase;
+
+/**
+ * Provider metadata attached to a provider-generated message. All fields
+ * mirror the columns added to the `messages` table and are nullable at the
+ * DB level; passing undefined omits the field from the insert.
+ */
+export interface AssistantMessageMetadata {
+  provider:         AIProvider;
+  model:            string;
+  promptTokens:     number;
+  completionTokens: number;
+  latencyMs:        number;
+}
 
 /**
  * Returns messages for the chat window, or null if the chat window doesn't
@@ -46,6 +59,10 @@ export async function createMessage(
  * Inserts a user message and assistant message atomically.
  * Returns null if the chat window doesn't exist or isn't owned by userId.
  * Either both rows are written or neither.
+ *
+ * Provider metadata (if supplied) is persisted on the assistant row only —
+ * it describes the provider call that produced that reply. The user row
+ * keeps its metadata columns null.
  */
 export async function insertMessagePair(
   db: Db,
@@ -53,6 +70,7 @@ export async function insertMessagePair(
   userId: string,
   userContent: string,
   assistantContent: string,
+  assistantMetadata?: AssistantMessageMetadata,
 ): Promise<{ userRow: typeof messages.$inferSelect; assistantRow: typeof messages.$inferSelect } | null> {
   const cw = await findChatWindowById(db, chatWindowId, userId);
   if (!cw) return null;
@@ -63,7 +81,12 @@ export async function insertMessagePair(
       .returning();
     const [assistantRow] = await tx
       .insert(messages)
-      .values({ chatWindowId, role: 'assistant', content: assistantContent })
+      .values({
+        chatWindowId,
+        role: 'assistant',
+        content: assistantContent,
+        ...(assistantMetadata ?? {}),
+      })
       .returning();
     return { userRow: userRow!, assistantRow: assistantRow! };
   });

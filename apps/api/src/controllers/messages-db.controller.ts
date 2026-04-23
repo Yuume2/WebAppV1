@@ -13,7 +13,7 @@ import {
 } from '../lib/http.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import { env } from '../config/env.js';
-import type { Db } from '../db/messages.repo.js';
+import type { Db, AssistantMessageMetadata } from '../db/messages.repo.js';
 import * as messagesRepo from '../db/messages.repo.js';
 import * as chatWindowsRepo from '../db/chat-windows.repo.js';
 import { getDecryptedApiKey } from '../db/provider-connections.repo.js';
@@ -27,6 +27,11 @@ interface DbMessage {
   chatWindowId: string;
   role: MessageRole;
   content: string;
+  provider:         AIProvider | null;
+  model:            string | null;
+  promptTokens:     number | null;
+  completionTokens: number | null;
+  latencyMs:        number | null;
   createdAt: Date;
 }
 
@@ -51,7 +56,7 @@ export interface MessagesDeps {
   resolveUser:    (req: IncomingMessage) => Promise<{ id: string } | null>;
   listMessages:   (chatWindowId: string, userId: string) => Promise<DbMessage[] | null>;
   createMessage:  (chatWindowId: string, userId: string, role: MessageRole, content: string) => Promise<DbMessage | null>;
-  persistMessagePair: (chatWindowId: string, userId: string, userContent: string, assistantContent: string) => Promise<{ userRow: DbMessage; assistantRow: DbMessage } | null>;
+  persistMessagePair: (chatWindowId: string, userId: string, userContent: string, assistantContent: string, assistantMetadata?: AssistantMessageMetadata) => Promise<{ userRow: DbMessage; assistantRow: DbMessage } | null>;
   findMessage:    (id: string, userId: string) => Promise<DbMessage | null>;
   // Provider generation deps — used only when posting a user message to an openai chat window.
   findChatWindow:    (chatWindowId: string, userId: string) => Promise<DbChatWindow | null>;
@@ -65,7 +70,7 @@ export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps
     resolveUser:    (req)                                 => resolveCurrentUser(req, sessionDeps),
     listMessages:   (chatWindowId, userId)                => messagesRepo.listMessagesByChatWindowAndUser(db, chatWindowId, userId),
     createMessage:  (chatWindowId, userId, role, content) => messagesRepo.createMessage(db, chatWindowId, userId, role, content),
-    persistMessagePair: (chatWindowId, userId, userContent, assistantContent) => messagesRepo.insertMessagePair(db, chatWindowId, userId, userContent, assistantContent),
+    persistMessagePair: (chatWindowId, userId, userContent, assistantContent, assistantMetadata) => messagesRepo.insertMessagePair(db, chatWindowId, userId, userContent, assistantContent, assistantMetadata),
     findMessage:    (id, userId)                          => messagesRepo.findMessageById(db, id, userId),
     findChatWindow:    (chatWindowId, userId)              => chatWindowsRepo.findChatWindowById(db, chatWindowId, userId),
     getApiKey:         (userId, provider)                  => getDecryptedApiKey(db, userId, provider),
@@ -86,11 +91,16 @@ function isMessageRole(v: unknown): v is MessageRole {
 
 function toMessage(row: DbMessage): Message {
   return {
-    id:           row.id,
-    chatWindowId: row.chatWindowId,
-    role:         row.role,
-    content:      row.content,
-    createdAt:    row.createdAt.toISOString(),
+    id:               row.id,
+    chatWindowId:     row.chatWindowId,
+    role:             row.role,
+    content:          row.content,
+    provider:         row.provider,
+    model:            row.model,
+    promptTokens:     row.promptTokens,
+    completionTokens: row.completionTokens,
+    latencyMs:        row.latencyMs,
+    createdAt:        row.createdAt.toISOString(),
   };
 }
 
@@ -164,15 +174,27 @@ export async function createMessageDbController(
       ];
 
       let completion: ChatCompletionResult;
+      const startedAt = Date.now();
       try {
         completion = await deps.generate(apiKey, contextMessages, cw.model);
       } catch (err) {
         const detail = err instanceof Error ? err.message : 'Unknown provider error';
         return respondError('internal_error', `Provider call failed: ${detail}`, 502);
       }
+      const latencyMs = Date.now() - startedAt;
+
+      // Provider metadata persisted on the assistant row only — describes the
+      // call that produced the reply (cost tracking, observability, debugging).
+      const assistantMetadata: AssistantMessageMetadata = {
+        provider:         cw.provider,
+        model:            completion.model,
+        promptTokens:     completion.usage.promptTokens,
+        completionTokens: completion.usage.completionTokens,
+        latencyMs,
+      };
 
       // Persist both messages atomically — if either insert fails, neither is committed.
-      const pair = await deps.persistMessagePair(chatWindowId, user.id, content, completion.content);
+      const pair = await deps.persistMessagePair(chatWindowId, user.id, content, completion.content, assistantMetadata);
       if (pair === null) return respondNotFound(`ChatWindow ${chatWindowId} not found`);
 
       return respondCreated(

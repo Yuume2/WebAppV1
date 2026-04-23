@@ -36,6 +36,12 @@ export interface Message {
   chatWindowId: string;
   role: MessageRole;
   content: string;
+  /** Populated for provider-generated messages; null for user / manual inserts. */
+  provider?: AIProvider | null;
+  model?: string | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  latencyMs?: number | null;
   createdAt: ISODateString;
 }
 

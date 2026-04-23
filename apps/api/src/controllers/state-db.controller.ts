@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import { inArray } from 'drizzle-orm';
-import type { AppState, ChatWindow, Message, Project, Workspace } from '@webapp/types';
+import type { AIProvider, AppState, ChatWindow, Message, Project, Workspace } from '@webapp/types';
 import {
   respond,
   respondError,
@@ -116,13 +116,23 @@ function toChatWindow(row: { id: string; workspaceId: string; title: string; pro
   };
 }
 
-function toMessage(row: { id: string; chatWindowId: string; role: 'user' | 'assistant' | 'system'; content: string; createdAt: Date }): Message {
+function toMessage(row: {
+  id: string; chatWindowId: string; role: 'user' | 'assistant' | 'system'; content: string;
+  provider: AIProvider | null; model: string | null;
+  promptTokens: number | null; completionTokens: number | null; latencyMs: number | null;
+  createdAt: Date;
+}): Message {
   return {
-    id:           row.id,
-    chatWindowId: row.chatWindowId,
-    role:         row.role,
-    content:      row.content,
-    createdAt:    row.createdAt.toISOString(),
+    id:               row.id,
+    chatWindowId:     row.chatWindowId,
+    role:             row.role,
+    content:          row.content,
+    provider:         row.provider,
+    model:            row.model,
+    promptTokens:     row.promptTokens,
+    completionTokens: row.completionTokens,
+    latencyMs:        row.latencyMs,
+    createdAt:        row.createdAt.toISOString(),
   };
 }
 

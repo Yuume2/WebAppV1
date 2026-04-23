@@ -4,6 +4,7 @@ import {
   uuid,
   text,
   timestamp,
+  integer,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
@@ -105,13 +106,21 @@ export const chatWindows = pgTable('chat_windows', {
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 // Messages are append-only — no updated_at.
+// Provider metadata columns are nullable: they are populated only for messages
+// generated via a provider call (typically assistant replies). User messages,
+// manually inserted assistant messages, and pre-existing rows leave them null.
 
 export const messages = pgTable('messages', {
-  id:           uuid('id').primaryKey().defaultRandom(),
-  chatWindowId: uuid('chat_window_id').notNull().references(() => chatWindows.id, { onDelete: 'cascade' }),
-  role:         messageRoleEnum('role').notNull(),
-  content:      text('content').notNull(),
-  createdAt:    timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  id:               uuid('id').primaryKey().defaultRandom(),
+  chatWindowId:     uuid('chat_window_id').notNull().references(() => chatWindows.id, { onDelete: 'cascade' }),
+  role:             messageRoleEnum('role').notNull(),
+  content:          text('content').notNull(),
+  provider:         aiProviderEnum('provider'),
+  model:            text('model'),
+  promptTokens:     integer('prompt_tokens'),
+  completionTokens: integer('completion_tokens'),
+  latencyMs:        integer('latency_ms'),
+  createdAt:        timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [
   index('messages_chat_window_id_created_at_idx').on(t.chatWindowId, t.createdAt),
 ]);
