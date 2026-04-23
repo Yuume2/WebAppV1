@@ -10,6 +10,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { generateRequestId } from '../lib/request-id.js';
 import type { Router } from '../lib/router.js';
+import { captureException } from '../lib/sentry.js';
 
 export async function handleRequest(
   router: Router,
@@ -79,6 +80,13 @@ export async function handleRequest(
       return;
     }
     const message = err instanceof Error ? err.message : 'Unknown error';
+    // Capture only the unexpected branch — HttpError above is an expected
+    // validation/not-found/etc. flow and would be noise in Sentry.
+    captureException(err, {
+      requestId,
+      method: rawMethod,
+      path,
+    });
     writeJson(res, 500, fail('internal_error', 'Internal server error'), requestId);
     logger.error('request failed', {
       requestId,

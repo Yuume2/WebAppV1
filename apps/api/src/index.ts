@@ -1,3 +1,8 @@
+// Sentry must be initialized before anything else so it can observe the full
+// lifetime of the process. Safe no-op when SENTRY_DSN_API is unset.
+import { initSentry, flushSentry } from './lib/sentry.js';
+initSentry();
+
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { createApiServer } from './lib/server.js';
@@ -14,8 +19,11 @@ server.listen(env.port, () => {
 
 function shutdown(signal: string): void {
   logger.info('api shutting down', { signal });
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(1), 5000).unref();
+  const hardExit = setTimeout(() => process.exit(1), 5000);
+  hardExit.unref();
+  void flushSentry().finally(() => {
+    server.close(() => process.exit(0));
+  });
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'));

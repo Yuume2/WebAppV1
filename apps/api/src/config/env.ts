@@ -2,6 +2,9 @@ export interface ApiEnv {
   port: number;
   nodeEnv: 'development' | 'production' | 'test';
   serviceVersion: string;
+  sentryDsn: string | undefined;
+  sentryEnvironment: string | undefined;
+  sentryRelease: string | undefined;
 }
 
 function parsePort(raw: string | undefined, fallback: number): number {
@@ -18,8 +21,17 @@ function parseNodeEnv(raw: string | undefined): ApiEnv['nodeEnv'] {
   return 'development';
 }
 
+function cleanString(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+}
+
 export const env: ApiEnv = {
   port: parsePort(process.env.API_PORT, 4000),
   nodeEnv: parseNodeEnv(process.env.NODE_ENV),
   serviceVersion: process.env.API_VERSION ?? '0.1.0',
+  sentryDsn: cleanString(process.env.SENTRY_DSN_API),
+  sentryEnvironment: cleanString(process.env.SENTRY_ENVIRONMENT),
+  sentryRelease: cleanString(process.env.SENTRY_RELEASE),
 };
