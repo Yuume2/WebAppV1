@@ -1,116 +1,82 @@
 import type { HttpMethod, RouteDefinition, RouteHandler } from './http.js';
 
-export interface RouteMatch {
+export interface MatchResult {
   handler: RouteHandler;
   params: Record<string, string>;
 }
 
-interface CompiledRoute {
-  path: string;
-  segments: Array<{ kind: 'literal'; value: string } | { kind: 'param'; name: string }>;
+interface PatternEntry {
+  pattern: RegExp;
+  paramNames: string[];
   handler: RouteHandler;
 }
 
-function compile(path: string): CompiledRoute['segments'] {
-  if (path[0] !== '/') throw new Error(`Route path must start with "/": "${path}"`);
-  if (path === '/') return [];
-  const parts = path.slice(1).split('/');
-  return parts.map((part) => {
-    if (part.startsWith(':')) {
-      const name = part.slice(1);
-      if (!name) throw new Error(`Invalid param in route "${path}"`);
-      return { kind: 'param', name };
-    }
-    return { kind: 'literal', value: part };
-  });
-}
-
-function splitPath(path: string): string[] {
-  if (path === '/') return [];
-  return path.slice(1).split('/');
-}
-
 export class Router {
-  private readonly literal = new Map<HttpMethod, Map<string, RouteHandler>>();
-  private readonly patterned = new Map<HttpMethod, CompiledRoute[]>();
-  private readonly allPaths = new Set<string>();
+  private readonly exactByMethod = new Map<HttpMethod, Map<string, RouteHandler>>();
+  private readonly patternByMethod = new Map<HttpMethod, PatternEntry[]>();
 
   register(route: RouteDefinition): void {
-    const segments = compile(route.path);
-    const hasParam = segments.some((s) => s.kind === 'param');
-
-    if (!hasParam) {
-      const table = this.literal.get(route.method) ?? new Map<string, RouteHandler>();
-      if (table.has(route.path)) throw new Error(`Duplicate route ${route.method} ${route.path}`);
-      table.set(route.path, route.handler);
-      this.literal.set(route.method, table);
+    if (route.path.includes(':')) {
+      const paramNames: string[] = [];
+      const regexStr = route.path.replace(/:([^/]+)/g, (_, name: string) => {
+        paramNames.push(name);
+        return '([^/]+)';
+      });
+      const pattern = new RegExp(`^${regexStr}$`);
+      const entries = this.patternByMethod.get(route.method) ?? [];
+      entries.push({ pattern, paramNames, handler: route.handler });
+      this.patternByMethod.set(route.method, entries);
     } else {
-      const list = this.patterned.get(route.method) ?? [];
-      if (list.some((r) => r.path === route.path)) {
+      const table = this.exactByMethod.get(route.method) ?? new Map<string, RouteHandler>();
+      if (table.has(route.path)) {
         throw new Error(`Duplicate route ${route.method} ${route.path}`);
       }
-      list.push({ path: route.path, segments, handler: route.handler });
-      this.patterned.set(route.method, list);
+      table.set(route.path, route.handler);
+      this.exactByMethod.set(route.method, table);
     }
-
-    this.allPaths.add(route.path);
   }
 
   registerAll(routes: RouteDefinition[]): void {
     for (const r of routes) this.register(r);
   }
 
-  match(method: HttpMethod, path: string): RouteMatch | null {
-    const literalHit = this.literal.get(method)?.get(path);
-    if (literalHit) return { handler: literalHit, params: {} };
+  match(method: HttpMethod, path: string): MatchResult | null {
+    const exact = this.exactByMethod.get(method)?.get(path);
+    if (exact) return { handler: exact, params: {} };
 
-    const patternList = this.patterned.get(method);
-    if (!patternList?.length) return null;
-
-    const requestSegments = splitPath(path);
-    for (const route of patternList) {
-      if (route.segments.length !== requestSegments.length) continue;
-      const params: Record<string, string> = {};
-      let matched = true;
-      for (let i = 0; i < route.segments.length; i++) {
-        const expected = route.segments[i]!;
-        const actual = requestSegments[i]!;
-        if (expected.kind === 'literal') {
-          if (expected.value !== actual) {
-            matched = false;
-            break;
-          }
-        } else {
-          if (!actual) {
-            matched = false;
-            break;
-          }
-          params[expected.name] = decodeURIComponent(actual);
-        }
+    for (const entry of this.patternByMethod.get(method) ?? []) {
+      const m = path.match(entry.pattern);
+      if (m) {
+        const params: Record<string, string> = {};
+        entry.paramNames.forEach((name, i) => { params[name] = decodeURIComponent(m[i + 1] ?? ''); });
+        return { handler: entry.handler, params };
       }
-      if (matched) return { handler: route.handler, params };
     }
     return null;
   }
 
   hasPath(path: string): boolean {
-    if (this.allPaths.has(path)) return true;
-    const requestSegments = splitPath(path);
-    for (const list of this.patterned.values()) {
-      for (const route of list) {
-        if (route.segments.length !== requestSegments.length) continue;
-        let ok = true;
-        for (let i = 0; i < route.segments.length; i++) {
-          const expected = route.segments[i]!;
-          const actual = requestSegments[i]!;
-          if (expected.kind === 'literal' && expected.value !== actual) {
-            ok = false;
-            break;
-          }
-        }
-        if (ok) return true;
+    for (const table of this.exactByMethod.values()) {
+      if (table.has(path)) return true;
+    }
+    for (const entries of this.patternByMethod.values()) {
+      for (const entry of entries) {
+        if (entry.pattern.test(path)) return true;
       }
     }
     return false;
+  }
+
+  allowedMethods(path: string): HttpMethod[] {
+    const methods: HttpMethod[] = [];
+    for (const [method, table] of this.exactByMethod) {
+      if (table.has(path)) methods.push(method);
+    }
+    for (const [method, entries] of this.patternByMethod) {
+      for (const entry of entries) {
+        if (entry.pattern.test(path)) { methods.push(method); break; }
+      }
+    }
+    return methods;
   }
 }

@@ -2,6 +2,13 @@ export interface ApiEnv {
   port: number;
   nodeEnv: 'development' | 'production' | 'test';
   serviceVersion: string;
+  corsOrigin: string;
+  maxBodyBytes: number;
+  enableDevEndpoints: boolean;
+  databaseUrl: string | undefined;
+  providerEncryptionKey: string | undefined;
+  providerEncryptionKeyBuffer: Buffer | undefined;
+  openaiMaxContextMessages: number;
   sentryDsn: string | undefined;
   sentryEnvironment: string | undefined;
   sentryRelease: string | undefined;
@@ -21,16 +28,84 @@ function parseNodeEnv(raw: string | undefined): ApiEnv['nodeEnv'] {
   return 'development';
 }
 
+function parseMaxBodyBytes(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid API_MAX_BODY_BYTES: "${raw}"`);
+  }
+  return parsed;
+}
+
+function parseContextLimit(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid OPENAI_MAX_CONTEXT_MESSAGES: "${raw}" must be a positive integer`);
+  }
+  return parsed;
+}
+
 function cleanString(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();
   return trimmed.length === 0 ? undefined : trimmed;
 }
 
+export function parseProviderEncryptionKey(
+  raw: string | undefined,
+  databaseUrl: string | undefined,
+): Buffer | undefined {
+  if (raw) {
+    if (raw.length !== 64 || !/^[0-9a-fA-F]{64}$/.test(raw)) {
+      throw new Error(
+        'PROVIDER_ENCRYPTION_KEY must be a 64-character hex string (32 bytes). ' +
+        'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+      );
+    }
+    return Buffer.from(raw, 'hex');
+  }
+
+  if (databaseUrl) {
+    throw new Error(
+      'PROVIDER_ENCRYPTION_KEY is required when DATABASE_URL is set. ' +
+      'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+    );
+  }
+
+  return undefined;
+}
+
+export function getStartupWarnings(cfg: Pick<ApiEnv, 'databaseUrl' | 'corsOrigin'>): string[] {
+  const warnings: string[] = [];
+
+  if (cfg.databaseUrl && cfg.corsOrigin === '*') {
+    warnings.push(
+      'CORS_ORIGIN is set to "*" but DATABASE_URL is configured. ' +
+      'Browser cookie-based session auth will not work cross-origin with a wildcard origin. ' +
+      'Set CORS_ORIGIN to an explicit URL (e.g. http://localhost:3000).',
+    );
+  }
+
+  return warnings;
+}
+
+const nodeEnv = parseNodeEnv(process.env.NODE_ENV);
+const databaseUrl = process.env.DATABASE_URL;
+
 export const env: ApiEnv = {
   port: parsePort(process.env.API_PORT, 4000),
-  nodeEnv: parseNodeEnv(process.env.NODE_ENV),
+  nodeEnv,
   serviceVersion: process.env.API_VERSION ?? '0.1.0',
+  corsOrigin: process.env.CORS_ORIGIN ?? '*',
+  maxBodyBytes: parseMaxBodyBytes(process.env.API_MAX_BODY_BYTES, 100 * 1024),
+  enableDevEndpoints: process.env.ENABLE_DEV_ENDPOINTS !== undefined
+    ? process.env.ENABLE_DEV_ENDPOINTS === 'true'
+    : nodeEnv !== 'production',
+  databaseUrl,
+  providerEncryptionKey: process.env.PROVIDER_ENCRYPTION_KEY,
+  providerEncryptionKeyBuffer: parseProviderEncryptionKey(process.env.PROVIDER_ENCRYPTION_KEY, databaseUrl),
+  openaiMaxContextMessages: parseContextLimit(process.env.OPENAI_MAX_CONTEXT_MESSAGES, 20),
   sentryDsn: cleanString(process.env.SENTRY_DSN_API),
   sentryEnvironment: cleanString(process.env.SENTRY_ENVIRONMENT),
   sentryRelease: cleanString(process.env.SENTRY_RELEASE),

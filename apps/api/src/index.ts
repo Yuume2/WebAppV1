@@ -3,9 +3,13 @@
 import { initSentry, flushSentry } from './lib/sentry.js';
 initSentry();
 
-import { env } from './config/env.js';
+import { env, getStartupWarnings } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { createApiServer } from './lib/server.js';
+
+for (const warning of getStartupWarnings(env)) {
+  logger.warn('startup config warning', { detail: warning });
+}
 
 const server = createApiServer();
 
