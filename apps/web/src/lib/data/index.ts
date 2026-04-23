@@ -43,8 +43,8 @@ export function getWindowsForWorkspace(workspaceId: string): ChatWindow[] {
   return windows.filter((w) => w.workspaceId === workspaceId);
 }
 
-export function getMessagesForWindow(windowId: string): MockMessage[] {
-  return messages.filter((m) => m.windowId === windowId);
+export function getMessagesForWindow(chatWindowId: string): MockMessage[] {
+  return messages.filter((m) => m.chatWindowId === chatWindowId);
 }
 
 export function getProjectView(

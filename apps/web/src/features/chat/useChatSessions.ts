@@ -4,31 +4,31 @@ import { useCallback, useState } from 'react';
 import type { MockMessage } from '@/lib/data';
 
 export interface ChatSessionsApi {
-  getMessages: (windowId: string) => MockMessage[];
-  sendUserMessage: (windowId: string, content: string) => void;
+  getMessages: (chatWindowId: string) => MockMessage[];
+  sendUserMessage: (chatWindowId: string, content: string) => void;
 }
 
 export function useChatSessions(initial: Record<string, MockMessage[]>): ChatSessionsApi {
   const [sessions, setSessions] = useState<Record<string, MockMessage[]>>(initial);
 
   const getMessages = useCallback(
-    (windowId: string) => sessions[windowId] ?? [],
+    (chatWindowId: string) => sessions[chatWindowId] ?? [],
     [sessions],
   );
 
-  const sendUserMessage = useCallback((windowId: string, content: string) => {
+  const sendUserMessage = useCallback((chatWindowId: string, content: string) => {
     const trimmed = content.trim();
     if (!trimmed) return;
     setSessions((prev) => {
-      const current = prev[windowId] ?? [];
+      const current = prev[chatWindowId] ?? [];
       const next: MockMessage = {
-        id: `local-${windowId}-${Date.now()}`,
-        windowId,
+        id: `local-${chatWindowId}-${Date.now()}`,
+        chatWindowId,
         role: 'user',
         content: trimmed,
         createdAt: new Date().toISOString(),
       };
-      return { ...prev, [windowId]: [...current, next] };
+      return { ...prev, [chatWindowId]: [...current, next] };
     });
   }, []);
 

@@ -7,8 +7,8 @@ import { WINDOW_PRESETS } from '@/lib/data';
 
 interface WorkspaceCanvasProps {
   visibleWindows: ChatWindowType[];
-  getMessages: (windowId: string) => MockMessage[];
-  onSend: (windowId: string, content: string) => void;
+  getMessages: (chatWindowId: string) => MockMessage[];
+  onSend: (chatWindowId: string, content: string) => void;
   activeId: string | null;
   hasClosed: boolean;
   onClose: (id: string) => void;
