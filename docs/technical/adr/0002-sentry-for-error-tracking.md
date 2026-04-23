@@ -22,14 +22,16 @@ Adopt Sentry for both apps.
   (already the single centralized error path).
 - **Web** — `@sentry/nextjs`, standard wizard integration.
 
-DSNs are read from `SENTRY_DSN` (server) and `NEXT_PUBLIC_SENTRY_DSN` (client).
-Both are empty by default — Sentry stays disabled in dev and in any env that does
-not set them.
+DSNs are read from `SENTRY_DSN_API` (server) and `NEXT_PUBLIC_SENTRY_DSN`
+(client). Both are empty by default — Sentry stays disabled in dev and in any
+env that does not set them. Two optional server knobs are available:
+`SENTRY_ENVIRONMENT` (defaults to `NODE_ENV`) and `SENTRY_RELEASE`.
 
 Scope for the first integration:
 
 - Unhandled error capture only.
-- Error sampling 100%; transaction sampling 10% in production, 0% elsewhere.
+- Error sampling 100%; transaction sampling disabled (`tracesSampleRate: 0`).
+  10% prod / 0% elsewhere is the plan for the follow-up performance PR.
 - No performance tracing, no session replay, no release health — deferred.
 
 ## Consequences

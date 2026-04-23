@@ -15,6 +15,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@sentry/node": "^8.47.0",
     "@webapp/config": "workspace:*",
     "@webapp/types": "workspace:*"
   },
