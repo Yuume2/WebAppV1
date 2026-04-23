@@ -1,71 +1,116 @@
-# CLAUDE.md — WebAppV1
+# CLAUDE.md — Règles agents WebAppV1
 
-Entry point for Claude sessions. Read this first. Keep it short. Stay on-task.
+> Ce fichier cadre le travail de toute session Claude opérant sur ce repo.
+> Il est maintenu par X uniquement.
+> La source de vérité détaillée vit dans [`project-memory/CHARTE.md`](project-memory/CHARTE.md).
 
-## Project, one line
+---
 
-AI Workspace monorepo. Users connect their own AI provider keys (OpenAI, Anthropic, Perplexity) and organize multi-window chats inside projects.
+## Avant toute action
 
-## Source of truth
+1. Lire [`STATUS.md`](STATUS.md) à la racine.
+2. Lire les briefs actifs dans [`project-memory/briefs/`](project-memory/briefs/).
+3. Identifier ton rôle (X, L, ou E) et vérifier que tu travailles dans ton scope.
 
-- **Git repo = truth.** Not chat history, not Obsidian, not prior session memory.
-- `project-memory/` = structured memory in the repo. Lives in Git. Versioned.
-- Obsidian = human reader view only.
-- If memory contradicts code, trust code. Fix memory.
+---
 
-## What to read first (token-minimal path)
+## Rôles
 
-Order depends on task:
+### X — Technical lead / intégrateur
 
-1. Always: `project-memory/00-overview.md` (~1min read)
-2. Always: `project-memory/03-current-state.md`
-3. Task-specific:
-   - Frontend → `project-memory/agent-entry-frontend.md` + `06-frontend-map.md`
-   - Backend  → `project-memory/agent-entry-backend.md`  + `05-api-map.md` + `07-backend-map.md`
-   - Full → `project-memory/agent-entry-fullstack.md`
-4. For big picture → `01-architecture.md`, `02-decisions.md`
-5. For recent context → `08-recent-changes.md`
+**Scope exclusif :**
+- `packages/types/**`, `packages/config/**`, `packages/ui/**` (schéma)
+- `prisma/**`, `turbo.json`, `tsconfig.base.json`
+- `.github/workflows/**`
+- `CLAUDE.md`, `project-memory/**`, `docs/adr/**`, `STATUS.md`, `CONTRIBUTING.md`
 
-Skip the rest unless needed. Don't read the whole codebase.
+**Tâches :**
+- Écrit les contrats partagés (`@webapp/types`)
+- Rédige les ADRs
+- Seul à merger sur `main`
+- Maintient `STATUS.md`
+- Produit aussi du code réel (pas uniquement de la doc)
 
-## Rules
+### L — Backend
 
-- Repo is truth. Update memory when reality changes.
-- Don't invent state. If unsure, check code or say so.
-- Don't add features, abstractions, or comments not requested.
-- Don't write summaries in code files. Docstrings allowed when non-obvious.
-- Never force-push, reset --hard, or rewrite shared history without explicit ask.
-- Uncommitted work may exist. Check `git status` before destructive ops.
-- Conventional commits: `feat(scope): …`, `fix(scope): …`, `chore(scope): …`.
-- Branch pattern: `feat/<scope>-<slug>`. PRs target `main`.
+**Scope exclusif :** `apps/api/**`
 
-## Token budget hygiene
+**Tâches :**
+- Persistance, auth, providers, endpoints d'écriture
+- Toujours contre des contrats `@webapp/types` déjà sur `main`
+- Ne modifie jamais `packages/types` directement
+- Tests backend
 
-- Prefer `project-memory/` summaries over re-reading source.
-- Use `Grep` / `Glob` before `Read`. Avoid reading whole files.
-- For code search across repo, delegate to Explore/chercheur agent.
-- Update `08-recent-changes.md` at end of a working session, not mid-session.
+### E — Frontend
 
-## Stack reminders
+**Scope exclusif :** `apps/web/**`
+**Lecture seule :** `packages/ui/**`, `packages/types/**`
 
-- pnpm workspaces + Turborepo, TS strict.
-- `apps/web` = Next.js 15 App Router.
-- `apps/api` = Node.js HTTP (no framework), custom router.
-- `packages/{types,config,ui}` = shared `@webapp/*`.
-- Node >= 20, pnpm 9.15.0.
+**Tâches :**
+- Auth UX, flows d'écriture, streaming chat UI
+- Consomme `packages/types`, ne redéfinit jamais de types partagés
+- Client API typé unique : `apps/web/src/lib/api/`
 
-## Common commands
+---
 
-```bash
-pnpm install
-pnpm dev                             # all apps
-pnpm --filter @webapp/web dev        # web only
-pnpm --filter @webapp/api dev        # api only
-pnpm typecheck
-pnpm test
-pnpm build
+## Règles non négociables
+
+1. **Un owner par chemin.** Hors scope = review X obligatoire.
+2. **Contrats avant features.** E et L attendent que `@webapp/types` soit mergé.
+3. **Branches :** `x/<topic>`, `l/<topic>`, `e/<topic>`.
+4. **`@webapp/types` = X seul.**
+5. **Aucun import cross-app.** `apps/web` ↛ `apps/api` et inverse. Vérifié par CI.
+6. **Pas de type partagé dupliqué localement.**
+7. **Merge sur `main` = X seul.**
+8. **TODO = issue GitHub ouverte.**
+
+---
+
+## Fichiers sacrés (X seul modifie)
+
+```
+packages/types/**
+packages/config/**
+prisma/schema.prisma
+prisma/migrations/**
+turbo.json
+tsconfig.base.json
+.github/workflows/**
+CLAUDE.md
+project-memory/**
+docs/adr/**
+STATUS.md
 ```
 
-## Update the memory
+---
 
-When code changes break a file in `project-memory/`, fix that file in the same PR. That's the deal.
+## Format PR
+
+**Titre :** `[<owner>] <vague> — <action courte>`
+Exemple : `[L] W1 — Migration des endpoints read vers Prisma`
+
+**Corps :** but, scope, contrats utilisés, tests, critères de sortie cochés.
+
+---
+
+## Décisions tranchées (Phase 2)
+
+| Sujet | Décision | ADR |
+|---|---|---|
+| DB | SQLite + Prisma | ADR-0001 |
+| Auth | email + password argon2id, sessions cookie httpOnly | ADR-0002 |
+| Secrets | AES-256-GCM, `MASTER_ENCRYPTION_KEY` env | ADR-0003 |
+| Streaming | SSE normalisé multi-provider | ADR-0004 |
+| Erreurs | `{ok, data}` / `{ok, error}` | ADR-0005 |
+| Providers | `ProviderAdapter`, OpenAI d'abord | ADR-0006 |
+
+Validation : Zod. Logging : pino. API : REST. Soft-delete partout. Branches trunk-based. Multi-user dès maintenant.
+
+---
+
+## Références
+
+- Charte complète : [`project-memory/CHARTE.md`](project-memory/CHARTE.md)
+- Plan Phase 2 : [`project-memory/PLAN-PHASE-2.md`](project-memory/PLAN-PHASE-2.md)
+- ADRs : [`docs/adr/`](docs/adr/)
+- Getting started : [`README.md`](README.md)
