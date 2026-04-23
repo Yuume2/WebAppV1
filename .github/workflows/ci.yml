@@ -29,3 +29,52 @@ jobs:
 
       - name: Lint
         run: pnpm lint || echo "lint placeholder"
+
+  e2e-smoke:
+    # Non-blocking scaffold. Real UI scenarios land in wave 2 of the tooling
+    # roadmap — see docs/technical/adr/0004-playwright-scaffold-only.md.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Start API in background (in-memory mode — no DATABASE_URL)
+        run: |
+          pnpm --filter @webapp/api dev > /tmp/api.log 2>&1 &
+          echo $! > /tmp/api.pid
+
+      - name: Wait for API /health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4000/health > /dev/null; then
+              echo "api is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "api did not come up within 30s" >&2
+          cat /tmp/api.log || true
+          exit 1
+
+      - name: Run smoke test
+        run: pnpm --filter @webapp/e2e test
+
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f /tmp/api.pid ]; then
+            kill "$(cat /tmp/api.pid)" 2>/dev/null || true
+          fi

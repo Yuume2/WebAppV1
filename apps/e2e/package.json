@@ -1,0 +1,17 @@
+{
+  "name": "@webapp/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End-to-end smoke + UI scaffold (scaffold only — real scenarios in wave 2)",
+  "scripts": {
+    "test": "playwright test",
+    "test:smoke": "playwright test tests/smoke.spec.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf test-results playwright-report .turbo"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.1",
+    "@types/node": "^22.10.2",
+    "typescript": "^5.6.3"
+  }
+}
