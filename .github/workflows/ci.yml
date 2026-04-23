@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel superseded runs on the same branch / PR to save minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -22,18 +27,15 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
+      - name: Typecheck (all workspaces)
         run: pnpm typecheck
 
-      - name: Backend lint
+      - name: Lint (backend + types)
         run: |
           pnpm --filter @webapp/types lint
           pnpm --filter @webapp/api lint
 
       - name: Backend tests
-        run: |
-          pnpm --filter @webapp/types typecheck
-          pnpm --filter @webapp/api typecheck
-          pnpm --filter @webapp/api test
+        run: pnpm --filter @webapp/api test
