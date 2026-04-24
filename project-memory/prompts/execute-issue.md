@@ -23,7 +23,11 @@ Follow `project-memory/AI-ISSUE-EXECUTION-PROTOCOL.md` **strictly**. Do not skip
 
 ## Execution
 
-Run the numbered cycle in the protocol: read → move to In Progress → branch → plan → code → test → commit → push → PR with `Closes #<N>` → move to Review.
+Run the numbered cycle in the protocol: read → **AC vs code reality check (§2.5)** → `pnpm project:status:in-progress <N>` → branch → plan → code → test → commit → push → PR with `Closes #<N>` → `pnpm project:status:review <N>`.
+
+If at any point the work becomes impossible (missing dep, blocked env, irreversible ambiguity): `pnpm project:status:blocked <N>`, comment the blocker, stop.
+
+Never leave the issue in `In Progress` without work in flight.
 
 ## Follow-ups (delta)
 
