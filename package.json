@@ -21,7 +21,12 @@
     "project:fields:dry-run": "node tools/update-project-fields.mjs --dry-run",
     "project:fields:apply": "node tools/update-project-fields.mjs --yes",
     "issues:delta:dry-run": "node tools/apply-issue-delta.mjs --dry-run",
-    "issues:delta:apply": "node tools/apply-issue-delta.mjs --yes"
+    "issues:delta:apply": "node tools/apply-issue-delta.mjs --yes",
+    "project:status": "node tools/issue-status.mjs",
+    "project:status:in-progress": "node tools/issue-status.mjs --status \"In Progress\"",
+    "project:status:review": "node tools/issue-status.mjs --status Review",
+    "project:status:blocked": "node tools/issue-status.mjs --status Blocked",
+    "project:status:done": "node tools/issue-status.mjs --status Done"
   },
   "devDependencies": {
     "turbo": "^2.3.3",

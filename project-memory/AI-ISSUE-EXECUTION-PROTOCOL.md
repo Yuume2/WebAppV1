@@ -27,10 +27,28 @@ Labels drive every decision below.
 
 If labels are missing, treat as `ai:human-checkpoint` + `risk:review-required`.
 
+## 2.5. AC vs code reality check
+
+Before touching Status, before branching, before coding: **read the code the AC describes** and decide whether the AC is already satisfied on `main`. This has bitten us three times already (#22, #23, #27 — AC stale vs code).
+
+- Grep / read the files the AC names.
+- If every AC bullet is already true in the code:
+  1. Do **not** code.
+  2. Post a comment on the issue listing each AC bullet with the file/line that already satisfies it.
+  3. Propose one of:
+     - close the issue as already-done, OR
+     - open a small doc-only PR that makes the existing behaviour discoverable (README, comment, constant).
+  4. Stop and wait for Yume's pick.
+- If some AC bullets are already true and others are not: proceed with only the gaps. Flag in the final report which AC bullets pre-existed.
+
+Skipping this check is how we end up writing code that was already shipped.
+
 ## 3. Move issue to "In Progress"
 
-- Set Project #1 `Status` = `In Progress` via `gh project item-edit` (or have Yume click if tooling not available at run time).
+- Run: `pnpm project:status:in-progress <N>`
 - Comment on the issue: `"Starting execution — branch: feat/<scope>-<slug>-#N"`.
+
+Never edit the Status field with ad-hoc `gh project item-edit` calls. The script is the only supported transition path.
 
 ## 4. Create branch
 
@@ -80,8 +98,18 @@ If `ai:human-checkpoint`: **post the plan as a comment on the issue and stop**. 
 
 ## 10. Move issue to "Review"
 
-- Set Project #1 `Status` = `Review` on the issue (not the PR).
+- Run: `pnpm project:status:review <N>`
 - Post a comment: `"PR: <url>"`.
+
+## 10.5. Blocked path
+
+If execution cannot continue — missing dependency, broken environment, irreversible ambiguity, an AC that requires something the sandbox can't do — do **not** leave the issue in `In Progress`.
+
+1. Run: `pnpm project:status:blocked <N>`
+2. Comment on the issue with: the blocker, what was tried, what Yume needs to unblock.
+3. Stop. Do not branch further, do not push speculative code.
+
+Rule: an issue must never stay in `In Progress` once the agent has stopped working on it. Either push it to `Review` (PR opened), or to `Blocked` (stopped mid-run), or back to `Ready` (handing it off).
 
 ## 11. Propose follow-ups via a delta file
 
