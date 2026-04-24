@@ -56,6 +56,7 @@ export type ApiErrorCode =
   | 'method_not_allowed'
   | 'internal_error'
   | 'provider_auth_error'
+  | 'provider_not_configured'
   | 'provider_error'
   | 'rate_limited';
 
