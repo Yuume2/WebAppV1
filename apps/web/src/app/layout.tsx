@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import '@/styles/globals.css';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ToastHost } from '@/components/ToastHost';
 
 export const metadata: Metadata = {
   title: 'AI Workspace V1',
@@ -9,7 +11,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ErrorBoundary>
+          <ToastHost>{children}</ToastHost>
+        </ErrorBoundary>
+      </body>
     </html>
   );
 }
