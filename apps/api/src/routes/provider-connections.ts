@@ -16,6 +16,6 @@ export function makeProviderConnectionRoutes(deps: ProviderConnectionsDeps): Rou
     { method: 'GET',    path: `${base}/:provider`,         handler: (ctx) => getConnectionController(ctx, deps) },
     { method: 'PUT',    path: `${base}/:provider`,         handler: (ctx) => upsertConnectionController(ctx, deps) },
     { method: 'DELETE', path: `${base}/:provider`,         handler: (ctx) => deleteConnectionController(ctx, deps) },
-    { method: 'POST',   path: `${base}/openai/test`,       handler: (ctx) => testConnectionController(ctx, deps) },
+    { method: 'POST',   path: `${base}/:id/test`,          handler: (ctx) => testConnectionController(ctx, deps) },
   ];
 }

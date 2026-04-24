@@ -108,6 +108,48 @@ export async function listProviderConnections(
 }
 
 /**
+ * Returns safe connection metadata for a user-id pair.
+ * Returns null if no connection exists or it belongs to another user.
+ */
+export async function findProviderConnectionById(
+  db: Db,
+  userId: string,
+  id: string,
+): Promise<ProviderConnectionMeta | null> {
+  const [row] = await db
+    .select()
+    .from(providerConnections)
+    .where(and(
+      eq(providerConnections.userId, userId),
+      eq(providerConnections.id, id),
+    ))
+    .limit(1);
+  return row ? toMeta(row) : null;
+}
+
+/**
+ * Returns the decrypted API key for a user-id pair.
+ * Returns null if no connection exists or it belongs to another user.
+ * This is for internal server use only — never forward this to the client.
+ */
+export async function getDecryptedApiKeyById(
+  db: Db,
+  userId: string,
+  id: string,
+): Promise<{ provider: AIProvider; apiKey: string } | null> {
+  const [row] = await db
+    .select()
+    .from(providerConnections)
+    .where(and(
+      eq(providerConnections.userId, userId),
+      eq(providerConnections.id, id),
+    ))
+    .limit(1);
+  if (!row) return null;
+  return { provider: row.provider, apiKey: decryptApiKey(row.encryptedApiKey) };
+}
+
+/**
  * Removes a provider connection for the given user.
  */
 export async function deleteProviderConnection(
