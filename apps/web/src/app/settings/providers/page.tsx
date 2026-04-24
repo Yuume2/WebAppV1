@@ -1,16 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import type { ProviderConnection } from '@webapp/types';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import type { AIProvider, ProviderConnection } from '@webapp/types';
 import { Button } from '@/components/Button';
 import { useToast } from '@/components/ToastHost';
 import {
   listProviderConnections,
   removeProviderConnection,
   testProviderConnection,
+  upsertProviderConnection,
   type TestConnectionResult,
 } from '@/lib/api/provider-connections';
 import type { ApiCallError } from '@/lib/api/client';
+
+const PROVIDER_OPTIONS: Array<{ value: AIProvider; label: string }> = [
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'perplexity', label: 'Perplexity' },
+];
 
 type LoadState =
   | { status: 'idle' }
@@ -35,6 +42,10 @@ export default function ProviderSettingsPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [formProvider, setFormProvider] = useState<AIProvider>('openai');
+  const [formApiKey, setFormApiKey] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const toast = useToast();
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -54,6 +65,32 @@ export default function ProviderSettingsPage() {
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
+
+  const onSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const key = formApiKey.trim();
+      if (!key) {
+        setFormError('API key is required.');
+        return;
+      }
+      setSaving(true);
+      setFormError(null);
+      try {
+        await upsertProviderConnection(formProvider, key);
+        setFormApiKey('');
+        toast.push('success', `${formProvider} connection saved`);
+        await load();
+      } catch (err) {
+        const e = err as ApiCallError | undefined;
+        setFormError(e?.message ?? 'Unable to save connection');
+        toast.pushError(err, formProvider);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [formApiKey, formProvider, toast, load],
+  );
 
   const onTest = useCallback(
     async (connection: ProviderConnection) => {
@@ -99,6 +136,56 @@ export default function ProviderSettingsPage() {
           Refresh
         </Button>
       </header>
+
+      <section aria-labelledby="add-connection-title" style={formSectionStyle}>
+        <h2 id="add-connection-title" style={{ margin: 0, fontSize: '1rem' }}>Add connection</h2>
+        <p style={mutedStyle}>Your key is sent to the API, then cleared from this page.</p>
+        <form onSubmit={onSubmit} autoComplete="off" style={formStyle}>
+          <label style={labelStyle}>
+            <span>Provider</span>
+            <select
+              value={formProvider}
+              onChange={(e) => setFormProvider(e.target.value as AIProvider)}
+              disabled={saving}
+              style={selectStyle}
+            >
+              {PROVIDER_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={labelStyle}>
+            <span>API key</span>
+            <input
+              type="password"
+              name="apiKey"
+              autoComplete="off"
+              spellCheck={false}
+              value={formApiKey}
+              onChange={(e) => {
+                setFormApiKey(e.target.value);
+                if (formError) setFormError(null);
+              }}
+              disabled={saving}
+              placeholder="sk-…"
+              aria-invalid={formError ? 'true' : undefined}
+              style={inputStyle}
+            />
+          </label>
+          {formError && (
+            <div role="alert" style={errorBoxStyle}>
+              {formError}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Button type="submit" disabled={saving || !formApiKey.trim()}>
+              {saving ? 'Saving…' : 'Save connection'}
+            </Button>
+          </div>
+        </form>
+      </section>
 
       {state.status === 'loading' && <p style={mutedStyle}>Loading…</p>}
 
@@ -261,4 +348,52 @@ const modalStyle: React.CSSProperties = {
   flexDirection: 'column',
   gap: '1rem',
   color: '#f5f5f5',
+};
+
+const formSectionStyle: React.CSSProperties = {
+  background: '#141418',
+  border: '1px solid #24242c',
+  borderRadius: 12,
+  padding: '1.25rem 1.5rem',
+  marginBottom: '1.5rem',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.5rem',
+};
+
+const formStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.75rem',
+  marginTop: '0.5rem',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.25rem',
+  fontSize: '0.8rem',
+  color: '#c0c0cb',
+};
+
+const selectStyle: React.CSSProperties = {
+  background: '#0f0f13',
+  border: '1px solid #2a2a30',
+  borderRadius: 8,
+  padding: '0.5rem 0.6rem',
+  color: '#f5f5f5',
+  fontSize: '0.875rem',
+  fontFamily: 'inherit',
+  outline: 'none',
+};
+
+const inputStyle: React.CSSProperties = {
+  background: '#0f0f13',
+  border: '1px solid #2a2a30',
+  borderRadius: 8,
+  padding: '0.55rem 0.75rem',
+  color: '#f5f5f5',
+  fontSize: '0.875rem',
+  fontFamily: 'inherit',
+  outline: 'none',
 };

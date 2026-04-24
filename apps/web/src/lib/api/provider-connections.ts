@@ -1,7 +1,20 @@
-import type { ApiResponse, ProviderConnection } from '@webapp/types';
+import type { AIProvider, ApiResponse, ProviderConnection } from '@webapp/types';
 import { API_PROVIDER_CONNECTIONS_PATH } from '@webapp/types';
 import { apiFetch, type ApiCallError } from '@/lib/api/client';
 import { getApiBaseUrl } from '@/lib/api/env';
+import { putJson } from '@/lib/api/http';
+
+export function upsertProviderConnection(
+  provider: AIProvider,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<ProviderConnection> {
+  return putJson<ProviderConnection>(
+    `${API_PROVIDER_CONNECTIONS_PATH}/${encodeURIComponent(provider)}`,
+    { apiKey },
+    signal,
+  );
+}
 
 export function listProviderConnections(signal?: AbortSignal): Promise<ProviderConnection[]> {
   return apiFetch<ProviderConnection[]>(

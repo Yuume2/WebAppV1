@@ -13,7 +13,8 @@ function makeError(
   return err;
 }
 
-export async function postJson<T>(
+async function requestJson<T>(
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body: unknown,
   signal?: AbortSignal,
@@ -32,11 +33,11 @@ export async function postJson<T>(
   let res: Response;
   try {
     res = await fetch(url, {
-      method: 'POST',
+      method,
       headers: { accept: 'application/json', 'content-type': 'application/json' },
       credentials: 'include',
       cache: 'no-store',
-      body: JSON.stringify(body),
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
     });
   } catch (cause) {
@@ -68,4 +69,12 @@ export async function postJson<T>(
     throw makeError(envelope.error.message, { status: res.status, code: envelope.error.code });
   }
   return envelope.data;
+}
+
+export function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  return requestJson<T>('POST', path, body, signal);
+}
+
+export function putJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  return requestJson<T>('PUT', path, body, signal);
 }
