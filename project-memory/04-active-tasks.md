@@ -1,35 +1,30 @@
 # 04 — Active Tasks
 
-Not a sprint board. Concrete next actions.
+**Authoritative source: [GitHub Project #1 — Yuume2/WebAppV1](https://github.com/users/Yuume2/projects/1).**
 
-## Done
+This file is intentionally short. Do not hand-maintain a task list here — the Project board is the truth, and tooling automates the lifecycle.
 
-- [x] Param router `:id` + `HttpError`.
-- [x] `GET /v1/projects/:id`.
-- [x] `GET /v1/projects/:id/workspaces`.
-- [x] `GET /v1/workspaces/:id/windows`.
-- [x] `GET /v1/windows/:id/messages`.
-- [x] `Message` + `MessageRole` added to `@webapp/types`.
-- [x] Frontend clients: `lib/api/{projects,workspaces,windows,messages}`.
-- [x] `/project/[id]` wired end-to-end: project, workspaces, windows, messages — all with mock fallback.
-- [x] All 6 feature branches integrated into `feat/integration-homepage-projects`. Tests 19/19, typecheck green, web build green.
+## Agent workflow
 
-## Remaining before PR `feat/integration-homepage-projects` → `main`
+1. Pick the highest-priority Ready issue (`P0-now` first, no blockers, not already assigned).
+2. Mark it In Progress: `node tools/issue-status.mjs <n> "In Progress"` (also exposed as `pnpm project:status:in-progress <n>`).
+3. Branch: `feat/<scope>-<slug>-#<n>` (or `chore/…-#<n>` / `fix/…-#<n>`).
+4. Implement + tests. AC vs code reality check before declaring done.
+5. PR with `Closes #<n>`. Move to Review: `pnpm project:status:review <n>`.
+6. Follow-ups → `project-memory/backlog/issues.delta.json`, then `pnpm issues:delta:dry-run` (auto-apply only when every follow-up is `risk:safe` + `ai:autonomous`).
 
-- [ ] Open PR manually on GitHub (no `gh` CLI).
-- [ ] (Optional, cosmetic) add `headerRight` slot to `Workspace` and surface windows/messages source badges inside the rendered workspace view.
+Full protocol: `project-memory/AI-ISSUE-EXECUTION-PROTOCOL.md`. Command sheet: `project-memory/prompts/execute-issue.md`.
 
-## After PR merges (V1 "ready to show" polish)
+## Labels
 
-- [ ] Flesh out `apps/api/README.md`.
-- [ ] Flesh out `CONTRIBUTING.md`.
-- [ ] Remove `|| echo …` fallbacks in CI scripts; make typecheck/lint/test real gates.
+- Role: `role:frontend`, `role:backend`, `role:coord`.
+- Type: `type:feat`, `type:fix`, `type:chore`, `type:docs`, `type:refactor`, `type:test`.
+- Priority: `P0-now`, `P1-week`, `P2-soon`, `P3-backlog`.
+- Risk: `risk:safe`, `risk:review-required`.
+- AI: `ai:autonomous`, `ai:human-checkpoint`.
 
-## Bigger next-bloc decisions (outside V1 read path)
+Merge authority: the agent may auto-merge only when `risk:safe` AND `ai:autonomous` AND CI passes AND no secret / sensitive code is touched. Otherwise Review only.
 
-- [ ] Decide V1 track with Yume (Track A integration vs Track B `feat/api-foundation`). Blocks any write/auth/provider work.
-- [ ] Write path: POST message, create window, create workspace — requires persistence story.
-- [ ] DB pick (likely Postgres) + persistence interface behind `services/`.
-- [ ] Real provider adapters (OpenAI/Anthropic/Perplexity).
-- [ ] Auth (session cookie or token).
-- [ ] `.env.example` with real provider key hints.
+## Backlog cheat-sheet
+
+`project-memory/backlog/issues.json` holds the seed backlog. Deltas (new issues, updates) go through `tools/create-github-issues.mjs` with `pnpm issues:delta:{dry-run,apply}`.

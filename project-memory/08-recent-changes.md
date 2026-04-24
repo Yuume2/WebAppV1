@@ -2,10 +2,30 @@
 
 Newest first. One line per commit. Update at end of a session or via `tools/update-memory.sh`.
 
+## 2026-04-24
+
+- 9b45cf3 chore(types): add write-path DTOs for auth and provider-connections (#58).
+- e49048d chore(tooling): project status automation — CLI + `pnpm project:status:*` (#56).
+- 6fb6698 feat(providers): harden POST message loop — 412 no-provider, 30s timeout, `provider_error` code (#55).
+- 3a04ee7 chore(env): commit `.env.example` for api and web (#54).
+- 29f78aa feat(api): register `/v1/health` alias (#53).
+- 0adce92 chore(infra): docker-compose postgres + local bootstrap docs (#51).
+- 364f390 chore(db): document drizzle workflow (#50).
+- 220dc68 chore(ci): issue + PR templates matching label taxonomy (#49).
+- 397a83d chore(tooling): backlog automation + AI issue execution protocol.
+- 82b6904 chore(ops): free GitHub → Notion Tasks sync (Actions + Notion API) (#48).
+
+## 2026-04-23
+
+- f46f599 merge: PR #6 — integrate messages provider metadata branch into main. **Track B merged.** Main now has DB-gated routes, auth, provider-connections (AES-GCM encrypted), Sentry, drizzle migrations.
+- c8e3c26 feat(api): integrate messages provider metadata branch into main.
+- 87beb1c feat(api): sentry init — minimal error capture (#4).
+- dbd40ef chore(tooling): ADRs, roadmap, env placeholders, e2e scaffold (#3).
+
 ## 2026-04-22 (session pm)
 
-- 5708b9a merge(integration): feat/api-window-messages into feat/integration-homepage-projects (no conflict).
-- 97418e0 merge(integration): feat/api-workspace-windows into feat/integration-homepage-projects (no conflict).
+- 5708b9a merge(integration): feat/api-window-messages into the Track A integration branch (no conflict).
+- 97418e0 merge(integration): feat/api-workspace-windows into the Track A integration branch (no conflict).
 - f1903e7 feat(api): add `GET /v1/windows/:id/messages` + seed store + `Message`/`MessageRole` types + frontend `lib/api/messages.ts` + per-window parallel fetch in `/project/[id]` with mock fallback. 3 new API tests (19 total).
 - 152b5a1 feat(web): wire workspace view to real `GET /v1/workspaces/:id/windows` with `lib/api/windows.ts` and mock fallback.
 - 128ae4d feat(api): add `GET /v1/workspaces/:id/windows` + seeded store + `workspaceExists` helper + 3 new tests (16 total at that point).
@@ -13,7 +33,7 @@ Newest first. One line per commit. Update at end of a session or via `tools/upda
 
 ## 2026-04-22
 
-- Fast-forward merged `feat/web-project-workspaces-api` (and transitively all 4 feat branches) into `feat/integration-homepage-projects`. Tests 13/13 green, web build green. Integration branch now carries the full Track A surface.
+- Fast-forward merged `feat/web-project-workspaces-api` (and transitively all 4 feat branches) into the Track A integration branch. Tests 13/13 green, web build green. Integration branch now carried the full Track A surface.
 - **Discovered `origin/feat/api-foundation` is 53 commits ahead** of the integration branch with a parallel DB+auth+OpenAI V1. Not merged this session. Flagged as a track decision needed in `03-current-state.md`.
 - 7824866 feat(web): wire `/project/[id]` workspaces to real `GET /v1/projects/:id/workspaces` (mock fallback, dual badges, workspaces error panel).
 
