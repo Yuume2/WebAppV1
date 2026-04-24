@@ -8,7 +8,10 @@ import { WINDOW_PRESETS } from '@/lib/data';
 interface WorkspaceCanvasProps {
   visibleWindows: ChatWindowType[];
   getMessages: (chatWindowId: string) => MockMessage[];
+  isPending: (chatWindowId: string) => boolean;
   onSend: (chatWindowId: string, content: string) => void;
+  onRetry: (chatWindowId: string, clientTempId: string) => void;
+  onCancel: (chatWindowId: string) => void;
   activeId: string | null;
   hasClosed: boolean;
   onClose: (id: string) => void;
@@ -21,7 +24,10 @@ interface WorkspaceCanvasProps {
 export function WorkspaceCanvas({
   visibleWindows,
   getMessages,
+  isPending,
   onSend,
+  onRetry,
+  onCancel,
   activeId,
   hasClosed,
   onClose,
@@ -55,10 +61,13 @@ export function WorkspaceCanvas({
             model={w.model}
             messages={getMessages(w.id)}
             active={activeId === w.id}
+            pending={isPending(w.id)}
             onClose={onClose}
             onFocus={onFocus}
             onSend={onSend}
             onRename={onRename}
+            onRetry={onRetry}
+            onCancel={onCancel}
           />
         ))
       )}

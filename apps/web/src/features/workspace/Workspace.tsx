@@ -46,7 +46,10 @@ export function Workspace({
       <WorkspaceCanvas
         visibleWindows={state.visibleWindows}
         getMessages={chat.getMessages}
+        isPending={chat.isPending}
         onSend={chat.sendUserMessage}
+        onRetry={chat.retry}
+        onCancel={chat.cancel}
         activeId={state.activeId}
         hasClosed={state.closedWindows.length > 0}
         onClose={state.close}

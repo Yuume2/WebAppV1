@@ -11,10 +11,13 @@ interface ChatWindowProps {
   model: string;
   messages: MockMessage[];
   active?: boolean;
+  pending?: boolean;
   onClose?: (id: string) => void;
   onFocus?: (id: string) => void;
   onSend?: (id: string, content: string) => void;
   onRename?: (id: string, title: string) => void;
+  onRetry?: (id: string, clientTempId: string) => void;
+  onCancel?: (id: string) => void;
 }
 
 const providerColor: Record<AIProvider, string> = {
@@ -36,10 +39,13 @@ export function ChatWindow({
   model,
   messages,
   active = false,
+  pending = false,
   onClose,
   onFocus,
   onSend,
   onRename,
+  onRetry,
+  onCancel,
 }: ChatWindowProps) {
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState(false);
@@ -53,11 +59,14 @@ export function ChatWindow({
   };
 
   const submit = () => {
+    if (pending) return;
     const trimmed = draft.trim();
     if (!trimmed) return;
     onSend?.(id, trimmed);
     setDraft('');
   };
+
+  const canSend = !pending && draft.trim().length > 0;
 
   return (
     <div
@@ -186,7 +195,15 @@ export function ChatWindow({
             <span style={{ fontSize: '0.75rem' }}>Type below to start the conversation.</span>
           </div>
         ) : (
-          messages.map((m) => <MessageBubble key={m.id} message={m} />)
+          messages.map((m) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              onRetry={
+                onRetry && m.clientTempId ? () => onRetry(id, m.clientTempId!) : undefined
+              }
+            />
+          ))
         )}
       </div>
 
@@ -208,37 +225,62 @@ export function ChatWindow({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onFocus={() => onFocus?.(id)}
-          placeholder="Send a message…"
+          placeholder={pending ? 'Waiting for reply…' : 'Send a message…'}
           aria-label={`Message ${title}`}
+          disabled={pending}
           style={{
             flex: 1,
             background: '#1b1b23',
             border: '1px solid #2a2a30',
             borderRadius: 8,
             padding: '0.55rem 0.75rem',
-            color: '#f5f5f5',
+            color: pending ? '#8a8a95' : '#f5f5f5',
             fontSize: '0.875rem',
             fontFamily: 'inherit',
             outline: 'none',
           }}
         />
-        <button
-          type="submit"
-          disabled={!draft.trim()}
-          style={{
-            background: draft.trim() ? '#f5f5f5' : '#2a2a30',
-            color: draft.trim() ? '#0b0b0d' : '#6a6a75',
-            border: 'none',
-            borderRadius: 8,
-            padding: '0 0.9rem',
-            fontSize: '0.85rem',
-            fontWeight: 500,
-            cursor: draft.trim() ? 'pointer' : 'not-allowed',
-            fontFamily: 'inherit',
-          }}
-        >
-          Send
-        </button>
+        {pending && onCancel ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCancel(id);
+            }}
+            aria-label="Cancel in-flight message"
+            style={{
+              background: '#2a2a30',
+              color: '#f5f5f5',
+              border: '1px solid #3a3a45',
+              borderRadius: 8,
+              padding: '0 0.9rem',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!canSend}
+            style={{
+              background: canSend ? '#f5f5f5' : '#2a2a30',
+              color: canSend ? '#0b0b0d' : '#6a6a75',
+              border: 'none',
+              borderRadius: 8,
+              padding: '0 0.9rem',
+              fontSize: '0.85rem',
+              fontWeight: 500,
+              cursor: canSend ? 'pointer' : 'not-allowed',
+              fontFamily: 'inherit',
+            }}
+          >
+            Send
+          </button>
+        )}
       </form>
     </div>
   );
@@ -283,7 +325,32 @@ function formatMessageTimestamp(iso: string): string | null {
   return d.toISOString().replace('T', ' ').slice(0, 16);
 }
 
-function MessageBubble({ message }: { message: MockMessage }) {
+function Spinner() {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: 'inline-block',
+        width: 10,
+        height: 10,
+        borderRadius: '50%',
+        border: '2px solid rgba(245,245,245,0.18)',
+        borderTopColor: '#f5f5f5',
+        animation: 'chat-spin 0.7s linear infinite',
+        marginLeft: 6,
+        verticalAlign: '-1px',
+      }}
+    />
+  );
+}
+
+function MessageBubble({
+  message,
+  onRetry,
+}: {
+  message: MockMessage;
+  onRetry?: () => void;
+}) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
   const timestamp = formatMessageTimestamp(message.createdAt);
@@ -292,23 +359,32 @@ function MessageBubble({ message }: { message: MockMessage }) {
   if (message.model) metaParts.push(message.model);
   if (timestamp) metaParts.push(timestamp);
   const showMeta = isAssistant && metaParts.length > 0;
+  const status = message.status ?? 'ok';
+  const isPending = status === 'pending';
+  const isFailed = status === 'failed';
+  const borderColor = isFailed ? '#6b2a2a' : '#24242c';
+  const opacity = isPending ? 0.7 : 1;
+
   return (
     <div
       style={{
         alignSelf: isUser ? 'flex-end' : 'flex-start',
         maxWidth: '85%',
         background: isUser ? '#2b2b36' : '#1b1b23',
-        border: '1px solid #24242c',
+        border: `1px solid ${borderColor}`,
         borderRadius: 10,
         padding: '0.55rem 0.75rem',
         fontSize: '0.85rem',
         lineHeight: 1.4,
         color: '#e8e8ef',
         whiteSpace: 'pre-wrap',
+        opacity,
       }}
     >
       <div
         style={{
+          display: 'flex',
+          alignItems: 'center',
           fontSize: '0.65rem',
           color: '#8a8a95',
           marginBottom: 4,
@@ -316,9 +392,61 @@ function MessageBubble({ message }: { message: MockMessage }) {
           letterSpacing: '0.03em',
         }}
       >
-        {message.role}
+        <span>{message.role}</span>
+        {isPending && <Spinner />}
+        {isFailed && (
+          <span
+            style={{
+              color: '#ff8b8b',
+              marginLeft: 6,
+              textTransform: 'none',
+              letterSpacing: 0,
+            }}
+          >
+            failed
+          </span>
+        )}
       </div>
       {message.content}
+      {isFailed && (
+        <div
+          style={{
+            marginTop: 6,
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 8,
+            fontSize: '0.7rem',
+          }}
+        >
+          {message.errorMessage && (
+            <span style={{ color: '#ffd3d3' }}>
+              {message.errorCode ?? 'error'} — {message.errorMessage}
+            </span>
+          )}
+          {onRetry && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRetry();
+              }}
+              style={{
+                background: 'transparent',
+                color: '#ffd3d3',
+                border: '1px solid #6b2a2a',
+                borderRadius: 6,
+                padding: '2px 8px',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                fontSize: '0.7rem',
+              }}
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
       {showMeta && (
         <div
           data-testid="message-meta"

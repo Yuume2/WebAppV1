@@ -5,9 +5,10 @@ import {
   windows,
   messages,
   type MockMessage,
+  type MockMessageStatus,
 } from '@/lib/mocks/fixtures';
 
-export type { MockMessage };
+export type { MockMessage, MockMessageStatus };
 export { WINDOW_PRESETS, getPreset, type WindowPreset } from '@/lib/data/presets';
 
 export type WorkspaceResolution =
