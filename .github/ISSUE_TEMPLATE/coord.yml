@@ -1,0 +1,80 @@
+name: Coordination task
+description: CI, tooling, docs, memory, cross-cutting
+title: "[coord] <type>(<area>): <short imperative>"
+labels: ["role:coord"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill every section. Agents pick up tasks by reading this exact shape.
+        Label namespaces used: `role:*`, `type:*`, `P0-now|P1-week|P2-soon|P3-backlog`, `ai:autonomous|ai:human-checkpoint`, `risk:safe|risk:review-required|risk:destructive`.
+        Custom Project fields: **Owner** (L/E/X), **Area** (api/web/ci/memory/packages-types), **Status**, **Priority**.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: One paragraph. Why does this exist and what does "done" look like.
+      placeholder: Make CI fail on broken types instead of echoing "ok"…
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist. Each box verifiable in the resulting PR or repo state.
+      value: |
+        - [ ] …
+        - [ ] …
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: Bullet list. Anything the agent must NOT touch in this PR.
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: Test plan
+      description: How to verify the change worked. For docs/memory, describe the grep or review step.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0-now
+        - P1-week
+        - P2-soon
+        - P3-backlog
+    validations:
+      required: true
+
+  - type: dropdown
+    id: autonomy
+    attributes:
+      label: AI autonomy
+      options:
+        - ai:autonomous
+        - ai:human-checkpoint
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk
+      options:
+        - risk:safe
+        - risk:review-required
+        - risk:destructive
+    validations:
+      required: true
