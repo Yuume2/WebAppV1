@@ -3,6 +3,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { ChatWindow } from '@webapp/types';
 import type { WindowPreset } from '@/lib/data';
+import { createChatWindow } from '@/lib/api/chat-windows';
+import { getApiBaseUrl } from '@/lib/api/env';
 
 interface WorkspaceStateInit {
   windows: ChatWindow[];
@@ -59,8 +61,9 @@ export function useWorkspaceState({ windows }: WorkspaceStateInit): WorkspaceSta
       const workspaceId = windows[0]?.workspaceId ?? 'local-ws';
       const now = new Date().toISOString();
       const title = customTitle?.trim() || preset.defaultTitle;
-      const w: ChatWindow = {
-        id: `local-${Date.now()}-${creationCounter}`,
+      const tempId = `local-${Date.now()}-${creationCounter}`;
+      const optimistic: ChatWindow = {
+        id: tempId,
         workspaceId,
         title,
         provider: preset.provider,
@@ -68,10 +71,30 @@ export function useWorkspaceState({ windows }: WorkspaceStateInit): WorkspaceSta
         createdAt: now,
         updatedAt: now,
       };
-      setPool((prev) => [...prev, w]);
-      setOpenIds((prev) => [...prev, w.id]);
-      setActiveId(w.id);
-      return w.id;
+      setPool((prev) => [...prev, optimistic]);
+      setOpenIds((prev) => [...prev, tempId]);
+      setActiveId(tempId);
+
+      if (getApiBaseUrl() && workspaceId !== 'local-ws') {
+        void createChatWindow({
+          workspaceId,
+          title,
+          provider: preset.provider,
+          model: preset.model,
+        })
+          .then((persisted) => {
+            setPool((prev) => prev.map((w) => (w.id === tempId ? persisted : w)));
+            setOpenIds((prev) => prev.map((id) => (id === tempId ? persisted.id : id)));
+            setActiveId((current) => (current === tempId ? persisted.id : current));
+          })
+          .catch(() => {
+            setPool((prev) => prev.filter((w) => w.id !== tempId));
+            setOpenIds((prev) => prev.filter((id) => id !== tempId));
+            setActiveId((current) => (current === tempId ? null : current));
+          });
+      }
+
+      return tempId;
     },
     [windows],
   );
