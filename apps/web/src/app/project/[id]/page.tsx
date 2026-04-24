@@ -14,7 +14,7 @@ import {
 import { getApiBaseUrl } from '@/lib/api/env';
 import { fetchProject } from '@/lib/api/projects';
 import { fetchProjectWorkspaces } from '@/lib/api/workspaces';
-import { fetchWorkspaceWindows } from '@/lib/api/windows';
+import { fetchWorkspaceWindows } from '@/lib/api/chat-windows';
 import { fetchWindowMessages } from '@/lib/api/messages';
 import type { ApiCallError } from '@/lib/api/client';
 import type { ChatWindow } from '@webapp/types';
