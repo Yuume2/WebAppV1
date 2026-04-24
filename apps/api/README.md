@@ -54,6 +54,8 @@ Vitest spins up the real server on an ephemeral port per suite and asserts on th
 
 ## Env vars
 
+Canonical template: [`apps/api/.env.example`](./.env.example). Copy it to `apps/api/.env` (or export the vars in your shell) and tweak values as needed. The table below documents each variable.
+
 | Name                          | Default        | Notes                                                                                  |
 | ----------------------------- | -------------- | -------------------------------------------------------------------------------------- |
 | `API_PORT`                    | `4000`         | 1–65535                                                                                |
