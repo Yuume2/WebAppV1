@@ -36,6 +36,61 @@ jobs:
       - name: Build
         run: pnpm build
 
+  api-db-tests:
+    runs-on: ubuntu-latest
+    needs: check
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: webapp
+          POSTGRES_PASSWORD: webapp
+          POSTGRES_DB: webapp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U webapp -d webapp"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgres://webapp:webapp@localhost:5432/webapp
+      PROVIDER_ENCRYPTION_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Apply migrations
+        run: pnpm --filter @webapp/api db:migrate
+
+      - name: Run api tests with DATABASE_URL set
+        # In-memory route tests boot the server module which, with DATABASE_URL
+        # set, wires the DB-backed (auth-gated) routes — they then fail with 401.
+        # The DB path is covered by *-db.test.ts (mocked deps) plus auth /
+        # provider-connections / health / middleware / config / services / providers
+        # tests which work in either mode. Exclude the in-memory-only route tests.
+        run: |
+          pnpm --filter @webapp/api exec vitest run \
+            --exclude 'src/routes/projects.test.ts' \
+            --exclude 'src/routes/workspaces.test.ts' \
+            --exclude 'src/routes/chat-windows.test.ts' \
+            --exclude 'src/routes/messages.test.ts' \
+            --exclude 'src/routes/state.test.ts' \
+            --exclude 'src/routes/ordering.test.ts' \
+            --exclude 'src/routes/dev.test.ts' \
+            --exclude 'src/routes/get-by-id.test.ts'
+
   e2e-smoke:
     # Non-blocking scaffold. Real UI scenarios land in wave 2 of the tooling
     # roadmap — see docs/technical/adr/0004-playwright-scaffold-only.md.
