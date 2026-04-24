@@ -1,4 +1,4 @@
-import type { ChatWindow, MessageRole, Project, Workspace } from '@webapp/types';
+import type { AIProvider, ChatWindow, MessageRole, Project, Workspace } from '@webapp/types';
 
 export interface MockMessage {
   id: string;
@@ -6,6 +6,8 @@ export interface MockMessage {
   role: MessageRole;
   content: string;
   createdAt: string;
+  provider?: AIProvider | null;
+  model?: string | null;
 }
 
 const now = '2026-04-18T00:00:00.000Z';

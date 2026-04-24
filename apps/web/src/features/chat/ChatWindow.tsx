@@ -277,8 +277,21 @@ function ProviderBadge({ provider, model }: { provider: AIProvider; model: strin
   );
 }
 
+function formatMessageTimestamp(iso: string): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().replace('T', ' ').slice(0, 16);
+}
+
 function MessageBubble({ message }: { message: MockMessage }) {
   const isUser = message.role === 'user';
+  const isAssistant = message.role === 'assistant';
+  const timestamp = formatMessageTimestamp(message.createdAt);
+  const metaParts: string[] = [];
+  if (message.provider) metaParts.push(providerLabel[message.provider]);
+  if (message.model) metaParts.push(message.model);
+  if (timestamp) metaParts.push(timestamp);
+  const showMeta = isAssistant && metaParts.length > 0;
   return (
     <div
       style={{
@@ -306,6 +319,19 @@ function MessageBubble({ message }: { message: MockMessage }) {
         {message.role}
       </div>
       {message.content}
+      {showMeta && (
+        <div
+          data-testid="message-meta"
+          style={{
+            marginTop: 6,
+            fontSize: '0.65rem',
+            color: '#6a6a75',
+            letterSpacing: '0.02em',
+          }}
+        >
+          {metaParts.join(' · ')}
+        </div>
+      )}
     </div>
   );
 }
