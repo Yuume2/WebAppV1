@@ -125,6 +125,7 @@ const stateHandler = (db && authDeps)
 
 export const businessRoutes: RouteDefinition[] = [
   { method: 'GET', path: API_HEALTH_PATH, handler: healthController },
+  { method: 'GET', path: '/v1/health',    handler: healthController },
 
   ...projectRoutes,
 
