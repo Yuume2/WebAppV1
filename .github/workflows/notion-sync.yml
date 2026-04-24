@@ -1,0 +1,46 @@
+name: notion-sync
+
+on:
+  schedule:
+    # Hourly at :17 to avoid the top-of-hour rush.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (no writes to Notion)"
+        required: false
+        default: "false"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/notion-sync.yml"
+      - "scripts/notion/**"
+
+concurrency:
+  group: notion-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run GitHub → Notion sync
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
+        run: node scripts/notion/sync-github-to-notion.mjs
