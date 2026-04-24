@@ -6,8 +6,15 @@ import { Button } from '@/components/Button';
 import {
   listProviderConnections,
   removeProviderConnection,
+  testProviderConnection,
+  type TestConnectionResult,
 } from '@/lib/api/provider-connections';
 import type { ApiCallError } from '@/lib/api/client';
+
+interface Toast {
+  tone: 'success' | 'error';
+  message: string;
+}
 
 type LoadState =
   | { status: 'idle' }
@@ -31,6 +38,8 @@ export default function ProviderSettingsPage() {
   const [pendingDelete, setPendingDelete] = useState<ProviderConnection | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<Toast | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setState({ status: 'loading' });
@@ -49,6 +58,35 @@ export default function ProviderSettingsPage() {
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  const onTest = useCallback(async (connection: ProviderConnection) => {
+    setTestingId(connection.id);
+    setToast(null);
+    try {
+      const result: TestConnectionResult = await testProviderConnection(connection.id);
+      if (result.ok) {
+        setToast({ tone: 'success', message: `${connection.provider}: connection OK` });
+      } else {
+        const code = result.code ?? 'unknown';
+        const message = result.message ?? 'Test failed';
+        setToast({ tone: 'error', message: `${connection.provider}: ${code} — ${message}` });
+      }
+    } catch (err) {
+      const e = err as ApiCallError | undefined;
+      setToast({
+        tone: 'error',
+        message: `${connection.provider}: ${e?.code ?? 'error'} — ${e?.message ?? 'Unknown error'}`,
+      });
+    } finally {
+      setTestingId(null);
+    }
+  }, []);
 
   const onConfirmDelete = useCallback(async () => {
     if (!pendingDelete) return;
@@ -105,14 +143,33 @@ export default function ProviderSettingsPage() {
                 <td style={tdStyle}>{formatDate(c.createdAt)}</td>
                 <td style={tdStyle}>—</td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>
-                  <Button variant="ghost" onClick={() => setPendingDelete(c)}>
-                    Delete
-                  </Button>
+                  <div style={{ display: 'inline-flex', gap: '0.5rem' }}>
+                    <Button
+                      variant="ghost"
+                      onClick={() => void onTest(c)}
+                      disabled={testingId === c.id}
+                    >
+                      {testingId === c.id ? 'Testing…' : 'Test'}
+                    </Button>
+                    <Button variant="ghost" onClick={() => setPendingDelete(c)}>
+                      Delete
+                    </Button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{ ...toastStyle, ...(toast.tone === 'error' ? toastErrorStyle : toastSuccessStyle) }}
+        >
+          {toast.message}
+        </div>
       )}
 
       {pendingDelete && (
@@ -213,6 +270,30 @@ const backdropStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   zIndex: 50,
+};
+
+const toastStyle: React.CSSProperties = {
+  position: 'fixed',
+  top: '1rem',
+  right: '1rem',
+  maxWidth: 420,
+  padding: '0.75rem 1rem',
+  borderRadius: 8,
+  fontSize: '0.875rem',
+  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+  zIndex: 60,
+};
+
+const toastSuccessStyle: React.CSSProperties = {
+  background: '#13321d',
+  border: '1px solid #2a6a43',
+  color: '#c9f4d6',
+};
+
+const toastErrorStyle: React.CSSProperties = {
+  background: '#3a1d1d',
+  border: '1px solid #6b2a2a',
+  color: '#ffd3d3',
 };
 
 const modalStyle: React.CSSProperties = {
