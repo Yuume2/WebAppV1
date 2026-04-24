@@ -75,7 +75,7 @@ describe('POST /v1/projects', () => {
     expect(body.ok).toBe(true);
   });
 
-  it('returns 400 when name is missing', async () => {
+  it('returns 400 invalid_body when name is missing', async () => {
     const res = await fetch(`${harness.baseUrl}/v1/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -85,7 +85,7 @@ describe('POST /v1/projects', () => {
     const body = (await res.json()) as ApiResponse<unknown>;
     expect(body.ok).toBe(false);
     if (body.ok) throw new Error('expected error envelope');
-    expect(body.error.code).toBe('validation_error');
+    expect(body.error.code).toBe('invalid_body');
   });
 
   it('returns 400 for invalid JSON body', async () => {
@@ -126,5 +126,21 @@ describe('POST /v1/projects', () => {
     expect(body.ok).toBe(false);
     if (body.ok) throw new Error('expected error envelope');
     expect(body.error.code).toBe('payload_too_large');
+  });
+
+  it('invalid_body envelope carries a fields list with the offending paths', async () => {
+    const res = await fetch(`${harness.baseUrl}/v1/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '', description: 42 }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<unknown>;
+    if (body.ok) throw new Error('expected error envelope');
+    expect(body.error.code).toBe('invalid_body');
+    const details = body.error.details as { fields: { path: string; message: string }[] };
+    expect(Array.isArray(details.fields)).toBe(true);
+    const paths = details.fields.map((f) => f.path).sort();
+    expect(paths).toEqual(['description', 'name']);
   });
 });

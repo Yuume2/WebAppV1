@@ -47,6 +47,7 @@ export interface Message {
 
 export type ApiErrorCode =
   | 'invalid_json'
+  | 'invalid_body'
   | 'unsupported_media_type'
   | 'payload_too_large'
   | 'validation_error'

@@ -150,13 +150,13 @@ describe('POST /v1/workspaces — authenticated', () => {
     await close();
   });
 
-  it('returns 400 when name is missing', async () => {
+  it('returns 400 invalid_body when name is missing', async () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
     const res = await post(baseUrl, '/v1/workspaces', { projectId: 'proj-1' });
     expect(res.status).toBe(400);
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
-    expect(body.error.code).toBe('validation_error');
+    expect(body.error.code).toBe('invalid_body');
     await close();
   });
 

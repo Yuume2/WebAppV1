@@ -117,7 +117,7 @@ describe('POST /v1/messages', () => {
     expect(body.error.code).toBe('not_found');
   });
 
-  it('returns 400 for invalid role', async () => {
+  it('returns 400 invalid_body for invalid role', async () => {
     const ws = await createWorkspace(harness.baseUrl);
     const cw = await createChatWindow(harness.baseUrl, ws.id);
     const res = await fetch(`${harness.baseUrl}/v1/messages`, {
@@ -129,6 +129,6 @@ describe('POST /v1/messages', () => {
     const body = (await res.json()) as ApiResponse<unknown>;
     expect(body.ok).toBe(false);
     if (body.ok) throw new Error('expected error envelope');
-    expect(body.error.code).toBe('validation_error');
+    expect(body.error.code).toBe('invalid_body');
   });
 });
