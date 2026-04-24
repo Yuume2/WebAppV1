@@ -35,6 +35,9 @@ export interface ApiFetchOptions {
   timeoutMs?: number;
   signal?: AbortSignal;
   cache?: RequestCache;
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  body?: unknown;
+  credentials?: RequestCredentials;
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
@@ -51,11 +54,22 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     else options.signal.addEventListener('abort', () => controller.abort(), { once: true });
   }
 
+  const method = options.method ?? 'GET';
+  const headers: Record<string, string> = { accept: 'application/json' };
+  let bodyInit: BodyInit | undefined;
+  if (options.body !== undefined) {
+    headers['content-type'] = 'application/json';
+    bodyInit = JSON.stringify(options.body);
+  }
+
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { accept: 'application/json' },
+      method,
+      headers,
+      body: bodyInit,
       cache: options.cache ?? 'no-store',
+      credentials: options.credentials ?? 'include',
       signal: controller.signal,
     });
   } catch (err) {
