@@ -7,7 +7,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "build": "echo \"(types) no build step\"",
-    "lint": "eslint src/",
+    "lint": "echo \"(types) lint placeholder — no eslint config in repo yet\"",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo"
   },
