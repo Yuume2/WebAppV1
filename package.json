@@ -23,6 +23,7 @@
     "issues:delta:dry-run": "node tools/apply-issue-delta.mjs --dry-run",
     "issues:delta:apply": "node tools/apply-issue-delta.mjs --yes",
     "project:status": "node tools/issue-status.mjs",
+    "project:status:test": "node --test tools/issue-status.test.mjs",
     "project:status:in-progress": "node tools/issue-status.mjs --status \"In Progress\"",
     "project:status:review": "node tools/issue-status.mjs --status Review",
     "project:status:blocked": "node tools/issue-status.mjs --status Blocked",

@@ -23,6 +23,14 @@ function die(msg, code = 1) {
   process.exit(code);
 }
 
+export class ArgsError extends Error {
+  constructor(message, { exitCode = 1, showUsage = false } = {}) {
+    super(message);
+    this.exitCode = exitCode;
+    this.showUsage = showUsage;
+  }
+}
+
 function runCapture(bin, argv) {
   const r = spawnSync(bin, argv, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
   return { code: r.status ?? 1, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
@@ -35,40 +43,68 @@ function ghJson(argv) {
   catch (e) { die(`cannot parse gh output for \`gh ${argv.join(' ')}\`: ${e.message}`); }
 }
 
+export const USAGE_LINES = [
+  'usage: node tools/issue-status.mjs <issueNumber> <status>',
+  `       status: ${VALID_STATUSES.map((s) => `"${s}"`).join(' | ')}`,
+  'example: node tools/issue-status.mjs 27 "In Progress"',
+];
+
+function printUsage() {
+  for (const line of USAGE_LINES) console.error(line);
+}
+
 function usage() {
-  console.error('usage: node tools/issue-status.mjs <issueNumber> <status>');
-  console.error(`       status: ${VALID_STATUSES.map((s) => `"${s}"`).join(' | ')}`);
-  console.error('example: node tools/issue-status.mjs 27 "In Progress"');
+  printUsage();
   process.exit(2);
 }
 
-function parseArgs() {
-  const args = process.argv.slice(2);
+export function parseArgsFrom(argv) {
   const positional = [];
   let flagStatus;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
     if (a === '--status' || a === '-s') {
-      flagStatus = args[++i];
+      flagStatus = argv[++i];
       continue;
     }
-    if (a === '--help' || a === '-h') usage();
-    if (a.startsWith('--')) die(`unknown flag: ${a}`);
+    if (a === '--help' || a === '-h') {
+      throw new ArgsError('help', { exitCode: 2, showUsage: true });
+    }
+    if (a.startsWith('--')) throw new ArgsError(`unknown flag: ${a}`);
     positional.push(a);
   }
-  if (positional.length === 0) usage();
+  if (positional.length === 0) {
+    throw new ArgsError('missing arguments', { exitCode: 2, showUsage: true });
+  }
 
   const issueNumber = Number.parseInt(positional[0], 10);
   if (!Number.isFinite(issueNumber) || issueNumber <= 0) {
-    die(`invalid issue number: "${positional[0]}"`);
+    throw new ArgsError(
+      `invalid issue number: "${positional[0]}"\n  hint: pass the issue number first. ${USAGE_LINES[0]}`,
+    );
   }
 
   const status = (flagStatus ?? positional.slice(1).join(' ')).trim();
-  if (!status) usage();
+  if (!status) throw new ArgsError('missing status', { exitCode: 2, showUsage: true });
   if (!VALID_STATUSES.includes(status)) {
-    die(`invalid status: "${status}". Expected one of: ${VALID_STATUSES.join(', ')}`);
+    throw new ArgsError(
+      `invalid status: "${status}". Expected one of: ${VALID_STATUSES.join(', ')}`,
+    );
   }
   return { issueNumber, status };
+}
+
+function parseArgs() {
+  try {
+    return parseArgsFrom(process.argv.slice(2));
+  } catch (err) {
+    if (err instanceof ArgsError) {
+      if (err.message !== 'help') console.error(c.red(`error: ${err.message}`));
+      if (err.showUsage) printUsage();
+      process.exit(err.exitCode);
+    }
+    throw err;
+  }
 }
 
 function preflight() {
@@ -163,4 +199,6 @@ function main() {
   console.log(c.green('Done'));
 }
 
-main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
