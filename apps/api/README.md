@@ -54,8 +54,57 @@ Vitest spins up the real server on an ephemeral port per suite and asserts on th
 
 ## Env vars
 
-| Name           | Default       | Notes                              |
-| -------------- | ------------- | ---------------------------------- |
-| `API_PORT`     | `4000`        | 1–65535                            |
-| `NODE_ENV`     | `development` | `development` \| `production` \| `test` |
-| `API_VERSION`  | `0.1.0`       | Reported by `/health`              |
+| Name                          | Default        | Notes                                                                                  |
+| ----------------------------- | -------------- | -------------------------------------------------------------------------------------- |
+| `API_PORT`                    | `4000`         | 1–65535                                                                                |
+| `NODE_ENV`                    | `development`  | `development` \| `production` \| `test`                                                |
+| `API_VERSION`                 | `0.1.0`        | Reported by `/health`                                                                  |
+| `DATABASE_URL`                | *(unset)*      | Enables DB-backed routes. Unset = in-memory fallback.                                  |
+| `PROVIDER_ENCRYPTION_KEY`     | *(unset)*      | **Required when `DATABASE_URL` is set.** 64-char hex (32 bytes).                        |
+| `CORS_ORIGIN`                 | `*`            | Set to an explicit origin (e.g. `http://localhost:3000`) when `DATABASE_URL` is on.    |
+| `API_MAX_BODY_BYTES`          | `102400`       | POST body cap in bytes.                                                                |
+| `OPENAI_MAX_CONTEXT_MESSAGES` | `20`           | Prior messages sent to the provider per call.                                          |
+| `ENABLE_DEV_ENDPOINTS`        | `true` in dev  | `/v1/dev` helpers gated on this.                                                       |
+| `SENTRY_DSN_API`              | *(unset)*      | Error capture disabled when empty.                                                     |
+
+Generate a provider encryption key:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+## Local Postgres (DB mode)
+
+A `docker-compose.yml` at the repo root ships a `postgres:16` service preconfigured for dev.
+
+```bash
+# 1. Start Postgres (detached)
+docker compose up -d postgres
+
+# 2. Export env (db + encryption key required together)
+export DATABASE_URL="postgres://webapp:webapp@localhost:5432/webapp"
+export PROVIDER_ENCRYPTION_KEY="$(node -e 'console.log(require(\"crypto\").randomBytes(32).toString(\"hex\"))')"
+
+# 3. Apply migrations
+pnpm --filter @webapp/api db:migrate
+
+# 4. Run the API
+pnpm --filter @webapp/api dev
+
+# 5. Smoke test
+curl -i http://localhost:4000/v1/health
+```
+
+Stop the DB with `docker compose down` (preserves the volume) or `docker compose down -v` (drops data).
+
+### Fallback — in-memory mode
+
+With `DATABASE_URL` **unset**, the API still boots and serves the in-memory route set (`projects`, `workspaces`, `chat-windows`, `messages` as frozen seed data). Use this for frontend-only work that doesn't need auth or persistence.
+
+```bash
+unset DATABASE_URL
+pnpm --filter @webapp/api dev
+curl -i http://localhost:4000/v1/health
+```
+
+The startup log prints which mode is active.
