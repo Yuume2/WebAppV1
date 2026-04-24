@@ -1,8 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { AIProvider, ProviderConnection } from '@webapp/types';
 import {
-  isRecord,
-  readJsonBody,
+  parseJsonBody,
   respond,
   respondError,
   respondNotFound,
@@ -10,6 +9,7 @@ import {
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
+import { s } from '../lib/schema.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db, ProviderConnectionMeta } from '../db/provider-connections.repo.js';
 import * as providerRepo from '../db/provider-connections.repo.js';
@@ -18,6 +18,10 @@ import { RateLimiter, type RateLimitResult } from '../lib/rate-limiter.js';
 
 const VALID_PROVIDERS = new Set<AIProvider>(['openai', 'anthropic', 'perplexity']);
 const ENABLED_PROVIDERS = new Set<AIProvider>(['openai']);
+
+const UpsertConnectionBody = s.object({
+  apiKey: s.string({ min: 1, max: 500, trim: true }),
+});
 
 interface SessionDeps {
   findSessionByTokenHash: (hash: string) => Promise<{ userId: string; expiresAt: Date } | null>;
@@ -105,14 +109,9 @@ export async function upsertConnectionController(
   if (!ENABLED_PROVIDERS.has(provider)) {
     return respondError('validation_error', `Provider '${provider}' is not yet supported`, 400);
   }
-  const bodyResult = await readJsonBody(ctx.req);
-  if (!bodyResult.ok) return bodyResult.result;
-  const body = bodyResult.data;
-  if (!isRecord(body)) return respondError('validation_error', 'Body must be a JSON object');
-  if (typeof body['apiKey'] !== 'string' || !body['apiKey'].trim()) {
-    return respondError('validation_error', 'apiKey is required and must be a non-empty string');
-  }
-  const apiKey = body['apiKey'].trim();
+  const body = await parseJsonBody(ctx, UpsertConnectionBody);
+  if (!body.ok) return body.result;
+  const apiKey = body.value.apiKey;
   const verifyResult = await deps.verifyKey(provider, apiKey);
   if (verifyResult === 'unauthorized') {
     return respondError('provider_auth_error', 'API key is invalid or unauthorized', 401);

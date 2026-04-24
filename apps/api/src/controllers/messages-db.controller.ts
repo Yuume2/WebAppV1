@@ -2,8 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { AIProvider, Message, MessageRole } from '@webapp/types';
 import { getMessagePath } from '@webapp/types';
 import {
-  isRecord,
-  readJsonBody,
+  parseJsonBody,
   respond,
   respondCreated,
   respondError,
@@ -11,6 +10,7 @@ import {
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
+import { s } from '../lib/schema.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import { env } from '../config/env.js';
 import type { Db, AssistantMessageMetadata } from '../db/messages.repo.js';
@@ -97,11 +97,13 @@ export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps
 
 // ── Validation ────────────────────────────────────────────────────────────────
 
-const MESSAGE_ROLES: MessageRole[] = ['user', 'assistant', 'system'];
+const MESSAGE_ROLES = ['user', 'assistant', 'system'] as const;
 
-function isMessageRole(v: unknown): v is MessageRole {
-  return MESSAGE_ROLES.includes(v as MessageRole);
-}
+const CreateMessageDbBody = s.object({
+  chatWindowId: s.string({ min: 1 }),
+  role:         s.enumOf<MessageRole>(MESSAGE_ROLES),
+  content:      s.string({ min: 1, max: 32_000 }),
+});
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
@@ -144,24 +146,12 @@ export async function createMessageDbController(
   const user = await deps.resolveUser(ctx.req);
   if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
 
-  const bodyResult = await readJsonBody(ctx.req);
-  if (!bodyResult.ok) return bodyResult.result;
-  const body = bodyResult.data;
+  const body = await parseJsonBody(ctx, CreateMessageDbBody);
+  if (!body.ok) return body.result;
 
-  if (!isRecord(body)) return respondError('validation_error', 'Body must be a JSON object');
-  if (typeof body.chatWindowId !== 'string' || !body.chatWindowId) {
-    return respondError('validation_error', 'chatWindowId is required');
-  }
-  if (!isMessageRole(body.role)) {
-    return respondError('validation_error', `role must be one of: ${MESSAGE_ROLES.join(', ')}`);
-  }
-  if (typeof body.content !== 'string' || !body.content) {
-    return respondError('validation_error', 'content is required and must be a non-empty string');
-  }
-
-  const chatWindowId = body.chatWindowId;
-  const role = body.role as MessageRole;
-  const content = body.content;
+  const chatWindowId = body.value.chatWindowId;
+  const role = body.value.role;
+  const content = body.value.content;
 
   // For user messages: resolve the chat window to determine whether to trigger AI generation.
   if (role === 'user') {

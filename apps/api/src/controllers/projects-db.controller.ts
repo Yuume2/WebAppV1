@@ -2,8 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Project } from '@webapp/types';
 import { getProjectPath } from '@webapp/types';
 import {
-  isRecord,
-  readJsonBody,
+  parseJsonBody,
   respond,
   respondCreated,
   respondError,
@@ -11,9 +10,17 @@ import {
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
+import { s } from '../lib/schema.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db } from '../db/projects.repo.js';
 import * as projectsRepo from '../db/projects.repo.js';
+
+// ── Body schemas ──────────────────────────────────────────────────────────────
+
+const CreateProjectDbBody = s.object({
+  name:        s.string({ min: 1, max: 200, trim: true }),
+  description: s.optional(s.nullable(s.string({ max: 2000 }))),
+});
 
 // ── Internal DB row shape ──────────────────────────────────────────────────────
 
@@ -81,17 +88,10 @@ export async function createProjectDbController(
   const user = await deps.resolveUser(ctx.req);
   if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
 
-  const bodyResult = await readJsonBody(ctx.req);
-  if (!bodyResult.ok) return bodyResult.result;
-  const body = bodyResult.data;
+  const body = await parseJsonBody(ctx, CreateProjectDbBody);
+  if (!body.ok) return body.result;
 
-  if (!isRecord(body)) return respondError('validation_error', 'Body must be a JSON object');
-  if (typeof body.name !== 'string' || !body.name.trim()) {
-    return respondError('validation_error', 'name is required and must be a non-empty string');
-  }
-
-  const description = typeof body.description === 'string' ? body.description : undefined;
-  const row = await deps.createProject(user.id, body.name.trim(), description);
+  const row = await deps.createProject(user.id, body.value.name, body.value.description ?? undefined);
   const project = toProject(row);
   return respondCreated(project, getProjectPath(project.id));
 }

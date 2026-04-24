@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ApiError, ApiErrorCode, ApiResponse } from '@webapp/types';
 import { env } from '../config/env.js';
+import type { Schema } from './schema.js';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS';
 
@@ -149,4 +150,30 @@ export async function readJsonBody(
     }
     return { ok: false, result: respondError('invalid_json', 'Request body must be valid JSON') };
   }
+}
+
+/**
+ * Reads the request body, parses JSON, then validates against `schema`.
+ * On success: `{ ok: true; value: T }`.
+ * On failure: `{ ok: false; result: InternalResult }` — already-formed 4xx
+ * `ApiResponse` carrying either the transport error (415/413/400 invalid_json)
+ * or a 400 `invalid_body` envelope listing the offending fields.
+ */
+export async function parseJsonBody<T>(
+  ctx: { req: IncomingMessage },
+  schema: Schema<T>,
+): Promise<{ ok: true; value: T } | { ok: false; result: InternalResult }> {
+  const body = await readJsonBody(ctx.req);
+  if (!body.ok) return { ok: false, result: body.result };
+  const parsed = schema.parse(body.data);
+  if (parsed.ok) return { ok: true, value: parsed.value };
+  return {
+    ok: false,
+    result: respondError(
+      'invalid_body',
+      'Request body failed validation',
+      400,
+      { fields: parsed.errors },
+    ),
+  };
 }

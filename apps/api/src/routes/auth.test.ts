@@ -112,21 +112,21 @@ describe('POST /v1/auth/signup', () => {
     expect(body.data.email).toBe('alice@example.com');
   });
 
-  it('returns 400 for missing email', async () => {
+  it('returns 400 invalid_body for missing email', async () => {
     const res = await post(base, '/v1/auth/signup', { password: 'password123' });
     expect(res.status).toBe(400);
     const body = (await res.json()) as ApiResponse<never>;
     expect(body.ok).toBe(false);
     if (body.ok) throw new Error('expected error');
-    expect(body.error.code).toBe('validation_error');
+    expect(body.error.code).toBe('invalid_body');
   });
 
-  it('returns 400 for short password', async () => {
+  it('returns 400 invalid_body for short password', async () => {
     const res = await post(base, '/v1/auth/signup', { email: 'a@b.com', password: 'short' });
     expect(res.status).toBe(400);
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
-    expect(body.error.code).toBe('validation_error');
+    expect(body.error.code).toBe('invalid_body');
   });
 
   it('returns 409 for duplicate email', async () => {

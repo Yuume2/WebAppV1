@@ -1,7 +1,6 @@
 import type { SafeUser } from '@webapp/types';
 import {
-  isRecord,
-  readJsonBody,
+  parseJsonBody,
   respond,
   respondError,
   respondRateLimited,
@@ -9,6 +8,7 @@ import {
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
+import { s } from '../lib/schema.js';
 import { RateLimiter, type RateLimitResult } from '../lib/rate-limiter.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { generateSessionToken, hashSessionToken, sessionExpiresAt } from '../lib/session-token.js';
@@ -82,28 +82,31 @@ function cookieHeader(token: string): Record<string, string> {
   return { 'Set-Cookie': serializeSetCookie(SESSION_COOKIE_NAME, token, secure) };
 }
 
+// ── Body schemas ──────────────────────────────────────────────────────────────
+
+const SignupBody = s.object({
+  email:       s.string({ min: 1, pattern: /^[^@\s]+@[^@\s]+\.[^@\s]+$/, trim: true }),
+  password:    s.string({ min: 8, max: 200 }),
+  displayName: s.optional(s.string({ min: 1, max: 100, trim: true })),
+});
+
+const LoginBody = s.object({
+  email:    s.string({ min: 1, trim: true }),
+  password: s.string({ min: 1 }),
+});
+
 // ── Controllers ───────────────────────────────────────────────────────────────
 
 export async function signupController(ctx: RequestContext, deps: AuthDeps): Promise<InternalResult> {
   const rl = deps.checkRateLimit(getClientIp(ctx.req));
   if (!rl.ok) return respondRateLimited(rl.retryAfterSecs);
 
-  const bodyResult = await readJsonBody(ctx.req);
-  if (!bodyResult.ok) return bodyResult.result;
-  const body = bodyResult.data;
+  const body = await parseJsonBody(ctx, SignupBody);
+  if (!body.ok) return body.result;
 
-  if (!isRecord(body)) return respondError('validation_error', 'Body must be a JSON object');
-
-  const email    = typeof body.email    === 'string' ? body.email.trim().toLowerCase()    : '';
-  const password = typeof body.password === 'string' ? body.password                      : '';
-  const rawName  = typeof body.displayName === 'string' ? body.displayName.trim() : undefined;
-
-  if (!email || !email.includes('@')) {
-    return respondError('validation_error', 'email is required and must be a valid email address');
-  }
-  if (password.length < 8) {
-    return respondError('validation_error', 'password must be at least 8 characters');
-  }
+  const email = body.value.email.toLowerCase();
+  const password = body.value.password;
+  const displayName = body.value.displayName;
 
   const existing = await deps.findUserByEmail(email);
   if (existing) {
@@ -111,7 +114,6 @@ export async function signupController(ctx: RequestContext, deps: AuthDeps): Pro
   }
 
   const passwordHash  = await hashPassword(password);
-  const displayName   = rawName || undefined;
   const user          = await deps.createUser(email, passwordHash, displayName);
 
   const token     = generateSessionToken();
@@ -125,18 +127,11 @@ export async function loginController(ctx: RequestContext, deps: AuthDeps): Prom
   const rl = deps.checkRateLimit(getClientIp(ctx.req));
   if (!rl.ok) return respondRateLimited(rl.retryAfterSecs);
 
-  const bodyResult = await readJsonBody(ctx.req);
-  if (!bodyResult.ok) return bodyResult.result;
-  const body = bodyResult.data;
+  const body = await parseJsonBody(ctx, LoginBody);
+  if (!body.ok) return body.result;
 
-  if (!isRecord(body)) return respondError('validation_error', 'Body must be a JSON object');
-
-  const email    = typeof body.email    === 'string' ? body.email.trim().toLowerCase() : '';
-  const password = typeof body.password === 'string' ? body.password                   : '';
-
-  if (!email || !password) {
-    return respondError('validation_error', 'email and password are required');
-  }
+  const email = body.value.email.toLowerCase();
+  const password = body.value.password;
 
   const user  = await deps.findUserByEmail(email);
   const valid = user ? await verifyPassword(password, user.passwordHash) : false;

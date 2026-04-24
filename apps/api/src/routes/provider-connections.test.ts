@@ -221,13 +221,13 @@ describe('PUT /v1/provider-connections/:provider — authenticated', () => {
     await close();
   });
 
-  it('returns 400 when apiKey is missing', async () => {
+  it('returns 400 invalid_body when apiKey is missing', async () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
     const res = await put(baseUrl, '/v1/provider-connections/openai', {});
     expect(res.status).toBe(400);
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
-    expect(body.error.code).toBe('validation_error');
+    expect(body.error.code).toBe('invalid_body');
     await close();
   });
 

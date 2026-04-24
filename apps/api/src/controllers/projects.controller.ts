@@ -1,33 +1,30 @@
-import type { CreateProjectInput, Project } from '@webapp/types';
+import type { Project } from '@webapp/types';
 import { getProjectPath } from '@webapp/types';
 import {
-  isRecord,
-  readJsonBody,
+  parseJsonBody,
   respond,
   respondCreated,
-  respondError,
   respondNotFound,
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
+import { s } from '../lib/schema.js';
 import { createProject, findProject, listProjects } from '../services/projects.service.js';
+
+const CreateProjectBody = s.object({
+  name:        s.string({ min: 1, max: 200, trim: true }),
+  description: s.optional(s.nullable(s.string({ max: 2000 }))),
+});
 
 export function listProjectsController(_ctx: RequestContext): InternalResult {
   return respond(listProjects());
 }
 
 export async function createProjectController(ctx: RequestContext): Promise<InternalResult> {
-  const bodyResult = await readJsonBody(ctx.req);
-  if (!bodyResult.ok) return bodyResult.result;
-  const body = bodyResult.data;
+  const body = await parseJsonBody(ctx, CreateProjectBody);
+  if (!body.ok) return body.result;
 
-  if (!isRecord(body)) return respondError('validation_error', 'Body must be a JSON object');
-  if (typeof body.name !== 'string' || !body.name.trim()) {
-    return respondError('validation_error', 'name is required and must be a non-empty string');
-  }
-
-  const input = body as unknown as CreateProjectInput;
-  const project: Project = createProject(input.name.trim(), input.description);
+  const project: Project = createProject(body.value.name, body.value.description ?? undefined);
   return respondCreated(project, getProjectPath(project.id));
 }
 

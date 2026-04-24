@@ -2,8 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { Workspace } from '@webapp/types';
 import { getWorkspacePath } from '@webapp/types';
 import {
-  isRecord,
-  readJsonBody,
+  parseJsonBody,
   respond,
   respondCreated,
   respondError,
@@ -11,6 +10,12 @@ import {
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
+import { s } from '../lib/schema.js';
+
+const CreateWorkspaceDbBody = s.object({
+  projectId: s.string({ min: 1 }),
+  name:      s.string({ min: 1, max: 200, trim: true }),
+});
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db } from '../db/workspaces.repo.js';
 import * as workspacesRepo from '../db/workspaces.repo.js';
@@ -100,20 +105,11 @@ export async function createWorkspaceDbController(
   const user = await deps.resolveUser(ctx.req);
   if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
 
-  const bodyResult = await readJsonBody(ctx.req);
-  if (!bodyResult.ok) return bodyResult.result;
-  const body = bodyResult.data;
+  const body = await parseJsonBody(ctx, CreateWorkspaceDbBody);
+  if (!body.ok) return body.result;
 
-  if (!isRecord(body)) return respondError('validation_error', 'Body must be a JSON object');
-  if (typeof body.projectId !== 'string' || !body.projectId) {
-    return respondError('validation_error', 'projectId is required');
-  }
-  if (typeof body.name !== 'string' || !body.name.trim()) {
-    return respondError('validation_error', 'name is required and must be a non-empty string');
-  }
-
-  const row = await deps.createWorkspace(body.projectId, user.id, body.name.trim());
-  if (row === null) return respondNotFound(`Project ${body.projectId} not found`);
+  const row = await deps.createWorkspace(body.value.projectId, user.id, body.value.name);
+  if (row === null) return respondNotFound(`Project ${body.value.projectId} not found`);
   return respondCreated(toWorkspace(row, []), getWorkspacePath(row.id));
 }
 

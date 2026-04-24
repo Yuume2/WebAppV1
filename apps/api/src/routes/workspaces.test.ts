@@ -89,7 +89,7 @@ describe('POST /v1/workspaces', () => {
     expect(body.error.code).toBe('not_found');
   });
 
-  it('returns 400 when name is missing', async () => {
+  it('returns 400 invalid_body when name is missing', async () => {
     const res = await fetch(`${harness.baseUrl}/v1/workspaces`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -99,6 +99,6 @@ describe('POST /v1/workspaces', () => {
     const body = (await res.json()) as ApiResponse<unknown>;
     expect(body.ok).toBe(false);
     if (body.ok) throw new Error('expected error envelope');
-    expect(body.error.code).toBe('validation_error');
+    expect(body.error.code).toBe('invalid_body');
   });
 });

@@ -2,8 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { AIProvider, ChatWindow } from '@webapp/types';
 import { getChatWindowPath } from '@webapp/types';
 import {
-  isRecord,
-  readJsonBody,
+  parseJsonBody,
   respond,
   respondCreated,
   respondError,
@@ -11,6 +10,7 @@ import {
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
+import { s } from '../lib/schema.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db } from '../db/chat-windows.repo.js';
 import * as chatWindowsRepo from '../db/chat-windows.repo.js';
@@ -50,13 +50,16 @@ export function makeChatWindowsDeps(db: Db, sessionDeps: SessionDeps): ChatWindo
   };
 }
 
-// ── Validation ────────────────────────────────────────────────────────────────
+// ── Body schemas ──────────────────────────────────────────────────────────────
 
-const AI_PROVIDERS: AIProvider[] = ['openai', 'anthropic', 'perplexity'];
+const AI_PROVIDERS = ['openai', 'anthropic', 'perplexity'] as const;
 
-function isAIProvider(v: unknown): v is AIProvider {
-  return AI_PROVIDERS.includes(v as AIProvider);
-}
+const CreateChatWindowDbBody = s.object({
+  workspaceId: s.string({ min: 1 }),
+  title:       s.string({ min: 1, max: 200, trim: true }),
+  provider:    s.enumOf<AIProvider>(AI_PROVIDERS),
+  model:       s.string({ min: 1, max: 200, trim: true }),
+});
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
@@ -96,32 +99,17 @@ export async function createChatWindowDbController(
   const user = await deps.resolveUser(ctx.req);
   if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
 
-  const bodyResult = await readJsonBody(ctx.req);
-  if (!bodyResult.ok) return bodyResult.result;
-  const body = bodyResult.data;
-
-  if (!isRecord(body)) return respondError('validation_error', 'Body must be a JSON object');
-  if (typeof body.workspaceId !== 'string' || !body.workspaceId) {
-    return respondError('validation_error', 'workspaceId is required');
-  }
-  if (typeof body.title !== 'string' || !body.title.trim()) {
-    return respondError('validation_error', 'title is required and must be a non-empty string');
-  }
-  if (!isAIProvider(body.provider)) {
-    return respondError('validation_error', `provider must be one of: ${AI_PROVIDERS.join(', ')}`);
-  }
-  if (typeof body.model !== 'string' || !body.model.trim()) {
-    return respondError('validation_error', 'model is required and must be a non-empty string');
-  }
+  const body = await parseJsonBody(ctx, CreateChatWindowDbBody);
+  if (!body.ok) return body.result;
 
   const row = await deps.createChatWindow(
-    body.workspaceId,
+    body.value.workspaceId,
     user.id,
-    body.title.trim(),
-    body.provider as AIProvider,
-    body.model.trim(),
+    body.value.title,
+    body.value.provider,
+    body.value.model,
   );
-  if (row === null) return respondNotFound(`Workspace ${body.workspaceId} not found`);
+  if (row === null) return respondNotFound(`Workspace ${body.value.workspaceId} not found`);
   const cw = toChatWindow(row);
   return respondCreated(cw, getChatWindowPath(cw.id));
 }
