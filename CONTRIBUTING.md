@@ -50,6 +50,34 @@ Examples:
 - At least one approval required.
 - CI (`typecheck`, `lint`) must pass.
 
+## Labels
+
+Every issue and PR must carry the five-axis taxonomy below. Missing labels default to the most conservative interpretation (`ai:human-checkpoint` + `risk:review-required`).
+
+| Axis     | Values                                                                 | What it drives                                                                                     |
+| -------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `role:`  | `frontend`, `backend`, `coord`                                         | Which agent/human owns the work.                                                                   |
+| `type:`  | `feat`, `fix`, `chore`, `refactor`, `test`, `docs`                     | Mirrors the commit-message type.                                                                   |
+| *priority* | `P0-now`, `P1-week`, `P2-soon`, `P3-backlog`                         | Scheduling order.                                                                                  |
+| `ai:`    | `autonomous`, `human-checkpoint`                                       | `autonomous` = agent runs through to PR. `human-checkpoint` = agent stops after the plan.          |
+| `risk:`  | `safe`, `review-required`, `destructive`                               | Merge gate. `destructive` is never auto-created or auto-merged.                                    |
+
+Rules of thumb:
+
+- Label when the issue is created, not when it's picked up.
+- `risk:destructive` always pairs with `ai:human-checkpoint`.
+- Auto-merge requires `ai:autonomous` + `risk:safe` explicitly (and is currently opt-in per-label — see `project-memory/AI-ISSUE-EXECUTION-PROTOCOL.md`).
+
+## Memory updates
+
+`project-memory/` is the in-repo source of truth for architecture, decisions, and state. When code changes invalidate a memory file, **fix the memory file in the same PR as the code change**. Out-of-date memory is treated as a bug.
+
+Expectations:
+
+- Update `project-memory/03-current-state.md` and `08-recent-changes.md` when a session ships something user-visible or structural.
+- Touch `project-memory/01-architecture.md` or `02-decisions.md` only when the change is architecturally meaningful.
+- Never edit `project-memory/backlog/issues.json` directly — it is generated. Backlog deltas go through `project-memory/backlog/issues.delta.json` (see `issues.delta.schema.md`).
+
 ## Local workflow
 
 ```bash
