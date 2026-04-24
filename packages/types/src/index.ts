@@ -168,3 +168,33 @@ export interface ProviderConnection {
 
 export const API_PROVIDER_CONNECTIONS_PATH = '/v1/provider-connections' as const;
 export const getProviderConnectionPath = (provider: string): string => `${API_PROVIDER_CONNECTIONS_PATH}/${provider}`;
+
+// ── Auth write-path DTOs ─────────────────────────────────────────────────────
+
+export interface AuthRegisterInput {
+  email: string;
+  password: string;
+  displayName?: string;
+}
+
+export interface AuthLoginInput {
+  email: string;
+  password: string;
+}
+
+export interface MeResponse {
+  user: SafeUser;
+}
+
+// ── Provider-connection write-path DTOs ──────────────────────────────────────
+
+export interface ProviderConnectionInput {
+  apiKey: string;
+}
+
+export interface ProviderConnectionPublic {
+  id: string;
+  provider: AIProvider;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
