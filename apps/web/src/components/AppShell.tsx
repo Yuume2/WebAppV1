@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { UserMenu } from '@/features/auth/UserMenu';
 
 interface AppShellProps {
   title?: string;
@@ -37,7 +38,10 @@ export function AppShell({ title = 'AI Workspace V1', subtitle, right, children 
             <span style={{ fontSize: '0.875rem', color: '#8a8a95' }}>{subtitle}</span>
           ) : null}
         </div>
-        <div>{right}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {right}
+          <UserMenu />
+        </div>
       </header>
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>{children}</main>
     </div>
