@@ -13,6 +13,7 @@ Format: `YYYY-MM-DD — topic — decision — reason`.
 - 2026-04-18 — Frontend data boundary — `src/lib/data` (mock) + `src/lib/api` (real) — keep UI switchable while backend grows; badge shows which source is live.
 - 2026-04-18 — Vitest for api tests — integration via `server-harness` — fast, no runtime deps.
 - 2026-04-18 — Workspace selection via `?workspace=` query param — URL-driven, no client routing state.
+- 2026-04-23 — Track A + Track B merged on `main` — DB-gated routing with in-memory fallback until explicitly removed — see [`docs/technical/adr/0005-track-ab-merge.md`](../docs/technical/adr/0005-track-ab-merge.md).
 
 ## Open
 
