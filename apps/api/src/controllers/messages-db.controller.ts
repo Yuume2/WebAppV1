@@ -20,6 +20,21 @@ import { getDecryptedApiKey } from '../db/provider-connections.repo.js';
 import { createOpenAIClient } from '../providers/openai.provider.js';
 import type { ChatCompletionResult, ChatMessage } from '../providers/provider.interface.js';
 
+// ── Provider timeout guard ────────────────────────────────────────────────────
+
+const PROVIDER_TIMEOUT_MS = 30_000;
+const PROVIDER_TIMEOUT_MESSAGE = 'provider_timeout';
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(PROVIDER_TIMEOUT_MESSAGE)), ms);
+    p.then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); },
+    );
+  });
+}
+
 // ── Internal DB row shapes ────────────────────────────────────────────────────
 
 interface DbMessage {
@@ -63,6 +78,7 @@ export interface MessagesDeps {
   getApiKey:         (userId: string, provider: AIProvider) => Promise<string | null>;
   generate:          (apiKey: string, messages: ChatMessage[], model: string) => Promise<ChatCompletionResult>;
   maxContextMessages: number;
+  providerTimeoutMs?: number;
 }
 
 export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps {
@@ -156,9 +172,9 @@ export async function createMessageDbController(
       const apiKey = await deps.getApiKey(user.id, 'openai');
       if (!apiKey) {
         return respondError(
-          'validation_error',
+          'provider_auth_error',
           'No OpenAI connection configured. Add your API key in provider settings.',
-          400,
+          412,
         );
       }
 
@@ -176,10 +192,16 @@ export async function createMessageDbController(
       let completion: ChatCompletionResult;
       const startedAt = Date.now();
       try {
-        completion = await deps.generate(apiKey, contextMessages, cw.model);
+        completion = await withTimeout(
+          deps.generate(apiKey, contextMessages, cw.model),
+          deps.providerTimeoutMs ?? PROVIDER_TIMEOUT_MS,
+        );
       } catch (err) {
+        if (err instanceof Error && err.message === PROVIDER_TIMEOUT_MESSAGE) {
+          return respondError('provider_error', 'Provider call timed out after 30s', 502);
+        }
         const detail = err instanceof Error ? err.message : 'Unknown provider error';
-        return respondError('internal_error', `Provider call failed: ${detail}`, 502);
+        return respondError('provider_error', `Provider call failed: ${detail}`, 502);
       }
       const latencyMs = Date.now() - startedAt;
 

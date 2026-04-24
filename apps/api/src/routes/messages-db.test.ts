@@ -343,7 +343,7 @@ describe('POST /v1/messages — openai generation path', () => {
     await close();
   });
 
-  it('missing OpenAI connection returns 400 with explicit error', async () => {
+  it('missing OpenAI connection returns 412 provider_auth_error', async () => {
     const { baseUrl, close } = await startServer(makeDeps({
       resolveUser:    async () => USER_1,
       findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
@@ -353,10 +353,10 @@ describe('POST /v1/messages — openai generation path', () => {
     const res = await post(baseUrl, '/v1/messages', {
       chatWindowId: 'cw-1', role: 'user', content: 'Hi',
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(412);
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
-    expect(body.error.code).toBe('validation_error');
+    expect(body.error.code).toBe('provider_auth_error');
     expect(body.error.message).toContain('OpenAI');
     await close();
   });
@@ -380,9 +380,33 @@ describe('POST /v1/messages — openai generation path', () => {
     expect(persistCalled).toBe(false);
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
-    expect(body.error.code).toBe('internal_error');
+    expect(body.error.code).toBe('provider_error');
     // API key must not appear in error
     expect(body.error.message).not.toContain('sk-key');
+    await close();
+  });
+
+  it('provider timeout returns 502 provider_error and does not persist', async () => {
+    let persistCalled = false;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:        async () => USER_1,
+      findChatWindow:     async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:          async () => 'sk-key',
+      listMessages:       async () => [],
+      generate:           () => new Promise(() => {/* never resolves */}),
+      persistMessagePair: async () => { persistCalled = true; return mockPair('cw-1', 'Hi', 'ok'); },
+      providerTimeoutMs:  20,
+    }));
+
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'cw-1', role: 'user', content: 'Hi',
+    });
+    expect(res.status).toBe(502);
+    expect(persistCalled).toBe(false);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('provider_error');
+    expect(body.error.message).toMatch(/timed out/i);
     await close();
   });
 
