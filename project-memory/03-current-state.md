@@ -1,57 +1,57 @@
 # 03 — Current State
 
-Last verified: 2026-04-22.
+Last verified: 2026-04-24 (post PR #6 merge; reflects `main` at `9b45cf3`).
 
 ## Branches
 
-- `main` — stable.
-- `feat/integration-homepage-projects` — **current, pushed**. Tip `5708b9a`. Carries the full Track A surface read path: projects list + detail + workspaces + windows + messages, all wired end-to-end with mock fallback. Tests 19/19 green. Typecheck green. Web build green.
-- Feature branches merged into integration (kept for history, now redundant):
-  - `feat/api-project-detail`
-  - `feat/web-project-detail-api`
-  - `feat/api-project-workspaces`
-  - `feat/web-project-workspaces-api`
-  - `feat/api-workspace-windows` (merged `97418e0`)
-  - `feat/api-window-messages` (merged `5708b9a`)
-- `origin/feat/api-foundation` — parallel Track B (DB+auth+OpenAI V1), 53+ commits ahead, **unmerged, not evaluated this session**. Architecturally incompatible with Track A. Decision deferred.
+- `main` — truth. Tip `9b45cf3`. Track A + Track B now merged. DB-gated write path, auth, provider-connections, Sentry, drizzle migrations.
+- `origin/feat/api-foundation` — archival, superseded by the Track B merge (PR #6, commit `f46f599`).
+- Historical integration branches (merged or abandoned) should not be read as active.
 
-## Done (Track A, read-only V1 read path)
+Active work is tracked in the GitHub Project (project #1, `Yuume2/WebAppV1`), not here. See `04-active-tasks.md`.
 
-- Monorepo scaffold (pnpm, turbo, tsconfig base).
-- Shared types `@webapp/types`: `Project`, `Workspace`, `ChatWindow`, `Message`, `MessageRole`, `AIProvider`, `ApiError`, `ApiResponse<T>`, `HealthStatus`.
-- Backend foundation: env, logger, request-id, param router (`:id`), `handleRequest` middleware, `HttpError`, `createApiServer`.
-- Endpoints (all GET):
-  - `/health`, `/v1/health`
-  - `/v1/projects`
-  - `/v1/projects/:id`
-  - `/v1/projects/:id/workspaces`
-  - `/v1/workspaces/:id/windows`
-  - `/v1/windows/:id/messages`
-- Seed stores aligned across backend + web mocks (proj-1/2, ws-1/1b/2, win-1..7, m-1..10).
-- Vitest: 19 integration tests green.
-- Frontend UI: AppShell/Panel/Button, Workspace feature (canvas/sidebar/composer), Chat feature (ChatWindow, useChatSessions), presets, inline rename.
-- Frontend API clients: `lib/api/{client,env,projects,workspaces,windows,messages}`.
-- Homepage `/` wired to `GET /v1/projects` (mock fallback + source badge).
-- Project detail `/project/[id]`:
-  - Project: `fetchProject` + mock fallback + 404 error panel + source badge.
-  - Workspaces: `fetchProjectWorkspaces` + mock fallback + workspaces source badge + error panel.
-  - Windows: `fetchWorkspaceWindows` + mock fallback when workspaces came from mock or on error.
-  - Messages: `fetchWindowMessages` per active window, parallel `Promise.all`, mock fallback per window on error.
+## Done (shipped to main)
+
+**Monorepo / tooling**
+- pnpm workspaces + Turborepo, TS strict, Node 20+.
+- Shared types `@webapp/types`: read models + write-path DTOs (auth, projects, workspaces, chat-windows, messages, provider-connections) + `ApiError` / `ApiResponse<T>` / `ApiErrorCode` + path constants (`API_*_PATH`).
+- `.env.example` for `apps/api` and `apps/web` committed (#54).
+- docker-compose Postgres + local bootstrap docs (#51).
+- Drizzle migrations + workflow (#50).
+- Issue + PR templates matching label taxonomy (#49).
+- Project-status automation CLI + `pnpm project:status:*` (#56).
+- GitHub→Notion Tasks sync (#48).
+
+**Backend (`apps/api`)**
+- Plain `node:http` server, custom router with `:param` segments, `handleRequest` middleware, `HttpError`, uniform `ApiResponse<T>` envelope.
+- Endpoints (canonical): `/v1/health`, `/v1/projects`, `/v1/workspaces`, `/v1/chat-windows`, `/v1/messages` (GET + POST + `:id` GET), `/v1/provider-connections` (GET/PUT/DELETE + `/openai/test`), `/v1/auth/{signup,login,logout,me}`, `/v1/state`, legacy alias reads (`/v1/workspaces/:id/windows`, `/v1/windows/:id/messages`), dev `/v1/dev/{reset,seed}`.
+- DB-gated mode: when `DATABASE_URL` is set, all business routes are user-scoped DB-backed. Without it, in-memory fallback (seeded) powers the same surface minus auth + provider-connections.
+- Auth: signup/login/logout + session cookie + `/v1/auth/me`, bcrypt password hashing, signed session tokens. Repos: `users.repo`, `sessions.repo`.
+- Provider-connections: AES-256-GCM at-rest encryption of API keys (`api-key-cipher`), per-user CRUD, OpenAI test endpoint.
+- OpenAI provider: POST `/v1/messages` runs the chat-completion loop, 30s timeout, 412 when no provider configured, typed error codes (`provider_error`, `provider_auth_error`, etc.).
+- Sentry wired (`lib/sentry.ts`, no-op when DSN absent).
+- Vitest: 226 tests green (24 files). Run `pnpm --filter @webapp/api test`.
+
+**Frontend (`apps/web`)**
+- Next.js 15 App Router. Routes: `/` (projects list), `/project/[id]` (workspaces + windows + messages read).
+- API clients read-only against legacy paths (`lib/api/{projects,workspaces,windows,messages}`). No POST/PUT/DELETE clients yet.
+- No auth UI, no provider-settings UI, no write actions — still local state + mock fallback for the render layer.
 
 ## In progress
 
-- PR `feat/integration-homepage-projects` → `main` not yet opened (no `gh` CLI, must be manual).
+Tracked in GitHub Project #1. As of 2026-04-24 22:30:
+- #21 (this memory refresh).
+- #55 open PR — provider message loop hardening (merged content already in main; PR itself pending close).
 
-## Blocked / missing (to call V1 "ready to show")
+## Blocked / missing (to ship a usable MVP)
 
-- Surface `windows` and `messages` source badges inside rendered `Workspace` view (needs a `headerRight` slot on `Workspace` component). Cosmetic.
-- No write endpoints (create/update project/workspace/window, POST message). All reads only.
-- No real provider call (OpenAI/Anthropic/Perplexity) — chat input stays local state.
-- No DB, no auth, no persistence, no rate limiting.
-- `apps/api/README.md` and `CONTRIBUTING.md` are 1-line stubs.
-- CI typecheck/lint/test still have `|| echo …` fallbacks.
-- Track B decision still pending.
+- Web has no write clients — create/rename/delete flows for projects/workspaces/windows/messages all still local. Issues #19/#20/#28/#36/#38.
+- No login/register pages (#16) or session guard (#17). Auth backend is ready.
+- No provider-settings UI (#18/#36/#37). Backend CRUD + test endpoint ready.
+- CI still has `|| echo …` fallbacks (#43). Lint/typecheck/test not real gates.
+- `apps/api/README.md` / `CONTRIBUTING.md` still thin (#47).
+- Provider adapters beyond OpenAI (Anthropic #14, Perplexity #33) not started.
 
 ## Next obvious step
 
-Open PR `feat/integration-homepage-projects` → `main` (manual). Tree is in a coherent read-only V1 state.
+Pick the highest-priority Ready issue from GitHub Project #1. Backend foundation is complete enough that the next unlock is either (a) write-path web clients, or (b) the auth UI pages.
