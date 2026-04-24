@@ -1,0 +1,85 @@
+name: Frontend task
+description: Next.js / UI work in apps/web
+title: "[frontend] <type>(<area>): <short imperative>"
+labels: ["role:frontend"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill every section. Agents pick up tasks by reading this exact shape.
+        Label namespaces used: `role:*`, `type:*`, `P0-now|P1-week|P2-soon|P3-backlog`, `ai:autonomous|ai:human-checkpoint`, `risk:safe|risk:review-required|risk:destructive`.
+        Custom Project fields: **Owner** (L/E/X), **Area** (api/web/ci/memory/packages-types), **Status**, **Priority**.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: One paragraph. What outcome are we after, in business/product terms.
+      placeholder: Let users submit their API key from a settings page…
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist. Each box verifiable via UI, Playwright, or unit test.
+      value: |
+        - [ ] …
+        - [ ] …
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: Bullet list. Anything the agent must NOT touch in this PR.
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_plan
+    attributes:
+      label: Test plan
+      description: How to verify. Playwright spec, manual steps, screenshots.
+      placeholder: |
+        - Playwright vs stub backend: send message → assistant renders.
+        - Manual: API unset → mock fallback still works.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0-now
+        - P1-week
+        - P2-soon
+        - P3-backlog
+    validations:
+      required: true
+
+  - type: dropdown
+    id: autonomy
+    attributes:
+      label: AI autonomy
+      description: ai:autonomous = agent runs to PR on its own. ai:human-checkpoint = agent stops after the plan.
+      options:
+        - ai:autonomous
+        - ai:human-checkpoint
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk
+      description: risk:safe = reversible local change. risk:review-required = non-trivial. risk:destructive = data or security impact; always human-gated.
+      options:
+        - risk:safe
+        - risk:review-required
+        - risk:destructive
+    validations:
+      required: true
