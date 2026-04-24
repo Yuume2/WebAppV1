@@ -52,6 +52,8 @@ pnpm --filter @webapp/api test
 
 Vitest spins up the real server on an ephemeral port per suite and asserts on the envelope, headers, and error paths.
 
+The suite runs green without `DATABASE_URL` (DB repos are mocked per test). To also exercise the DB-backed path locally — applying drizzle migrations against a real Postgres before running tests — export `DATABASE_URL` (see `## Local Postgres (DB mode)` below) and run `pnpm --filter @webapp/api db:migrate` once, then `pnpm --filter @webapp/api test`. CI runs this variant in the `api-db-tests` job.
+
 ## Env vars
 
 Canonical template: [`apps/api/.env.example`](./.env.example). Copy it to `apps/api/.env` (or export the vars in your shell) and tweak values as needed. The table below documents each variable.
