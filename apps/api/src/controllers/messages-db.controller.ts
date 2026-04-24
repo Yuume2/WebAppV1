@@ -172,7 +172,7 @@ export async function createMessageDbController(
       const apiKey = await deps.getApiKey(user.id, 'openai');
       if (!apiKey) {
         return respondError(
-          'provider_auth_error',
+          'provider_not_configured',
           'No OpenAI connection configured. Add your API key in provider settings.',
           412,
         );

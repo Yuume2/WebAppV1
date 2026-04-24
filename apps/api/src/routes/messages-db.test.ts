@@ -343,7 +343,7 @@ describe('POST /v1/messages — openai generation path', () => {
     await close();
   });
 
-  it('missing OpenAI connection returns 412 provider_auth_error', async () => {
+  it('missing OpenAI connection returns 412 provider_not_configured', async () => {
     const { baseUrl, close } = await startServer(makeDeps({
       resolveUser:    async () => USER_1,
       findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
@@ -356,7 +356,7 @@ describe('POST /v1/messages — openai generation path', () => {
     expect(res.status).toBe(412);
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
-    expect(body.error.code).toBe('provider_auth_error');
+    expect(body.error.code).toBe('provider_not_configured');
     expect(body.error.message).toContain('OpenAI');
     await close();
   });
