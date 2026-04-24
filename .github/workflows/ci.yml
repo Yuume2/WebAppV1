@@ -25,10 +25,16 @@ jobs:
         run: pnpm install --frozen-lockfile=false
 
       - name: Typecheck
-        run: pnpm typecheck || echo "typecheck placeholder"
+        run: pnpm typecheck
 
       - name: Lint
-        run: pnpm lint || echo "lint placeholder"
+        run: pnpm turbo run lint --filter='!@webapp/web'
+
+      - name: Test
+        run: pnpm turbo run test --filter='!@webapp/e2e'
+
+      - name: Build
+        run: pnpm build
 
   e2e-smoke:
     # Non-blocking scaffold. Real UI scenarios land in wave 2 of the tooling
