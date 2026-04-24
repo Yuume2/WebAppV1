@@ -1,5 +1,7 @@
 import type { AIProvider, ChatWindow, MessageRole, Project, Workspace } from '@webapp/types';
 
+export type MockMessageStatus = 'pending' | 'ok' | 'failed';
+
 export interface MockMessage {
   id: string;
   chatWindowId: string;
@@ -8,6 +10,10 @@ export interface MockMessage {
   createdAt: string;
   provider?: AIProvider | null;
   model?: string | null;
+  status?: MockMessageStatus;
+  clientTempId?: string;
+  errorCode?: string;
+  errorMessage?: string;
 }
 
 const now = '2026-04-18T00:00:00.000Z';
