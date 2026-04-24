@@ -28,7 +28,7 @@ jobs:
         run: pnpm typecheck
 
       - name: Lint
-        run: pnpm turbo run lint --filter='!@webapp/web'
+        run: pnpm turbo run lint
 
       - name: Test
         run: pnpm turbo run test --filter='!@webapp/e2e'
