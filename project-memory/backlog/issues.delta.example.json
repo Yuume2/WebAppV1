@@ -1,0 +1,43 @@
+{
+  "$schema": "./issues.delta.schema.md",
+  "generatedAt": "2026-04-24",
+  "agent": "claude-opus-4-7",
+  "project": {
+    "projectOwnerLogin": "Yuume2",
+    "projectNumber": 1
+  },
+  "context": {
+    "sourceIssue": 23,
+    "sourcePr": null,
+    "sourceBranch": "feat/api-drizzle-migrations",
+    "summary": "While wiring drizzle migrations I discovered two concrete follow-ups that are out of scope for #23 but must happen before #24 can be closed."
+  },
+  "issues": [
+    {
+      "externalKey": "delta-23-001",
+      "title": "[backend] fix(db): drop unused aiProviderEnum alias introduced by drizzle-kit",
+      "body": "## Goal\ndrizzle-kit generated a second `ai_provider` enum clone; unused but blocks idempotent migrate.\n\n## Acceptance criteria\n- Migration drops the alias.\n- `pnpm --filter @webapp/api db:migrate` is idempotent on a seeded DB.\n\n## Out of scope\n- Refactoring the canonical enum.",
+      "labels": ["role:backend", "type:fix", "P1-week", "ai:autonomous", "risk:safe"],
+      "owner": "L",
+      "area": "api",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "sourceIssue": 23,
+      "reason": "Discovered during drizzle-kit generate; unrelated to the parent scope.",
+      "dependsOn": [23]
+    },
+    {
+      "externalKey": "delta-23-002",
+      "title": "[coord] docs(api): document DATABASE_URL placeholder in apps/api/README.md",
+      "body": "## Goal\nREADME still lists pre-DB env vars only. Add `DATABASE_URL` + link to docker-compose bootstrap.\n\n## Acceptance criteria\n- README mentions `DATABASE_URL` and points at `docker-compose up -d postgres`.\n- No new content outside the Env + Run sections.\n\n## Out of scope\n- Rewriting the README.",
+      "labels": ["role:coord", "type:docs", "P2-soon", "ai:autonomous", "risk:safe"],
+      "owner": "X",
+      "area": "ci",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "sourceIssue": 23,
+      "reason": "Parent issue (#23) was scoped to schema/migration only; README update is a clear follow-up.",
+      "dependsOn": []
+    }
+  ]
+}

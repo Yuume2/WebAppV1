@@ -1,0 +1,336 @@
+{
+  "$schema": "./schema-note.md",
+  "generatedAt": "2026-04-24",
+  "project": {
+    "owner": "Yuume2",
+    "repo": "WebAppV1",
+    "projectNumber": 1,
+    "projectOwnerLogin": "Yuume2"
+  },
+  "issues": [
+    {
+      "title": "[coord] chore(memory): refresh project-memory to reflect post-PR#6 state",
+      "owner": "X",
+      "area": "memory",
+      "priority": "P0-now",
+      "status": "Ready",
+      "labels": ["role:coord", "type:chore", "P0-now", "ai:human-checkpoint", "risk:safe"],
+      "body": "## Goal\nMemory files pre-date PR #6. Main now has DB repos, auth, provider-connections, Sentry, and write endpoints. Agents picking tasks will act on stale facts unless memory matches `main` at `f46f599`.\n\n## Acceptance criteria\n- `03-current-state.md` reflects current main: Track A + Track B merged, DB-gated routes with in-memory fallback, Sentry wired.\n- `05-api-map.md` lists all current endpoints: GETs + POSTs for projects/workspaces/chat-windows/messages, `/v1/auth/*`, `/v1/provider-connections`, `/v1/state`, `/v1/dev`.\n- `07-backend-map.md` documents new dirs: `db/`, `providers/`, `lib/db.ts`, new controllers/services.\n- `06-frontend-map.md` marks web as read-only + local-state (no write clients yet).\n- `08-recent-changes.md` appends commits `dbd40ef`, `87beb1c`, `c8e3c26`, `f46f599`.\n- `04-active-tasks.md` replaced with pointer to GitHub Project.\n\n## Out of scope\n- Writing code.\n- Touching `docs/technical/`.\n\n## Test plan\n- `grep -r \"read-only V1\\|integration-homepage-projects\\|19 tests\" project-memory/` returns empty.\n- `pnpm typecheck` unchanged."
+    },
+    {
+      "title": "[coord] chore(env): commit .env.example for api and web",
+      "owner": "X",
+      "area": "ci",
+      "priority": "P0-now",
+      "status": "Ready",
+      "labels": ["role:coord", "type:chore", "P0-now", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nNo env template exists. Every downstream backend task (DB, auth, providers, Sentry) needs these var names documented before agents can run locally or wire CI.\n\n## Acceptance criteria\n- `apps/api/.env.example` includes every var read by `apps/api/src/config/env.ts` plus: `DATABASE_URL`, `PROVIDER_KEY_SECRET`, `SENTRY_DSN`, `SESSION_COOKIE_NAME`.\n- `apps/web/.env.example` includes `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SENTRY_DSN`.\n- Both files committed, no real secrets, placeholder values.\n- `apps/api/README.md` and root `README.md` reference them.\n\n## Out of scope\n- Loading `.env` in code (already handled).\n- Secret management tooling.\n\n## Test plan\n- Fresh clone, copy `.env.example`, `pnpm dev` boots api + web without crash in in-memory mode."
+    },
+    {
+      "title": "[backend] chore(db): drizzle config + migration generation",
+      "owner": "L",
+      "area": "api",
+      "priority": "P0-now",
+      "status": "Ready",
+      "labels": ["role:backend", "type:chore", "P0-now", "ai:human-checkpoint", "risk:review-required"],
+      "body": "## Goal\n`apps/api/src/db/schema.ts` exists but no `drizzle.config.ts` and no generated SQL migrations are committed. Blocks every other DB-dependent task.\n\n## Acceptance criteria\n- `apps/api/drizzle.config.ts` pointed at `src/db/schema.ts`, output dir `apps/api/drizzle/`.\n- `pnpm --filter @webapp/api db:generate` produces migration files, committed.\n- `pnpm --filter @webapp/api db:migrate` applies cleanly on empty Postgres.\n- All enums + tables from schema present after migrate (`users`, `sessions`, `projects`, `workspaces`, `chat_windows`, `messages`, `provider_connections`).\n\n## Out of scope\n- Docker-compose wiring (separate issue).\n- Seed data.\n- CI pg service.\n\n## Test plan\n- Empty local pg, `db:migrate`, `\\dt` lists all 7 tables + enums.\n- Re-run `db:migrate`, idempotent, no error."
+    },
+    {
+      "title": "[backend] chore(infra): docker-compose postgres service + local bootstrap",
+      "owner": "L",
+      "area": "api",
+      "priority": "P0-now",
+      "status": "Ready",
+      "labels": ["role:backend", "type:chore", "P0-now", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nWithout a reachable Postgres, DB-gated routes stay disabled and no DB work is testable end-to-end.\n\n## Acceptance criteria\n- `docker-compose.yml` defines `postgres:16` service, port 5432, env matches `.env.example`.\n- `DATABASE_URL=postgres://...@localhost:5432/webapp` boots api with DB mode active.\n- README documents `docker compose up -d postgres && pnpm --filter @webapp/api db:migrate`.\n- `/health` returns 200 with DB present.\n\n## Out of scope\n- Prod infra.\n- Backups.\n\n## Test plan\n- `docker compose up -d postgres`, api boot with `DATABASE_URL`, `/v1/projects` hits DB route (verified via log).\n- `unset DATABASE_URL`, api still boots, in-memory fallback serves."
+    },
+    {
+      "title": "[coord] chore(types): publish write-path DTOs in @webapp/types",
+      "owner": "X",
+      "area": "packages-types",
+      "priority": "P0-now",
+      "status": "Ready",
+      "labels": ["role:coord", "type:chore", "P0-now", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nBackend and frontend will grow write paths in parallel. Without shared DTOs they drift and we debug type mismatches instead of shipping.\n\n## Acceptance criteria\n- `@webapp/types` exports: `CreateProjectInput`, `CreateWorkspaceInput`, `CreateChatWindowInput`, `CreateMessageInput`, `AuthRegisterInput`, `AuthLoginInput`, `ProviderConnectionInput`, `ProviderConnectionPublic`, `MeResponse`.\n- Re-exported from `packages/types/src/index.ts`.\n- No new runtime deps; types only.\n- `pnpm typecheck` green across monorepo.\n\n## Out of scope\n- Zod schemas (separate issue).\n- Backend controller refactor to use them (separate issue).\n\n## Test plan\n- `pnpm --filter @webapp/types build`.\n- `pnpm typecheck` green."
+    },
+    {
+      "title": "[backend] feat(providers): encrypt provider api keys at rest (AES-256-GCM)",
+      "owner": "L",
+      "area": "api",
+      "priority": "P0-now",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:feat", "P0-now", "ai:human-checkpoint", "risk:destructive"],
+      "body": "## Goal\nUser API keys must never be stored plaintext. Current `provider_connections` schema must guarantee ciphertext-at-rest before any UI lets users submit keys.\n\n## Acceptance criteria\n- Migration: `provider_connections.api_key_ciphertext` column (text). Drop plaintext column if present.\n- `apps/api/src/lib/crypto.ts` AES-256-GCM with IV per record, key from `PROVIDER_KEY_SECRET` env.\n- `provider-key.service` encrypts on write, decrypts only inside a provider-call path.\n- Boot fails in `NODE_ENV=production` if `PROVIDER_KEY_SECRET` missing.\n- No endpoint ever returns plaintext (masked or full).\n- Test asserts raw DB row contains ciphertext different from input.\n\n## Out of scope\n- Key rotation flow.\n- KMS integration.\n- Audit log.\n\n## Test plan\n- Vitest: round-trip encrypt/decrypt; tampered ciphertext throws.\n- Integration: POST connection, SELECT raw row, not plaintext.\n- Boot prod without secret, process exits with clear message."
+    },
+    {
+      "title": "[backend] feat(providers): POST message → OpenAI chat-completion loop",
+      "owner": "L",
+      "area": "api",
+      "priority": "P0-now",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:feat", "P0-now", "ai:human-checkpoint", "risk:review-required"],
+      "body": "## Goal\n`POST /v1/messages` currently persists only the user message. Closing the loop (call provider, persist assistant reply) is the minimum viable product.\n\n## Acceptance criteria\n- On `POST /v1/messages` with `role='user'`, controller: persists user msg, loads chat-window + provider connection (decrypt key), loads prior messages in order, calls `openaiProvider.chat({ model, messages })`, persists assistant msg, returns both.\n- Missing provider connection for window's provider returns 412 `provider_not_configured`.\n- Provider error: assistant msg NOT persisted, 502 `provider_error`.\n- Timeout 30s.\n- Non-`user` role returns 400.\n- Vitest with stubbed provider covers happy path, missing conn, timeout, error.\n\n## Out of scope\n- Streaming (SSE).\n- Anthropic/Perplexity providers.\n- Token/cost accounting.\n- Retries.\n\n## Test plan\n- Vitest: 4 branches above.\n- Manual: real key, POST, assistant row appears in DB."
+    },
+    {
+      "title": "[frontend] feat(web): POST message client + optimistic render",
+      "owner": "E",
+      "area": "web",
+      "priority": "P0-now",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P0-now", "ai:human-checkpoint", "risk:review-required"],
+      "body": "## Goal\n`useChatSessions` keeps messages in local state only. Once backend loop lands, UI must POST and render the persisted assistant reply.\n\n## Acceptance criteria\n- `lib/api/messages.ts` adds `postMessage(windowId, { role:'user', content })`.\n- Composer submit: optimistic user msg (temp id), POST, replace id + append assistant msg on success; mark failed with retry on error.\n- In-flight spinner; `AbortController` cancel button.\n- `NEXT_PUBLIC_API_URL` unset: local-echo mock preserved.\n\n## Out of scope\n- SSE streaming.\n- Edit/delete/resend flow.\n- File uploads.\n\n## Test plan\n- Playwright vs stub backend: send, assistant renders.\n- Force network fail, error state + retry.\n- Mock mode unaffected."
+    },
+    {
+      "title": "[backend] feat(auth): session middleware + GET /v1/me",
+      "owner": "L",
+      "area": "api",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:feat", "P1-week", "ai:human-checkpoint", "risk:review-required"],
+      "body": "## Goal\nConsolidate auth into a single middleware that attaches `userId` to `RequestContext`, and expose `/v1/me` so frontend can verify session.\n\n## Acceptance criteria\n- `middleware/auth.ts` reads session cookie, loads session+user, attaches `ctx.userId`.\n- `GET /v1/me` returns `{ id, email, displayName }` or 401.\n- Existing `*-db.controller.ts` read `ctx.userId` instead of re-fetching.\n- Tests: no cookie→401, valid→200, expired→401 + session deleted.\n\n## Out of scope\n- CSRF (separate).\n- Rate limiting (separate)."
+    },
+    {
+      "title": "[backend] feat(auth): CSRF protection on mutating routes",
+      "owner": "L",
+      "area": "api",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:feat", "P1-week", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nCookie-based auth needs CSRF defense for POST/PUT/DELETE.\n\n## Acceptance criteria\n- SameSite=Lax cookie + Origin header check on mutating methods.\n- Bad/missing origin returns 403 `csrf_rejected`.\n- Documented in api README.\n\n## Out of scope\n- Double-submit token scheme."
+    },
+    {
+      "title": "[backend] feat(api): body validation for all POST controllers",
+      "owner": "L",
+      "area": "api",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:fix", "P1-week", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nWrite endpoints can 500 on bad JSON or wrong field types. Need consistent schema validation.\n\n## Acceptance criteria\n- Shared `parseJsonBody<T>(ctx, schema)` helper in `lib/http.ts`.\n- Every POST controller uses it.\n- Bad body returns 400 `invalid_body` with field list.\n\n## Out of scope\n- Replacing the custom router with a framework."
+    },
+    {
+      "title": "[backend] feat(providers): provider-connections CRUD + metadata validation",
+      "owner": "L",
+      "area": "api",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:feat", "P1-week", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\n`provider-connections` routes exist but need full CRUD + metadata validation (provider in union, label length, uniqueness per user).\n\n## Acceptance criteria\n- GET list returns `{ id, provider, label, createdAt, lastUsedAt }` — never the key.\n- POST validates provider in `AIProvider`, label 1–64 chars.\n- DELETE scoped to current user.\n- PUT renames label.\n- Tests cover ownership (user A cannot touch user B's row).\n\n## Out of scope\n- Key rotation.\n- Org-shared connections."
+    },
+    {
+      "title": "[backend] feat(providers): POST /v1/provider-connections/:id/test",
+      "owner": "L",
+      "area": "api",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:feat", "P1-week", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nLet users verify a key works before relying on it in a chat window.\n\n## Acceptance criteria\n- Endpoint calls provider's cheapest ping (e.g. `/models`).\n- Returns `{ ok: true }` or `{ ok: false, code, message }`.\n- Rate-limit 1/min per connection.\n\n## Out of scope\n- Model auto-discovery."
+    },
+    {
+      "title": "[backend] test(api): CI ephemeral Postgres for DB route tests",
+      "owner": "L",
+      "area": "ci",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:test", "P1-week", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\n`*-db.test.ts` only run with `DATABASE_URL`. CI must spin pg and execute them.\n\n## Acceptance criteria\n- CI job `api-db-tests` uses `services: postgres`.\n- Runs `db:migrate` then `pnpm --filter @webapp/api test`.\n- README documents local `DATABASE_URL` for full suite.\n\n## Out of scope\n- Web e2e pg usage."
+    },
+    {
+      "title": "[backend] feat(providers): Anthropic adapter",
+      "owner": "L",
+      "area": "api",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:feat", "P2-soon", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nSecond provider adapter mirroring OpenAI contract.\n\n## Acceptance criteria\n- `providers/anthropic.provider.ts` + test.\n- Registered in provider factory keyed by `AIProvider`.\n- `POST /v1/messages` works for windows with `provider='anthropic'`.\n\n## Out of scope\n- Streaming, tool use."
+    },
+    {
+      "title": "[backend] feat(providers): Perplexity adapter",
+      "owner": "L",
+      "area": "api",
+      "priority": "P3-backlog",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:feat", "P3-backlog", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nThird provider adapter.\n\n## Acceptance criteria\n- `providers/perplexity.provider.ts` + test.\n- Handles citations (store in message metadata or drop — document in ADR).\n- Registered in factory.\n\n## Out of scope\n- Citation rendering UI."
+    },
+    {
+      "title": "[backend] feat(api): SSE streaming endpoint for messages",
+      "owner": "L",
+      "area": "api",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:feat", "P2-soon", "ai:human-checkpoint", "risk:review-required"],
+      "body": "## Goal\nProgressive token rendering for long replies.\n\n## Acceptance criteria\n- `GET /v1/chat-windows/:id/messages/stream` emits `text/event-stream`.\n- Persists assistant msg on done, emits `event: done` + id.\n- Client disconnect aborts provider call.\n\n## Out of scope\n- WebSocket transport.\n- Frontend wiring."
+    },
+    {
+      "title": "[backend] feat(auth): rate limit /v1/auth/login and /register",
+      "owner": "L",
+      "area": "api",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:feat", "P2-soon", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nBrute-force defense on auth.\n\n## Acceptance criteria\n- In-memory token bucket (swap-in interface for Redis).\n- 429 after N failures per IP.\n- Vitest covers limit + reset.\n\n## Out of scope\n- Global rate limiter."
+    },
+    {
+      "title": "[backend] refactor(api): collapse in-memory + db controller duplication",
+      "owner": "L",
+      "area": "api",
+      "priority": "P3-backlog",
+      "status": "Backlog",
+      "labels": ["role:backend", "type:refactor", "P3-backlog", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\n`*.controller.ts` and `*-db.controller.ts` duplicate logic. Services should expose one interface with two impls.\n\n## Acceptance criteria\n- `services/*.service.ts` expose an interface; in-memory + DB are impls.\n- One controller per resource.\n- Tests pass in both modes.\n\n## Out of scope\n- Removing fallback."
+    },
+    {
+      "title": "[frontend] feat(web): login + register pages consuming /v1/auth/*",
+      "owner": "E",
+      "area": "web",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P1-week", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nUI entry points for existing auth endpoints.\n\n## Acceptance criteria\n- `src/app/login/page.tsx`, `src/app/register/page.tsx`.\n- `lib/api/auth.ts`: `login`, `register` with `credentials: 'include'`.\n- Error states for wrong password / duplicate email.\n\n## Out of scope\n- Session guard (separate issue).\n- Password reset, OAuth."
+    },
+    {
+      "title": "[frontend] feat(web): session guard + logout in app shell",
+      "owner": "E",
+      "area": "web",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P1-week", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nGate `/` and `/project/*` behind `/v1/me`; add logout.\n\n## Acceptance criteria\n- Layout fetches `/v1/me`; unauth redirects to `/login`.\n- Logout button in `AppShell`, POSTs `/v1/auth/logout`, redirects.\n- Works when `NEXT_PUBLIC_API_URL` unset (skip guard, dev mode).\n\n## Out of scope\n- Remember-me."
+    },
+    {
+      "title": "[frontend] feat(web): provider settings page shell (list + delete)",
+      "owner": "E",
+      "area": "web",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P1-week", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nRead-only list of existing provider connections + delete; separate from add-key form.\n\n## Acceptance criteria\n- `src/app/settings/providers/page.tsx`.\n- `lib/api/provider-connections.ts` with `list`, `remove`.\n- Table: provider, label, createdAt, lastUsedAt.\n- Delete with confirm modal.\n\n## Out of scope\n- Add-key form (separate issue).\n- Test-connection button (separate issue)."
+    },
+    {
+      "title": "[frontend] feat(web): add-provider-key form",
+      "owner": "E",
+      "area": "web",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P1-week", "ai:human-checkpoint", "risk:review-required"],
+      "body": "## Goal\nLet user submit a new API key; key never persisted client-side.\n\n## Acceptance criteria\n- Form on `/settings/providers`: provider select, label, api key (password field).\n- On submit: POST, clear key from state, refetch list.\n- Key never written to localStorage, Redux, or URL.\n\n## Out of scope\n- Masking/reveal of stored keys (never returned)."
+    },
+    {
+      "title": "[frontend] feat(web): test-connection button on provider settings",
+      "owner": "E",
+      "area": "web",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P2-soon", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nSurface backend connectivity test result.\n\n## Acceptance criteria\n- Button per row calls `POST /v1/provider-connections/:id/test`.\n- Success/error toast with code + message.\n- Disabled while in flight.\n\n## Out of scope\n- Auto-test on save."
+    },
+    {
+      "title": "[frontend] feat(web): wire create-project, create-workspace, create-chat-window to real POSTs",
+      "owner": "E",
+      "area": "web",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P1-week", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nBackend POST endpoints exist; UI still mutates local state only.\n\n## Acceptance criteria\n- `lib/api/{projects,workspaces,windows}.ts` gain `create*` functions.\n- Create flows dispatch POST, refresh from server on success.\n- Mock mode preserved when API unset.\n\n## Out of scope\n- Rename/delete (separate issue)."
+    },
+    {
+      "title": "[frontend] feat(web): rename + delete for projects/workspaces/chat-windows",
+      "owner": "E",
+      "area": "web",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P2-soon", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nPersist rename (currently local-only) and add delete mutations.\n\n## Acceptance criteria\n- PUT + DELETE clients + UI affordances.\n- Confirm modal before delete.\n- Optimistic rename with rollback on error.\n\n## Out of scope\n- Trash/undo."
+    },
+    {
+      "title": "[frontend] refactor(web): migrate web to canonical chat-window endpoints",
+      "owner": "E",
+      "area": "web",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:refactor", "P1-week", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nBackend standardized on `/v1/chat-windows/*` and `windowId→chatWindowId`. Web still calls legacy alias paths and uses `windowId` in places.\n\n## Acceptance criteria\n- `lib/api/windows.ts` renamed `chat-windows.ts`; updates call sites.\n- Local `windowId` fields renamed `chatWindowId` for consistency with backend.\n- `pnpm --filter @webapp/web typecheck && test` green.\n\n## Out of scope\n- Removing backend aliases (backend task)."
+    },
+    {
+      "title": "[frontend] feat(web): message metadata display (provider, model, timestamp)",
+      "owner": "E",
+      "area": "web",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P2-soon", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nRender provider/model/created-at on assistant messages once the loop returns them.\n\n## Acceptance criteria\n- Small metadata row under assistant bubbles.\n- Handles missing fields (legacy mock messages).\n- No layout regression in empty states.\n\n## Out of scope\n- Token usage display."
+    },
+    {
+      "title": "[frontend] feat(web): global error boundary + toast for ApiCallError",
+      "owner": "E",
+      "area": "web",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P2-soon", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nSurface API failures visibly instead of silent console errors.\n\n## Acceptance criteria\n- `components/ErrorBoundary.tsx` wraps root.\n- Minimal toast component (no new dep).\n- `apiFetch` errors reach toast layer.\n\n## Out of scope\n- Retry UI per toast."
+    },
+    {
+      "title": "[frontend] feat(web): Sentry browser SDK init",
+      "owner": "E",
+      "area": "web",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:feat", "P2-soon", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nBackend Sentry landed in `87beb1c`; web errors still invisible in prod.\n\n## Acceptance criteria\n- `@sentry/nextjs` installed, init in `instrumentation-client.ts`.\n- `NEXT_PUBLIC_SENTRY_DSN` gated; no-op when unset.\n- Error boundary forwards caught errors to Sentry.\n\n## Out of scope\n- Session replay, performance tracing."
+    },
+    {
+      "title": "[frontend] test(web): Playwright golden-path e2e",
+      "owner": "E",
+      "area": "web",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:frontend", "type:test", "P2-soon", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nCover auth, create project, workspace, chat, logout against stubbed provider.\n\n## Acceptance criteria\n- `apps/web/e2e/golden-path.spec.ts`.\n- CI job `web-e2e` on PRs touching `apps/web/**`.\n- README section for local run.\n\n## Out of scope\n- Visual regression."
+    },
+    {
+      "title": "[coord] chore(ci): remove || echo fallbacks; make lint/typecheck/test real gates",
+      "owner": "X",
+      "area": "ci",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:coord", "type:chore", "P1-week", "ai:autonomous", "risk:review-required"],
+      "body": "## Goal\nCI currently can't fail. Blocks trustworthy PR gates for agents.\n\n## Acceptance criteria\n- `.github/workflows/ci.yml`: all `|| echo ...` removed.\n- `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build` as real steps.\n- Any currently-failing step fixed OR a follow-up issue opened per failure.\n\n## Out of scope\n- Adding coverage/e2e jobs."
+    },
+    {
+      "title": "[coord] chore(repo): issue + PR templates matching label taxonomy",
+      "owner": "X",
+      "area": "ci",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:coord", "type:chore", "P1-week", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nStandardize issue + PR shape so agents self-serve without clarification turns.\n\n## Acceptance criteria\n- `.github/ISSUE_TEMPLATE/{backend,frontend,coord}.yml` with Goal / AC / Out-of-scope / Test-plan.\n- `.github/pull_request_template.md` mirrors AC checklist + `Closes #`.\n- Templates reference label namespaces.\n\n## Out of scope\n- Automation."
+    },
+    {
+      "title": "[coord] chore(repo): seed GitHub labels from taxonomy",
+      "owner": "X",
+      "area": "ci",
+      "priority": "P1-week",
+      "status": "Backlog",
+      "labels": ["role:coord", "type:chore", "P1-week", "ai:human-checkpoint", "risk:safe"],
+      "body": "## Goal\nGuarantee every label in the taxonomy exists in GitHub before agents file issues.\n\n## Acceptance criteria\n- `tools/seed-labels.sh` using `gh label create --force`.\n- Run documented in `CONTRIBUTING.md`.\n- All labels visible in UI after run.\n\n## Out of scope\n- Webhooks."
+    },
+    {
+      "title": "[coord] docs(adr): Track A + Track B merged topology",
+      "owner": "X",
+      "area": "memory",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:coord", "type:docs", "P2-soon", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nCapture why Track B merged, and how DB-gated routing with in-memory fallback is expected to behave until fallback is removed.\n\n## Acceptance criteria\n- `docs/technical/adr/XXXX-track-ab-merge.md`.\n- Linked from `project-memory/02-decisions.md`.\n\n## Out of scope\n- Removing fallback."
+    },
+    {
+      "title": "[coord] docs(api): flesh out apps/api/README.md and CONTRIBUTING.md",
+      "owner": "X",
+      "area": "ci",
+      "priority": "P2-soon",
+      "status": "Backlog",
+      "labels": ["role:coord", "type:docs", "P2-soon", "ai:autonomous", "risk:safe"],
+      "body": "## Goal\nBoth files are 1-line stubs. Agents need run/env/test instructions + contribution rules.\n\n## Acceptance criteria\n- `apps/api/README.md`: Overview, Run, Env vars, Endpoints link, Tests. <150 lines.\n- `CONTRIBUTING.md`: branch pattern, conventional-commits scopes, label use, memory-update rule.\n\n## Out of scope\n- Code of conduct."
+    }
+  ]
+}
