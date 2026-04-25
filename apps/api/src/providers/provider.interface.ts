@@ -17,6 +17,12 @@ export interface ChatCompletionResult {
   };
 }
 
+// ── Streaming chunk ───────────────────────────────────────────────────────────
+
+export type ChatCompletionStreamChunk =
+  | { type: 'delta'; content: string }
+  | { type: 'done'; model: string; usage: ChatCompletionResult['usage'] };
+
 // ── Provider client contract ──────────────────────────────────────────────────
 
 export interface ProviderClient {
@@ -24,6 +30,11 @@ export interface ProviderClient {
     messages: ChatMessage[],
     model: string,
   ): Promise<ChatCompletionResult>;
+
+  createChatCompletionStream(
+    messages: ChatMessage[],
+    model: string,
+  ): AsyncIterable<ChatCompletionStreamChunk>;
 }
 
 // ── Typed error ───────────────────────────────────────────────────────────────

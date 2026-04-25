@@ -1,4 +1,9 @@
-import type { ChatCompletionResult, ChatMessage, ProviderClient } from './provider.interface.js';
+import type {
+  ChatCompletionResult,
+  ChatCompletionStreamChunk,
+  ChatMessage,
+  ProviderClient,
+} from './provider.interface.js';
 import { ProviderError } from './provider.interface.js';
 
 // ── Key verification ──────────────────────────────────────────────────────────
@@ -113,6 +118,95 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
           totalTokens:      data.usage?.total_tokens      ?? 0,
         },
       };
+    },
+
+    async *createChatCompletionStream(
+      messages: ChatMessage[],
+      model: string,
+    ): AsyncIterable<ChatCompletionStreamChunk> {
+      let res: Response;
+      try {
+        res = await fetch(OPENAI_CHAT_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+            'Accept': 'text/event-stream',
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            stream: true,
+            stream_options: { include_usage: true },
+          }),
+        });
+      } catch (err) {
+        throw new ProviderError(
+          `OpenAI request failed: ${(err as Error).message}`,
+          'api_error',
+          'openai',
+        );
+      }
+
+      if (!res.ok || !res.body) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const body = (await res.json()) as { error?: { message?: string } };
+          if (typeof body?.error?.message === 'string') detail = body.error.message;
+        } catch { /* ignore */ }
+        throw new ProviderError(`OpenAI API error: ${detail}`, 'api_error', 'openai');
+      }
+
+      const decoder = new TextDecoder();
+      let buf = '';
+      let finalModel = model;
+      let usage: ChatCompletionResult['usage'] = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
+      const reader = res.body.getReader();
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+
+          let idx;
+          while ((idx = buf.indexOf('\n')) >= 0) {
+            const line = buf.slice(0, idx).trim();
+            buf = buf.slice(idx + 1);
+            if (line === '' || !line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (payload === '[DONE]') continue;
+
+            let event: {
+              model?: string;
+              choices?: Array<{ delta?: { content?: string } }>;
+              usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+            };
+            try {
+              event = JSON.parse(payload);
+            } catch {
+              throw new ProviderError('Failed to parse OpenAI stream chunk', 'invalid_response', 'openai');
+            }
+
+            if (event.model) finalModel = event.model;
+            if (event.usage) {
+              usage = {
+                promptTokens:     event.usage.prompt_tokens     ?? 0,
+                completionTokens: event.usage.completion_tokens ?? 0,
+                totalTokens:      event.usage.total_tokens      ?? 0,
+              };
+            }
+            const delta = event.choices?.[0]?.delta?.content;
+            if (typeof delta === 'string' && delta.length > 0) {
+              yield { type: 'delta', content: delta };
+            }
+          }
+        }
+      } finally {
+        try { reader.releaseLock(); } catch { /* ignore */ }
+      }
+
+      yield { type: 'done', model: finalModel, usage };
     },
   };
 }

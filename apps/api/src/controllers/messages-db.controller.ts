@@ -7,6 +7,7 @@ import {
   respondCreated,
   respondError,
   respondNotFound,
+  respondStreamed,
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
@@ -18,7 +19,11 @@ import * as messagesRepo from '../db/messages.repo.js';
 import * as chatWindowsRepo from '../db/chat-windows.repo.js';
 import { getDecryptedApiKey } from '../db/provider-connections.repo.js';
 import { createOpenAIClient } from '../providers/openai.provider.js';
-import type { ChatCompletionResult, ChatMessage } from '../providers/provider.interface.js';
+import type {
+  ChatCompletionResult,
+  ChatCompletionStreamChunk,
+  ChatMessage,
+} from '../providers/provider.interface.js';
 
 // ── Provider timeout guard ────────────────────────────────────────────────────
 
@@ -77,6 +82,7 @@ export interface MessagesDeps {
   findChatWindow:    (chatWindowId: string, userId: string) => Promise<DbChatWindow | null>;
   getApiKey:         (userId: string, provider: AIProvider) => Promise<string | null>;
   generate:          (apiKey: string, messages: ChatMessage[], model: string) => Promise<ChatCompletionResult>;
+  generateStream:    (apiKey: string, messages: ChatMessage[], model: string) => AsyncIterable<ChatCompletionStreamChunk>;
   maxContextMessages: number;
   providerTimeoutMs?: number;
 }
@@ -91,6 +97,7 @@ export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps
     findChatWindow:    (chatWindowId, userId)              => chatWindowsRepo.findChatWindowById(db, chatWindowId, userId),
     getApiKey:         (userId, provider)                  => getDecryptedApiKey(db, userId, provider),
     generate:          (apiKey, msgs, model)               => createOpenAIClient(apiKey).createChatCompletion(msgs, model),
+    generateStream:    (apiKey, msgs, model)               => createOpenAIClient(apiKey).createChatCompletionStream(msgs, model),
     maxContextMessages: env.openaiMaxContextMessages,
   };
 }
@@ -236,4 +243,124 @@ export async function getMessageDbController(
   const id = ctx.params['id'] ?? '';
   const row = await deps.findMessage(id, user.id);
   return row ? respond(toMessage(row)) : respondNotFound(`Message ${id} not found`);
+}
+
+// ── Streaming controller ──────────────────────────────────────────────────────
+
+function sseWrite(res: import('node:http').ServerResponse, payload: unknown): void {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+export async function streamMessageDbController(
+  ctx: RequestContext,
+  deps: MessagesDeps,
+): Promise<InternalResult> {
+  const user = await deps.resolveUser(ctx.req);
+  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+
+  const body = await parseJsonBody(ctx, CreateMessageDbBody);
+  if (!body.ok) return body.result;
+  if (body.value.role !== 'user') {
+    return respondError('validation_error', 'Streaming is only supported for role=user messages', 400);
+  }
+
+  const chatWindowId = body.value.chatWindowId;
+  const content = body.value.content;
+
+  const cw = await deps.findChatWindow(chatWindowId, user.id);
+  if (cw === null) return respondNotFound(`ChatWindow ${chatWindowId} not found`);
+  if (cw.provider !== 'openai') {
+    return respondError(
+      'provider_not_configured',
+      `Streaming is only supported for openai chat windows (got '${cw.provider}')`,
+      412,
+    );
+  }
+  const apiKey = await deps.getApiKey(user.id, 'openai');
+  if (!apiKey) {
+    return respondError(
+      'provider_not_configured',
+      'No OpenAI connection configured. Add your API key in provider settings.',
+      412,
+    );
+  }
+
+  const history = await deps.listMessages(chatWindowId, user.id);
+  const recentHistory = (history ?? []).slice(-deps.maxContextMessages);
+  const contextMessages: ChatMessage[] = [
+    ...recentHistory.map((m) => ({ role: m.role as ChatMessage['role'], content: m.content })),
+    { role: 'user', content },
+  ];
+
+  const res = ctx.res;
+  if (!res) return respondError('internal_error', 'Streaming requires a response object', 500);
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-store, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+    'X-Request-Id': ctx.requestId,
+  });
+
+  const startedAt = Date.now();
+  let assistantContent = '';
+  let model = cw.model;
+  let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  let aborted = false;
+
+  ctx.req.on('close', () => { aborted = true; });
+
+  try {
+    for await (const chunk of deps.generateStream(apiKey, contextMessages, cw.model)) {
+      if (aborted) break;
+      if (chunk.type === 'delta') {
+        assistantContent += chunk.content;
+        sseWrite(res, { delta: chunk.content });
+      } else {
+        model = chunk.model;
+        usage = chunk.usage;
+      }
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown provider error';
+    sseWrite(res, { error: detail });
+    res.write('data: [DONE]\n\n');
+    res.end();
+    return respondStreamed(502);
+  }
+
+  if (aborted || assistantContent.length === 0) {
+    // Client gave up or provider produced nothing — do NOT persist a half-baked pair.
+    if (!aborted) sseWrite(res, { error: 'empty_response' });
+    res.write('data: [DONE]\n\n');
+    res.end();
+    return respondStreamed(aborted ? 499 : 502);
+  }
+
+  const latencyMs = Date.now() - startedAt;
+  const assistantMetadata: AssistantMessageMetadata = {
+    provider:         'openai',
+    model,
+    promptTokens:     usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    latencyMs,
+  };
+
+  const pair = await deps.persistMessagePair(chatWindowId, user.id, content, assistantContent, assistantMetadata);
+  if (pair === null) {
+    sseWrite(res, { error: 'chat_window_not_found' });
+    res.write('data: [DONE]\n\n');
+    res.end();
+    return respondStreamed(404);
+  }
+
+  sseWrite(res, {
+    done: true,
+    userMessage:      toMessage(pair.userRow),
+    assistantMessage: toMessage(pair.assistantRow),
+  });
+  res.write('data: [DONE]\n\n');
+  res.end();
+  return respondStreamed(200);
 }

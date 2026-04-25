@@ -11,6 +11,7 @@ export interface RequestContext {
   url: URL;
   requestId: string;
   req: IncomingMessage;
+  res?: ServerResponse;
   params: Record<string, string>;
 }
 
@@ -19,6 +20,13 @@ export interface InternalResult {
   httpStatus: number;
   body: ApiResponse<unknown>;
   headers?: Record<string, string>;
+  /** When true, the handler already wrote the response (used by streaming). Pipeline must not write again. */
+  streamed?: boolean;
+}
+
+/** Sentinel value for handlers that took over the response (e.g. SSE). */
+export function respondStreamed(httpStatus = 200): InternalResult {
+  return { httpStatus, body: { ok: true, data: null }, streamed: true };
 }
 
 export type RouteHandler = (ctx: RequestContext) => Promise<InternalResult> | InternalResult;
