@@ -54,6 +54,22 @@ Vitest spins up the real server on an ephemeral port per suite and asserts on th
 
 The suite runs green without `DATABASE_URL` (DB repos are mocked per test). To also exercise the DB-backed path locally — applying drizzle migrations against a real Postgres before running tests — export `DATABASE_URL` (see `## Local Postgres (DB mode)` below) and run `pnpm --filter @webapp/api db:migrate` once, then `pnpm --filter @webapp/api test`. CI runs this variant in the `api-db-tests` job.
 
+### AI smoke (manual)
+
+End-to-end check of the full chat flow against a running API and a real OpenAI account:
+
+```bash
+# 1. API up + Postgres up + migrations applied (see "Local Postgres" below).
+# 2. apps/api/.env contains OPENAI_API_KEY (loaded automatically).
+pnpm api:smoke:ai
+# or equivalently:
+pnpm --filter @webapp/api smoke:ai
+```
+
+The script signs up a fresh user, creates a project / workspace / chat-window, upserts the OpenAI key, posts a message "hello", and asserts an assistant reply was persisted. It **never logs the key value**. Missing `OPENAI_API_KEY` fails fast with a clear message.
+
+This script is **not** wired into CI: it spends real OpenAI tokens and assumes a live API on `http://localhost:4000`. Override the target with `SMOKE_API_BASE_URL=…` or the model with `SMOKE_MODEL=…`.
+
 ## Env vars
 
 Canonical template: [`apps/api/.env.example`](./.env.example). Copy it to `apps/api/.env` (or export the vars in your shell) and tweak values as needed. `pnpm --filter @webapp/api dev` auto-loads `apps/api/.env` when it exists (via `--env-file-if-exists`); shell-exported vars still win because Node's `--env-file*` flags don't override existing process env. The table below documents each variable.
