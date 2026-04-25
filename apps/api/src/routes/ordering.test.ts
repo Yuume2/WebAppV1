@@ -67,7 +67,7 @@ describe('list ordering — createdAt ASC, id ASC tie-breaker', () => {
   it('GET /v1/chat-windows — list is sorted by createdAt/id', async () => {
     const ws = await post<Workspace>('/v1/workspaces', { projectId: 'proj-1', name: 'WS' });
     await post<ChatWindow>('/v1/chat-windows', { workspaceId: ws.id, title: 'CW-A', provider: 'openai', model: 'gpt-4o' });
-    await post<ChatWindow>('/v1/chat-windows', { workspaceId: ws.id, title: 'CW-B', provider: 'anthropic', model: 'claude-3-5-sonnet' });
+    await post<ChatWindow>('/v1/chat-windows', { workspaceId: ws.id, title: 'CW-B', provider: 'openai', model: 'gpt-4o' });
     const list = await get<ChatWindow[]>(`/v1/chat-windows?workspaceId=${ws.id}`);
     expect(list.length).toBeGreaterThanOrEqual(2);
     assertSorted(list);

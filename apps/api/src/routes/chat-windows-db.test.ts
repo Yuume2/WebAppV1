@@ -161,14 +161,14 @@ describe('POST /v1/chat-windows — authenticated', () => {
         mockChatWindow(workspaceId, { id: 'new-cw', title, provider, model }),
     }));
     const res = await post(baseUrl, '/v1/chat-windows', {
-      workspaceId: 'ws-1', title: 'New Chat', provider: 'anthropic', model: 'claude-3-5-sonnet',
+      workspaceId: 'ws-1', title: 'New Chat', provider: 'openai', model: 'gpt-4o',
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as ApiResponse<ChatWindow>;
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.title).toBe('New Chat');
-    expect(body.data.provider).toBe('anthropic');
-    expect(body.data.model).toBe('claude-3-5-sonnet');
+    expect(body.data.provider).toBe('openai');
+    expect(body.data.model).toBe('gpt-4o');
     expect(res.headers.get('location')).toMatch(/\/v1\/chat-windows\//);
     await close();
   });
@@ -202,6 +202,29 @@ describe('POST /v1/chat-windows — authenticated', () => {
     expect(res.status).toBe(400);
     await close();
   });
+
+  for (const provider of ['anthropic', 'perplexity'] as const) {
+    it(`rejects valid-but-unsupported provider '${provider}' with 400 validation_error (no silent dead-end)`, async () => {
+      let createCalled = false;
+      const { baseUrl, close } = await startServer(makeDeps({
+        resolveUser:      async () => USER_1,
+        createChatWindow: async (workspaceId, _userId, title, p, model) => {
+          createCalled = true;
+          return mockChatWindow(workspaceId, { title, provider: p, model });
+        },
+      }));
+      const res = await post(baseUrl, '/v1/chat-windows', {
+        workspaceId: 'ws-1', title: 'X', provider, model: 'm',
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as ApiResponse<never>;
+      if (body.ok) throw new Error('expected error');
+      expect(body.error.code).toBe('validation_error');
+      expect(body.error.message).toContain('not yet supported');
+      expect(createCalled).toBe(false);
+      await close();
+    });
+  }
 });
 
 // ── Get chat window by id ─────────────────────────────────────────────────────

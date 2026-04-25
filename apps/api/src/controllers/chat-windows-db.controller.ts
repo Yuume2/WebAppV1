@@ -58,6 +58,7 @@ export function makeChatWindowsDeps(db: Db, sessionDeps: SessionDeps): ChatWindo
 // ── Body schemas ──────────────────────────────────────────────────────────────
 
 const AI_PROVIDERS = ['openai', 'anthropic', 'perplexity'] as const;
+const SUPPORTED_PROVIDERS = new Set<AIProvider>(['openai']);
 
 const CreateChatWindowDbBody = s.object({
   workspaceId: s.string({ min: 1 }),
@@ -111,6 +112,14 @@ export async function createChatWindowDbController(
 
   const body = await parseJsonBody(ctx, CreateChatWindowDbBody);
   if (!body.ok) return body.result;
+
+  if (!SUPPORTED_PROVIDERS.has(body.value.provider)) {
+    return respondError(
+      'validation_error',
+      `Provider '${body.value.provider}' is not yet supported. Pick a supported provider (openai) — others land when their adapter ships.`,
+      400,
+    );
+  }
 
   const row = await deps.createChatWindow(
     body.value.workspaceId,

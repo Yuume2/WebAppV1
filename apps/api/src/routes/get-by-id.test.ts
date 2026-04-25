@@ -88,7 +88,7 @@ describe('GET /v1/chat-windows/:id', () => {
   it('returns a chat window by id', async () => {
     const ws = await post<Workspace>('/v1/workspaces', { projectId: 'proj-1', name: 'WS' });
     const cw = await post<ChatWindow>('/v1/chat-windows', {
-      workspaceId: ws.id, title: 'CW GetById', provider: 'anthropic', model: 'claude-3-5-sonnet',
+      workspaceId: ws.id, title: 'CW GetById', provider: 'openai', model: 'gpt-4o',
     });
 
     const res = await fetch(`${harness.baseUrl}/v1/chat-windows/${cw.id}`);
@@ -97,7 +97,7 @@ describe('GET /v1/chat-windows/:id', () => {
     expect(body.ok).toBe(true);
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.id).toBe(cw.id);
-    expect(body.data.provider).toBe('anthropic');
+    expect(body.data.provider).toBe('openai');
   });
 
   it('returns 404 for unknown chat window id', async () => {

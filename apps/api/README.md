@@ -56,7 +56,7 @@ The suite runs green without `DATABASE_URL` (DB repos are mocked per test). To a
 
 ## Env vars
 
-Canonical template: [`apps/api/.env.example`](./.env.example). Copy it to `apps/api/.env` (or export the vars in your shell) and tweak values as needed. The table below documents each variable.
+Canonical template: [`apps/api/.env.example`](./.env.example). Copy it to `apps/api/.env` (or export the vars in your shell) and tweak values as needed. `pnpm --filter @webapp/api dev` auto-loads `apps/api/.env` when it exists (via `--env-file-if-exists`); shell-exported vars still win because Node's `--env-file*` flags don't override existing process env. The table below documents each variable.
 
 | Name                          | Default        | Notes                                                                                  |
 | ----------------------------- | -------------- | -------------------------------------------------------------------------------------- |
