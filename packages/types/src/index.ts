@@ -138,6 +138,7 @@ export const API_AUTH_SIGNUP_PATH  = '/v1/auth/signup' as const;
 export const API_AUTH_LOGIN_PATH   = '/v1/auth/login' as const;
 export const API_AUTH_LOGOUT_PATH  = '/v1/auth/logout' as const;
 export const API_AUTH_ME_PATH      = '/v1/auth/me' as const;
+export const API_ME_PATH           = '/v1/me' as const;
 
 export interface SafeUser {
   id: string;

@@ -238,6 +238,37 @@ describe('GET /v1/auth/me', () => {
   });
 });
 
+// ── Alias: /v1/me → /v1/auth/me ───────────────────────────────────────────────
+
+describe('GET /v1/me (alias of /v1/auth/me)', () => {
+  const KNOWN_TOKEN = 'c'.repeat(64);
+  const KNOWN_HASH  = hashSessionToken(KNOWN_TOKEN);
+  const USER        = mockUser();
+
+  it('returns 200 with safe user when session is valid', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async (h) => h === KNOWN_HASH ? mockSession(h) : null,
+      findUserById:           async (id) => id === USER.id ? USER : null,
+    }));
+    const res = await fetch(`${baseUrl}/v1/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${KNOWN_TOKEN}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiResponse<SafeUser>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data.id).toBe(USER.id);
+    expect('passwordHash' in body.data).toBe(false);
+    await close();
+  });
+
+  it('returns 401 with no cookie', async () => {
+    const { baseUrl, close } = await startServer(makeDeps());
+    const res = await fetch(`${baseUrl}/v1/me`);
+    expect(res.status).toBe(401);
+    await close();
+  });
+});
+
 // ── Logout ────────────────────────────────────────────────────────────────────
 
 describe('POST /v1/auth/logout', () => {
