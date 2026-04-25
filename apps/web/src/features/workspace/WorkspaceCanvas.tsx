@@ -14,6 +14,7 @@ interface WorkspaceCanvasProps {
   isPending: (chatWindowId: string) => boolean;
   onSend: (chatWindowId: string, content: string) => void;
   onRetry: (chatWindowId: string, clientTempId: string) => void;
+  onRegenerate: (chatWindowId: string, assistantMessageId: string) => void;
   onCancel: (chatWindowId: string) => void;
   activeId: string | null;
   hasClosed: boolean;
@@ -33,6 +34,7 @@ export function WorkspaceCanvas({
   isPending,
   onSend,
   onRetry,
+  onRegenerate,
   onCancel,
   activeId,
   hasClosed,
@@ -81,6 +83,7 @@ export function WorkspaceCanvas({
             onRename={onRename}
             onDelete={onDelete}
             onRetry={onRetry}
+            onRegenerate={onRegenerate}
             onCancel={onCancel}
           />
         ))

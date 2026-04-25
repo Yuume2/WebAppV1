@@ -10,6 +10,9 @@ export interface MockMessage {
   createdAt: string;
   provider?: AIProvider | null;
   model?: string | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  latencyMs?: number | null;
   status?: MockMessageStatus;
   clientTempId?: string;
   errorCode?: string;
