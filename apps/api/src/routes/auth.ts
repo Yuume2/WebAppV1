@@ -11,6 +11,7 @@ import {
   API_AUTH_LOGIN_PATH,
   API_AUTH_LOGOUT_PATH,
   API_AUTH_ME_PATH,
+  API_ME_PATH,
 } from '@webapp/types';
 
 export function makeAuthRoutes(deps: AuthDeps): RouteDefinition[] {
@@ -19,5 +20,6 @@ export function makeAuthRoutes(deps: AuthDeps): RouteDefinition[] {
     { method: 'POST', path: API_AUTH_LOGIN_PATH,  handler: (ctx) => loginController(ctx, deps) },
     { method: 'POST', path: API_AUTH_LOGOUT_PATH, handler: (ctx) => logoutController(ctx, deps) },
     { method: 'GET',  path: API_AUTH_ME_PATH,     handler: (ctx) => meController(ctx, deps) },
+    { method: 'GET',  path: API_ME_PATH,          handler: (ctx) => meController(ctx, deps) },
   ];
 }
