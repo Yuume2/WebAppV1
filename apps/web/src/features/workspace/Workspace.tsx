@@ -105,6 +105,7 @@ export function Workspace({
         isPending={chat.isPending}
         onSend={chat.sendUserMessage}
         onRetry={chat.retry}
+        onRegenerate={chat.regenerate}
         onCancel={chat.cancel}
         activeId={state.activeId}
         hasClosed={state.closedWindows.length > 0}

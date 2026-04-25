@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import type { AIProvider } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
 
@@ -18,6 +18,7 @@ interface ChatWindowProps {
   onRename?: (id: string, title: string) => void;
   onDelete?: (id: string) => void;
   onRetry?: (id: string, clientTempId: string) => void;
+  onRegenerate?: (id: string, assistantMessageId: string) => void;
   onCancel?: (id: string) => void;
 }
 
@@ -47,6 +48,7 @@ export function ChatWindow({
   onRename,
   onDelete,
   onRetry,
+  onRegenerate,
   onCancel,
 }: ChatWindowProps) {
   const [draft, setDraft] = useState('');
@@ -273,6 +275,11 @@ export function ChatWindow({
               onRetry={
                 onRetry && m.clientTempId ? () => onRetry(id, m.clientTempId!) : undefined
               }
+              onRegenerate={
+                onRegenerate && m.role === 'assistant' && (m.status ?? 'ok') === 'ok'
+                  ? () => onRegenerate(id, m.id)
+                  : undefined
+              }
             />
           ))
         )}
@@ -444,17 +451,27 @@ function StreamingCursor() {
 function MessageBubble({
   message,
   onRetry,
+  onRegenerate,
 }: {
   message: MockMessage;
   onRetry?: () => void;
+  onRegenerate?: () => void;
 }) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
-  const timestamp = formatMessageTimestamp(message.createdAt);
+  const absoluteStamp = formatMessageTimestamp(message.createdAt);
+  const relativeStamp = formatRelativeStamp(message.createdAt);
   const metaParts: string[] = [];
   if (message.provider) metaParts.push(providerLabel[message.provider]);
   if (message.model) metaParts.push(message.model);
-  if (timestamp) metaParts.push(timestamp);
+  if (typeof message.promptTokens === 'number' || typeof message.completionTokens === 'number') {
+    const p = typeof message.promptTokens === 'number' ? message.promptTokens : '?';
+    const c = typeof message.completionTokens === 'number' ? message.completionTokens : '?';
+    metaParts.push(`${p}+${c} tok`);
+  }
+  if (typeof message.latencyMs === 'number') {
+    metaParts.push(formatLatency(message.latencyMs));
+  }
   const showMeta = isAssistant && metaParts.length > 0;
   const status = message.status ?? 'ok';
   const isPending = status === 'pending';
@@ -463,6 +480,7 @@ function MessageBubble({
   const isCanceled = isFailed && message.errorCode === 'canceled';
   const borderColor = isFailed ? (isCanceled ? '#3a3a45' : '#6b2a2a') : '#24242c';
   const opacity = isPending ? 0.7 : 1;
+  const canCopy = !isStreaming && !isPending && message.content.length > 0;
 
   return (
     <div
@@ -560,6 +578,139 @@ function MessageBubble({
           {metaParts.join(' · ')}
         </div>
       )}
+      <MessageActions
+        content={message.content}
+        absoluteStamp={absoluteStamp}
+        relativeStamp={relativeStamp}
+        canCopy={canCopy}
+        onRegenerate={isAssistant && !isStreaming && !isPending ? onRegenerate : undefined}
+        align={isUser ? 'end' : 'start'}
+      />
     </div>
   );
+}
+
+function MessageActions({
+  content,
+  absoluteStamp,
+  relativeStamp,
+  canCopy,
+  onRegenerate,
+  align,
+}: {
+  content: string;
+  absoluteStamp: string | null;
+  relativeStamp: string | null;
+  canCopy: boolean;
+  onRegenerate?: () => void;
+  align: 'start' | 'end';
+}) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (!canCopy) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(content);
+      } else if (typeof document !== 'undefined') {
+        const ta = document.createElement('textarea');
+        ta.value = content;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore — feedback simply won't show
+    }
+  };
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        display: 'flex',
+        justifyContent: align === 'end' ? 'flex-end' : 'flex-start',
+        gap: 8,
+        fontSize: '0.65rem',
+        color: '#6a6a75',
+        alignItems: 'center',
+      }}
+    >
+      {relativeStamp ? (
+        <span title={absoluteStamp ?? undefined}>{relativeStamp}</span>
+      ) : null}
+      {canCopy ? (
+        <button
+          type="button"
+          onClick={onCopy}
+          aria-label="Copy message"
+          title="Copy message"
+          style={messageActionButton}
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      ) : null}
+      {onRegenerate ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRegenerate();
+          }}
+          aria-label="Regenerate response"
+          title="Regenerate (re-sends last user message)"
+          style={messageActionButton}
+        >
+          Regenerate
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+const messageActionButton: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid #2a2a30',
+  color: '#a0a0aa',
+  borderRadius: 4,
+  padding: '1px 6px',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontSize: '0.65rem',
+  letterSpacing: '0.02em',
+};
+
+function formatRelativeStamp(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const diff = Date.now() - t;
+  if (diff < 0) return 'just now';
+  const sec = Math.floor(diff / 1000);
+  if (sec < 5) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return `${wk}w ago`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo}mo ago`;
+  const yr = Math.floor(day / 365);
+  return `${yr}y ago`;
+}
+
+function formatLatency(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(s >= 10 ? 0 : 1)}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m ${Math.round(s - m * 60)}s`;
 }

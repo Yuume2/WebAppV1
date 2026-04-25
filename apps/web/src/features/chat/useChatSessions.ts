@@ -17,6 +17,7 @@ export interface ChatSessionsApi {
   isPending: (chatWindowId: string) => boolean;
   sendUserMessage: (chatWindowId: string, content: string) => void;
   retry: (chatWindowId: string, clientTempId: string) => void;
+  regenerate: (chatWindowId: string, assistantMessageId: string) => void;
   cancel: (chatWindowId: string) => void;
 }
 
@@ -120,6 +121,9 @@ export function useChatSessions(
                 createdAt: assistantRow.createdAt,
                 provider: assistantRow.provider ?? undefined,
                 model: assistantRow.model ?? undefined,
+                promptTokens: assistantRow.promptTokens ?? undefined,
+                completionTokens: assistantRow.completionTokens ?? undefined,
+                latencyMs: assistantRow.latencyMs ?? undefined,
                 status: 'ok',
               },
             ]
@@ -245,6 +249,9 @@ export function useChatSessions(
                   createdAt: assistantRow.createdAt,
                   provider: assistantRow.provider ?? undefined,
                   model: assistantRow.model ?? undefined,
+                  promptTokens: assistantRow.promptTokens ?? undefined,
+                  completionTokens: assistantRow.completionTokens ?? undefined,
+                  latencyMs: assistantRow.latencyMs ?? undefined,
                   status: 'ok' as const,
                 };
               }
@@ -443,5 +450,36 @@ export function useChatSessions(
     controllers.current.get(chatWindowId)?.abort();
   }, []);
 
-  return { getMessages, isPending, sendUserMessage, retry, cancel };
+  const regenerate = useCallback(
+    (chatWindowId: string, assistantMessageId: string) => {
+      const session = sessionsRef.current[chatWindowId];
+      if (!session) return;
+      if (session.pendingTempId != null) return;
+      const idx = session.messages.findIndex((m) => m.id === assistantMessageId);
+      if (idx < 0) return;
+      const target = session.messages[idx];
+      if (!target || target.role !== 'assistant') return;
+      let userIdx = idx - 1;
+      while (userIdx >= 0 && session.messages[userIdx]!.role !== 'user') userIdx -= 1;
+      if (userIdx < 0) return;
+      const userMsg = session.messages[userIdx]!;
+      const content = userMsg.content;
+      if (!content.trim()) return;
+      setSessions((prev) => {
+        const cur = prev[chatWindowId];
+        if (!cur) return prev;
+        return {
+          ...prev,
+          [chatWindowId]: {
+            ...cur,
+            messages: cur.messages.filter((m) => m.id !== assistantMessageId),
+          },
+        };
+      });
+      sendUserMessage(chatWindowId, content);
+    },
+    [sendUserMessage],
+  );
+
+  return { getMessages, isPending, sendUserMessage, retry, regenerate, cancel };
 }
