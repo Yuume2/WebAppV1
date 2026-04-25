@@ -9,8 +9,6 @@ import { createChatWindow } from '@/lib/api/chat-windows';
 
 const PROVIDER_OPTIONS: Array<{ value: AIProvider; label: string; defaultModel: string }> = [
   { value: 'openai', label: 'OpenAI', defaultModel: 'gpt-4o-mini' },
-
-
 ];
 
 interface CreateChatWindowCTAProps {

@@ -15,8 +15,6 @@ import type { ApiCallError } from '@/lib/api/client';
 
 const PROVIDER_OPTIONS: Array<{ value: AIProvider; label: string }> = [
   { value: 'openai', label: 'OpenAI' },
-
-
 ];
 
 type LoadState =
