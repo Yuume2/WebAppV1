@@ -31,6 +31,8 @@ function makeDeps(overrides: Partial<WorkspacesDeps> = {}): WorkspacesDeps {
     listWorkspaces:  async () => null,
     createWorkspace: async (projectId, _userId, name) => mockWorkspace(projectId, { name }),
     findWorkspace:   async () => null,
+    updateWorkspace: async () => null,
+    deleteWorkspace: async () => false,
     listWindowIds:   async () => [],
     ...overrides,
   };
@@ -60,6 +62,18 @@ function post(base: string, path: string, body: unknown) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+function patch(base: string, path: string, body: unknown) {
+  return fetch(`${base}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function del(base: string, path: string) {
+  return fetch(`${base}${path}`, { method: 'DELETE' });
 }
 
 // ── Unauthenticated access ────────────────────────────────────────────────────
@@ -271,3 +285,79 @@ describe('GET /v1/workspaces — windowIds derived from chat windows', () => {
     await close();
   });
 });
+
+
+describe("PATCH /v1/workspaces/:id — authenticated", () => {
+  it("renames a workspace owned by the user", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:     async () => USER_1,
+      updateWorkspace: async (id, _userId, patchBody) =>
+        mockWorkspace("proj-1", { id, name: patchBody.name ?? "WS" }),
+      listWindowIds:   async () => [],
+    }));
+    const res = await patch(baseUrl, "/v1/workspaces/ws-1", { name: "Renamed" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiResponse<Workspace>;
+    if (!body.ok) throw new Error("expected ok");
+    expect(body.data.name).toBe("Renamed");
+    await close();
+  });
+
+  it("returns 404 when workspace belongs to another user", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:     async () => USER_1,
+      updateWorkspace: async () => null,
+    }));
+    const res = await patch(baseUrl, "/v1/workspaces/u2-ws", { name: "X" });
+    expect(res.status).toBe(404);
+    await close();
+  });
+
+  it("returns 400 invalid_body when name is empty string", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
+    const res = await patch(baseUrl, "/v1/workspaces/ws-1", { name: "" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error("expected error");
+    expect(body.error.code).toBe("invalid_body");
+    await close();
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => null }));
+    const res = await patch(baseUrl, "/v1/workspaces/ws-1", { name: "X" });
+    expect(res.status).toBe(401);
+    await close();
+  });
+});
+
+describe("DELETE /v1/workspaces/:id — authenticated", () => {
+  it("returns 204 with empty body when delete succeeds", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:     async () => USER_1,
+      deleteWorkspace: async () => true,
+    }));
+    const res = await del(baseUrl, "/v1/workspaces/ws-1");
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
+    await close();
+  });
+
+  it("returns 404 when workspace belongs to another user", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:     async () => USER_1,
+      deleteWorkspace: async () => false,
+    }));
+    const res = await del(baseUrl, "/v1/workspaces/u2-ws");
+    expect(res.status).toBe(404);
+    await close();
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => null }));
+    const res = await del(baseUrl, "/v1/workspaces/ws-1");
+    expect(res.status).toBe(401);
+    await close();
+  });
+});
+

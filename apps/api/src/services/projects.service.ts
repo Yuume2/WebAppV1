@@ -30,6 +30,25 @@ export function projectExists(id: string): boolean {
   return store.some((p) => p.id === id);
 }
 
+export function updateProject(
+  id: string,
+  patch: { name?: string; description?: string | null },
+): Project | undefined {
+  const p = store.find((p) => p.id === id);
+  if (!p) return undefined;
+  if (patch.name !== undefined) p.name = patch.name;
+  if (patch.description !== undefined) p.description = patch.description ?? undefined;
+  p.updatedAt = new Date().toISOString();
+  return { ...p };
+}
+
+export function deleteProject(id: string): boolean {
+  const i = store.findIndex((p) => p.id === id);
+  if (i === -1) return false;
+  store.splice(i, 1);
+  return true;
+}
+
 export function resetProjectsStore(): void {
   store = [];
 }

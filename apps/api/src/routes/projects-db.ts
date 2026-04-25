@@ -4,13 +4,17 @@ import {
   listProjectsDbController,
   createProjectDbController,
   getProjectDbController,
+  patchProjectDbController,
+  deleteProjectDbController,
 } from '../controllers/projects-db.controller.js';
 import { API_PROJECTS_PATH } from '@webapp/types';
 
 export function makeProjectDbRoutes(deps: ProjectsDeps): RouteDefinition[] {
   return [
-    { method: 'GET',  path: API_PROJECTS_PATH,          handler: (ctx) => listProjectsDbController(ctx, deps) },
-    { method: 'POST', path: API_PROJECTS_PATH,          handler: (ctx) => createProjectDbController(ctx, deps) },
-    { method: 'GET',  path: `${API_PROJECTS_PATH}/:id`, handler: (ctx) => getProjectDbController(ctx, deps) },
+    { method: 'GET',    path: API_PROJECTS_PATH,          handler: (ctx) => listProjectsDbController(ctx, deps) },
+    { method: 'POST',   path: API_PROJECTS_PATH,          handler: (ctx) => createProjectDbController(ctx, deps) },
+    { method: 'GET',    path: `${API_PROJECTS_PATH}/:id`, handler: (ctx) => getProjectDbController(ctx, deps) },
+    { method: 'PATCH',  path: `${API_PROJECTS_PATH}/:id`, handler: (ctx) => patchProjectDbController(ctx, deps) },
+    { method: 'DELETE', path: `${API_PROJECTS_PATH}/:id`, handler: (ctx) => deleteProjectDbController(ctx, deps) },
   ];
 }

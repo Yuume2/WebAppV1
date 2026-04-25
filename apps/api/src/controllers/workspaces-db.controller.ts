@@ -6,20 +6,25 @@ import {
   respond,
   respondCreated,
   respondError,
+  respondNoContent,
   respondNotFound,
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
 import { s } from '../lib/schema.js';
+import { resolveCurrentUser } from '../lib/resolve-user.js';
+import type { Db, WorkspacePatch } from '../db/workspaces.repo.js';
+import * as workspacesRepo from '../db/workspaces.repo.js';
+import { listWindowIdsByWorkspaceIds } from '../db/chat-windows.repo.js';
 
 const CreateWorkspaceDbBody = s.object({
   projectId: s.string({ min: 1 }),
   name:      s.string({ min: 1, max: 200, trim: true }),
 });
-import { resolveCurrentUser } from '../lib/resolve-user.js';
-import type { Db } from '../db/workspaces.repo.js';
-import * as workspacesRepo from '../db/workspaces.repo.js';
-import { listWindowIdsByWorkspaceIds } from '../db/chat-windows.repo.js';
+
+const PatchWorkspaceDbBody = s.object({
+  name: s.optional(s.string({ min: 1, max: 200, trim: true })),
+});
 
 // ── Internal DB row shape ──────────────────────────────────────────────────────
 
@@ -43,6 +48,8 @@ export interface WorkspacesDeps {
   listWorkspaces: (projectId: string, userId: string) => Promise<DbWorkspace[] | null>;
   createWorkspace: (projectId: string, userId: string, name: string) => Promise<DbWorkspace | null>;
   findWorkspace: (id: string, userId: string) => Promise<DbWorkspace | null>;
+  updateWorkspace: (id: string, userId: string, patch: WorkspacePatch) => Promise<DbWorkspace | null>;
+  deleteWorkspace: (id: string, userId: string) => Promise<boolean>;
   listWindowIds: (workspaceIds: string[]) => Promise<Array<{ id: string; workspaceId: string }>>;
 }
 
@@ -52,6 +59,8 @@ export function makeWorkspacesDeps(db: Db, sessionDeps: SessionDeps): Workspaces
     listWorkspaces:  (projectId, userId)         => workspacesRepo.listWorkspacesByProjectAndUser(db, projectId, userId),
     createWorkspace: (projectId, userId, name)   => workspacesRepo.createWorkspace(db, projectId, userId, name),
     findWorkspace:   (id, userId)                => workspacesRepo.findWorkspaceById(db, id, userId),
+    updateWorkspace: (id, userId, patch)         => workspacesRepo.updateWorkspace(db, id, userId, patch),
+    deleteWorkspace: (id, userId)                => workspacesRepo.deleteWorkspace(db, id, userId),
     listWindowIds:   (workspaceIds)              => listWindowIdsByWorkspaceIds(db, workspaceIds),
   };
 }
@@ -125,4 +134,33 @@ export async function getWorkspaceDbController(
   if (!row) return respondNotFound(`Workspace ${id} not found`);
   const windowRows = await deps.listWindowIds([row.id]);
   return respond(toWorkspace(row, windowRows.map((cw) => cw.id)));
+}
+
+export async function patchWorkspaceDbController(
+  ctx: RequestContext,
+  deps: WorkspacesDeps,
+): Promise<InternalResult> {
+  const user = await deps.resolveUser(ctx.req);
+  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+
+  const body = await parseJsonBody(ctx, PatchWorkspaceDbBody);
+  if (!body.ok) return body.result;
+
+  const id = ctx.params['id'] ?? '';
+  const row = await deps.updateWorkspace(id, user.id, body.value);
+  if (!row) return respondNotFound(`Workspace ${id} not found`);
+  const windowRows = await deps.listWindowIds([row.id]);
+  return respond(toWorkspace(row, windowRows.map((cw) => cw.id)));
+}
+
+export async function deleteWorkspaceDbController(
+  ctx: RequestContext,
+  deps: WorkspacesDeps,
+): Promise<InternalResult> {
+  const user = await deps.resolveUser(ctx.req);
+  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+
+  const id = ctx.params['id'] ?? '';
+  const deleted = await deps.deleteWorkspace(id, user.id);
+  return deleted ? respondNoContent() : respondNotFound(`Workspace ${id} not found`);
 }
