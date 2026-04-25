@@ -21,6 +21,7 @@ import {
 import { workspaceExists } from '../services/workspaces.service.js';
 
 const AI_PROVIDERS = ['openai', 'anthropic', 'perplexity'] as const;
+const SUPPORTED_PROVIDERS = new Set<AIProvider>(['openai']);
 
 const CreateChatWindowBody = s.object({
   workspaceId: s.string({ min: 1 }),
@@ -45,6 +46,14 @@ export function listChatWindowsController(ctx: RequestContext): InternalResult {
 export async function createChatWindowController(ctx: RequestContext): Promise<InternalResult> {
   const body = await parseJsonBody(ctx, CreateChatWindowBody);
   if (!body.ok) return body.result;
+
+  if (!SUPPORTED_PROVIDERS.has(body.value.provider)) {
+    return respondError(
+      'validation_error',
+      `Provider '${body.value.provider}' is not yet supported. Pick a supported provider (openai) — others land when their adapter ships.`,
+      400,
+    );
+  }
 
   if (!workspaceExists(body.value.workspaceId)) {
     return respondNotFound(`Workspace ${body.value.workspaceId} not found`);
