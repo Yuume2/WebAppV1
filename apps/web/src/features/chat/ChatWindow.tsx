@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { AIProvider } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
 
@@ -50,6 +50,25 @@ export function ChatWindow({
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(title);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const stickyRef = useRef(true);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const messagesSignature = messages
+    .map((m) => `${m.id}:${m.content.length}:${m.status ?? 'ok'}`)
+    .join('|');
+
+  const updateStickiness = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+    stickyRef.current = distanceFromBottom < 64;
+  };
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (stickyRef.current) el.scrollTop = el.scrollHeight;
+  }, [messagesSignature]);
 
   const commitRename = () => {
     const trimmed = titleDraft.trim();
@@ -62,8 +81,17 @@ export function ChatWindow({
     if (pending) return;
     const trimmed = draft.trim();
     if (!trimmed) return;
+    stickyRef.current = true;
     onSend?.(id, trimmed);
     setDraft('');
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const onComposerKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      submit();
+    }
   };
 
   const canSend = !pending && draft.trim().length > 0;
@@ -172,6 +200,8 @@ export function ChatWindow({
       </div>
 
       <div
+        ref={scrollRef}
+        onScroll={updateStickiness}
         style={{
           flex: 1,
           overflowY: 'auto',
@@ -184,15 +214,18 @@ export function ChatWindow({
         {messages.length === 0 ? (
           <div
             style={{
-              color: '#6a6a75',
-              fontSize: '0.85rem',
               margin: 'auto',
               textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              color: '#8a8a95',
             }}
           >
-            No messages yet.
-            <br />
-            <span style={{ fontSize: '0.75rem' }}>Type below to start the conversation.</span>
+            <div style={{ fontSize: '0.95rem', color: '#e8e8ef' }}>Start the conversation</div>
+            <div style={{ fontSize: '0.78rem' }}>
+              Type below — Enter to send, Shift+Enter for a newline.
+            </div>
           </div>
         ) : (
           messages.map((m) => (
@@ -221,11 +254,14 @@ export function ChatWindow({
           background: '#0f0f13',
         }}
       >
-        <input
+        <textarea
+          ref={textareaRef}
           value={draft}
+          rows={1}
           onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onComposerKeyDown}
           onFocus={() => onFocus?.(id)}
-          placeholder={pending ? 'Waiting for reply…' : 'Send a message…'}
+          placeholder={pending ? 'Waiting for reply…' : 'Send a message…  (Shift+Enter for newline)'}
           aria-label={`Message ${title}`}
           disabled={pending}
           style={{
@@ -238,6 +274,10 @@ export function ChatWindow({
             fontSize: '0.875rem',
             fontFamily: 'inherit',
             outline: 'none',
+            resize: 'none',
+            minHeight: 36,
+            maxHeight: 160,
+            lineHeight: 1.4,
           }}
         />
         {pending && onCancel ? (
@@ -247,7 +287,7 @@ export function ChatWindow({
               e.stopPropagation();
               onCancel(id);
             }}
-            aria-label="Cancel in-flight message"
+            aria-label="Stop generating"
             style={{
               background: '#2a2a30',
               color: '#f5f5f5',
@@ -258,9 +298,10 @@ export function ChatWindow({
               fontWeight: 500,
               cursor: 'pointer',
               fontFamily: 'inherit',
+              alignSelf: 'stretch',
             }}
           >
-            Cancel
+            Stop generating
           </button>
         ) : (
           <button
@@ -276,6 +317,7 @@ export function ChatWindow({
               fontWeight: 500,
               cursor: canSend ? 'pointer' : 'not-allowed',
               fontFamily: 'inherit',
+              alignSelf: 'stretch',
             }}
           >
             Send
@@ -380,7 +422,8 @@ function MessageBubble({
   const isPending = status === 'pending';
   const isStreaming = status === 'streaming';
   const isFailed = status === 'failed';
-  const borderColor = isFailed ? '#6b2a2a' : '#24242c';
+  const isCanceled = isFailed && message.errorCode === 'canceled';
+  const borderColor = isFailed ? (isCanceled ? '#3a3a45' : '#6b2a2a') : '#24242c';
   const opacity = isPending ? 0.7 : 1;
 
   return (
@@ -415,13 +458,13 @@ function MessageBubble({
         {isFailed && (
           <span
             style={{
-              color: '#ff8b8b',
+              color: isCanceled ? '#a0a0aa' : '#ff8b8b',
               marginLeft: 6,
               textTransform: 'none',
               letterSpacing: 0,
             }}
           >
-            failed
+            {isCanceled ? 'canceled' : 'failed'}
           </span>
         )}
       </div>
@@ -439,7 +482,7 @@ function MessageBubble({
           }}
         >
           {message.errorMessage && (
-            <span style={{ color: '#ffd3d3' }}>
+            <span style={{ color: isCanceled ? '#a0a0aa' : '#ffd3d3' }}>
               {message.errorCode ?? 'error'} — {message.errorMessage}
             </span>
           )}
@@ -452,8 +495,8 @@ function MessageBubble({
               }}
               style={{
                 background: 'transparent',
-                color: '#ffd3d3',
-                border: '1px solid #6b2a2a',
+                color: isCanceled ? '#e8e8ef' : '#ffd3d3',
+                border: `1px solid ${isCanceled ? '#3a3a45' : '#6b2a2a'}`,
                 borderRadius: 6,
                 padding: '2px 8px',
                 cursor: 'pointer',
