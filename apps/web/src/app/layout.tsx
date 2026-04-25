@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import '@/styles/globals.css';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ToastHost } from '@/components/ToastHost';
+import { SessionProvider } from '@/features/auth/SessionContext';
 
 export const metadata: Metadata = {
   title: 'AI Workspace V1',
@@ -13,7 +15,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <ErrorBoundary>
-          <ToastHost>{children}</ToastHost>
+          <ToastHost>
+            <Suspense fallback={null}>
+              <SessionProvider>{children}</SessionProvider>
+            </Suspense>
+          </ToastHost>
         </ErrorBoundary>
       </body>
     </html>

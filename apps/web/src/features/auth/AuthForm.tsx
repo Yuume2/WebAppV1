@@ -1,12 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/Button';
 import { Panel } from '@/components/Panel';
 import { login, register } from '@/lib/api/auth';
 import type { ApiCallError } from '@/lib/api/client';
+import { useSession } from '@/features/auth/SessionContext';
+
+function isSafeNext(value: string | null): value is string {
+  if (!value) return false;
+  if (!value.startsWith('/')) return false;
+  if (value.startsWith('//')) return false;
+  return true;
+}
 
 type Mode = 'login' | 'register';
 
@@ -53,6 +61,8 @@ function messageFor(err: ApiCallError, mode: Mode): string {
 
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { refresh } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -73,7 +83,10 @@ export function AuthForm({ mode }: AuthFormProps) {
           ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
         });
       }
-      router.push('/');
+      const nextParam = searchParams?.get('next') ?? null;
+      const target = isSafeNext(nextParam) ? nextParam : '/';
+      await refresh();
+      router.replace(target);
       router.refresh();
     } catch (err) {
       setError(messageFor(err as ApiCallError, mode));
