@@ -2,10 +2,13 @@
 
 import type { ChatWindow, Workspace as WorkspaceType } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
+import { useCallback } from 'react';
 import { useWorkspaceState } from '@/features/workspace/useWorkspaceState';
 import { useChatSessions } from '@/features/chat/useChatSessions';
 import { WorkspaceSidebar } from '@/features/workspace/WorkspaceSidebar';
 import { WorkspaceCanvas } from '@/features/workspace/WorkspaceCanvas';
+import { useToast } from '@/components/ToastHost';
+import type { ApiCallError } from '@/lib/api/client';
 
 interface WorkspaceProps {
   projectId: string;
@@ -25,7 +28,17 @@ export function Workspace({
   messagesByWindow,
 }: WorkspaceProps) {
   const state = useWorkspaceState({ windows });
-  const chat = useChatSessions(messagesByWindow);
+  const toast = useToast();
+  const handleSendError = useCallback(
+    (chatWindowId: string, err: ApiCallError) => {
+      const win = windows.find((w) => w.id === chatWindowId);
+      const prefix = win?.title ?? 'Send failed';
+      const code = err.code ?? 'error';
+      toast.push('error', `${prefix}: ${code} — ${err.message}`);
+    },
+    [toast, windows],
+  );
+  const chat = useChatSessions(messagesByWindow, { onError: handleSendError });
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
