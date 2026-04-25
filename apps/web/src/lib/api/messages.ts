@@ -3,15 +3,17 @@ import { apiFetch, type ApiCallError } from '@/lib/api/client';
 import { getApiBaseUrl } from '@/lib/api/env';
 import { postJson } from '@/lib/api/http';
 
+export interface FetchMessagesOptions {
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
+}
+
 export function fetchWindowMessages(
   chatWindowId: string,
-  signal?: AbortSignal,
+  options?: FetchMessagesOptions,
 ): Promise<Message[]> {
   const encoded = encodeURIComponent(chatWindowId);
-  return apiFetch<Message[]>(
-    `/v1/windows/${encoded}/messages`,
-    signal ? { signal } : undefined,
-  );
+  return apiFetch<Message[]>(`/v1/windows/${encoded}/messages`, options);
 }
 
 export interface PostMessageInput {

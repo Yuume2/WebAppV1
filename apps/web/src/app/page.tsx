@@ -5,7 +5,10 @@ import { Panel } from '@/components/Panel';
 import { listProjects as listMockProjects, listWorkspacesForProject } from '@/lib/data';
 import { getApiBaseUrl } from '@/lib/api/env';
 import { fetchProjects } from '@/lib/api/projects';
+import { serverApiHeaders } from '@/lib/api/server';
 import { CreateProjectEmptyState } from '@/features/projects/CreateProjectEmptyState';
+
+export const dynamic = 'force-dynamic';
 
 type ProjectsResult =
   | { source: 'api'; projects: Project[] }
@@ -17,7 +20,8 @@ async function loadProjects(): Promise<ProjectsResult> {
     return { source: 'mock', projects: listMockProjects() };
   }
   try {
-    const projects = await fetchProjects();
+    const headers = await serverApiHeaders();
+    const projects = await fetchProjects({ headers });
     return { source: 'api', projects };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

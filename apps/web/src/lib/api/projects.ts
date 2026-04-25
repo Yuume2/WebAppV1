@@ -2,13 +2,18 @@ import type { Project } from '@webapp/types';
 import { apiFetch } from '@/lib/api/client';
 import { postJson } from '@/lib/api/http';
 
-export function fetchProjects(signal?: AbortSignal): Promise<Project[]> {
-  return apiFetch<Project[]>('/v1/projects', signal ? { signal } : undefined);
+export interface FetchOptions {
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
 }
 
-export function fetchProject(id: string, signal?: AbortSignal): Promise<Project> {
+export function fetchProjects(options?: FetchOptions): Promise<Project[]> {
+  return apiFetch<Project[]>('/v1/projects', options);
+}
+
+export function fetchProject(id: string, options?: FetchOptions): Promise<Project> {
   const encoded = encodeURIComponent(id);
-  return apiFetch<Project>(`/v1/projects/${encoded}`, signal ? { signal } : undefined);
+  return apiFetch<Project>(`/v1/projects/${encoded}`, options);
 }
 
 export interface CreateProjectInput {

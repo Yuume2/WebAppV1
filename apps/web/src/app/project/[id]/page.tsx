@@ -17,6 +17,7 @@ import { fetchProject } from '@/lib/api/projects';
 import { fetchProjectWorkspaces } from '@/lib/api/workspaces';
 import { fetchWorkspaceWindows } from '@/lib/api/chat-windows';
 import { fetchWindowMessages } from '@/lib/api/messages';
+import { serverApiHeaders } from '@/lib/api/server';
 import type { ApiCallError } from '@/lib/api/client';
 import type { ChatWindow } from '@webapp/types';
 
@@ -46,14 +47,14 @@ interface WindowsLoad {
   message?: string;
 }
 
-async function loadProject(id: string): Promise<ProjectLoad> {
+async function loadProject(id: string, headers: Record<string, string>): Promise<ProjectLoad> {
   if (!getApiBaseUrl()) {
     const project = getMockProject(id);
     if (!project) return { source: 'mock', project: null as unknown as Project };
     return { source: 'mock', project };
   }
   try {
-    const project = await fetchProject(id);
+    const project = await fetchProject(id, { headers });
     return { source: 'api', project };
   } catch (err) {
     const e = err as ApiCallError;
@@ -65,12 +66,16 @@ async function loadProject(id: string): Promise<ProjectLoad> {
   }
 }
 
-async function loadWorkspaces(projectId: string, projectFromApi: boolean): Promise<WorkspacesLoad> {
+async function loadWorkspaces(
+  projectId: string,
+  projectFromApi: boolean,
+  headers: Record<string, string>,
+): Promise<WorkspacesLoad> {
   if (!projectFromApi || !getApiBaseUrl()) {
     return { source: 'mock', workspaces: listWorkspacesForProject(projectId) };
   }
   try {
-    const workspaces = await fetchProjectWorkspaces(projectId);
+    const workspaces = await fetchProjectWorkspaces(projectId, { headers });
     return { source: 'api', workspaces };
   } catch (err) {
     const e = err as ApiCallError;
@@ -82,12 +87,16 @@ async function loadWorkspaces(projectId: string, projectFromApi: boolean): Promi
   }
 }
 
-async function loadWindows(workspaceId: string, workspacesFromApi: boolean): Promise<WindowsLoad> {
+async function loadWindows(
+  workspaceId: string,
+  workspacesFromApi: boolean,
+  headers: Record<string, string>,
+): Promise<WindowsLoad> {
   if (!workspacesFromApi || !getApiBaseUrl()) {
     return { source: 'mock', windows: getWindowsForWorkspace(workspaceId) };
   }
   try {
-    const windows = await fetchWorkspaceWindows(workspaceId);
+    const windows = await fetchWorkspaceWindows(workspaceId, { headers });
     return { source: 'api', windows };
   } catch (err) {
     const e = err as ApiCallError;
@@ -102,6 +111,7 @@ async function loadWindows(workspaceId: string, workspacesFromApi: boolean): Pro
 async function loadMessagesForWindows(
   windows: ChatWindow[],
   windowsFromApi: boolean,
+  headers: Record<string, string>,
 ): Promise<Record<string, MockMessage[]>> {
   const out: Record<string, MockMessage[]> = {};
   if (!windowsFromApi || !getApiBaseUrl()) {
@@ -111,7 +121,7 @@ async function loadMessagesForWindows(
   const results = await Promise.all(
     windows.map(async (w) => {
       try {
-        return [w.id, await fetchWindowMessages(w.id)] as const;
+        return [w.id, await fetchWindowMessages(w.id, { headers })] as const;
       } catch {
         return [w.id, getMessagesForWindow(w.id)] as const;
       }
@@ -125,7 +135,8 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
   const { id } = await params;
   const { workspace: workspaceParam } = await searchParams;
 
-  const load = await loadProject(id);
+  const headers = await serverApiHeaders();
+  const load = await loadProject(id, headers);
 
   if (load.source === 'error' && !load.project) {
     return (
@@ -142,7 +153,7 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
   }
 
   const project = load.project!;
-  const wsLoad = await loadWorkspaces(project.id, load.source === 'api');
+  const wsLoad = await loadWorkspaces(project.id, load.source === 'api', headers);
   const projectWorkspaces = wsLoad.workspaces;
 
   if (projectWorkspaces.length === 0) {
@@ -195,9 +206,9 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
     );
   }
 
-  const winLoad = await loadWindows(activeWorkspace.id, wsLoad.source === 'api');
+  const winLoad = await loadWindows(activeWorkspace.id, wsLoad.source === 'api', headers);
   const ws = winLoad.windows;
-  const messagesByWindow = await loadMessagesForWindows(ws, winLoad.source === 'api');
+  const messagesByWindow = await loadMessagesForWindows(ws, winLoad.source === 'api', headers);
 
   return (
     <Workspace
