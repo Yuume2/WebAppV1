@@ -2,10 +2,13 @@
 
 import type { ChatWindow as ChatWindowType } from '@webapp/types';
 import { ChatWindow } from '@/features/chat/ChatWindow';
+import { CreateChatWindowCTA } from '@/features/workspace/CreateChatWindowCTA';
 import type { MockMessage, WindowPreset } from '@/lib/data';
 import { WINDOW_PRESETS } from '@/lib/data';
 
 interface WorkspaceCanvasProps {
+  workspaceId: string;
+  totalWindows: number;
   visibleWindows: ChatWindowType[];
   getMessages: (chatWindowId: string) => MockMessage[];
   isPending: (chatWindowId: string) => boolean;
@@ -22,6 +25,8 @@ interface WorkspaceCanvasProps {
 }
 
 export function WorkspaceCanvas({
+  workspaceId,
+  totalWindows,
   visibleWindows,
   getMessages,
   isPending,
@@ -50,7 +55,13 @@ export function WorkspaceCanvas({
       }}
     >
       {visibleWindows.length === 0 ? (
-        <EmptyWorkspace hasClosed={hasClosed} onReset={onReset} onCreate={onCreate} />
+        <EmptyWorkspace
+          workspaceId={workspaceId}
+          totalWindows={totalWindows}
+          hasClosed={hasClosed}
+          onReset={onReset}
+          onCreate={onCreate}
+        />
       ) : (
         visibleWindows.map((w) => (
           <ChatWindow
@@ -76,14 +87,35 @@ export function WorkspaceCanvas({
 }
 
 function EmptyWorkspace({
+  workspaceId,
+  totalWindows,
   hasClosed,
   onReset,
   onCreate,
 }: {
+  workspaceId: string;
+  totalWindows: number;
   hasClosed: boolean;
   onReset: () => void;
   onCreate: (preset: WindowPreset, title?: string) => string;
 }) {
+  if (totalWindows === 0) {
+    return (
+      <div
+        style={{
+          gridColumn: '1 / -1',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '4rem 1rem',
+          color: '#8a8a95',
+        }}
+      >
+        <CreateChatWindowCTA workspaceId={workspaceId} />
+      </div>
+    );
+  }
   const defaultPreset = WINDOW_PRESETS[0]!;
   return (
     <div

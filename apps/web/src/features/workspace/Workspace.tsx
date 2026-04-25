@@ -44,6 +44,8 @@ export function Workspace({
         onReset={state.reset}
       />
       <WorkspaceCanvas
+        workspaceId={activeWorkspace.id}
+        totalWindows={state.visibleWindows.length + state.closedWindows.length}
         visibleWindows={state.visibleWindows}
         getMessages={chat.getMessages}
         isPending={chat.isPending}

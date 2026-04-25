@@ -4,6 +4,7 @@ import type { Project, Workspace as WorkspaceType } from '@webapp/types';
 import { AppShell } from '@/components/AppShell';
 import { Panel } from '@/components/Panel';
 import { Workspace } from '@/features/workspace/Workspace';
+import { CreateWorkspaceCTA } from '@/features/workspace/CreateWorkspaceCTA';
 import {
   getProject as getMockProject,
   listWorkspacesForProject,
@@ -153,10 +154,7 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
         {wsLoad.source === 'api error' ? (
           <ErrorPanel title="Using cached workspaces" message={wsLoad.message ?? ''} />
         ) : null}
-        <CenteredMessage
-          title={project.name}
-          subtitle="No workspace exists for this project yet."
-        />
+        <CreateWorkspaceCTA projectId={project.id} />
       </AppShell>
     );
   }
