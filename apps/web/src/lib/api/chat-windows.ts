@@ -3,14 +3,19 @@ import { API_CHAT_WINDOWS_PATH } from '@webapp/types';
 import { apiFetch } from '@/lib/api/client';
 import { postJson } from '@/lib/api/http';
 
+export interface FetchOptions {
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
+}
+
 export function fetchWorkspaceWindows(
   workspaceId: string,
-  signal?: AbortSignal,
+  options?: FetchOptions,
 ): Promise<ChatWindow[]> {
   const encoded = encodeURIComponent(workspaceId);
   return apiFetch<ChatWindow[]>(
     `${API_CHAT_WINDOWS_PATH}?workspaceId=${encoded}`,
-    signal ? { signal } : undefined,
+    options,
   );
 }
 

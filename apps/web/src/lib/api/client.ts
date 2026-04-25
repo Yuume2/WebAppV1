@@ -38,6 +38,7 @@ export interface ApiFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   credentials?: RequestCredentials;
+  headers?: Record<string, string>;
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
@@ -55,7 +56,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   }
 
   const method = options.method ?? 'GET';
-  const headers: Record<string, string> = { accept: 'application/json' };
+  const headers: Record<string, string> = { accept: 'application/json', ...(options.headers ?? {}) };
   let bodyInit: BodyInit | undefined;
   if (options.body !== undefined) {
     headers['content-type'] = 'application/json';

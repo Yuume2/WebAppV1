@@ -2,15 +2,17 @@ import type { Workspace } from '@webapp/types';
 import { apiFetch } from '@/lib/api/client';
 import { postJson } from '@/lib/api/http';
 
+export interface FetchOptions {
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
+}
+
 export function fetchProjectWorkspaces(
   projectId: string,
-  signal?: AbortSignal,
+  options?: FetchOptions,
 ): Promise<Workspace[]> {
   const encoded = encodeURIComponent(projectId);
-  return apiFetch<Workspace[]>(
-    `/v1/projects/${encoded}/workspaces`,
-    signal ? { signal } : undefined,
-  );
+  return apiFetch<Workspace[]>(`/v1/projects/${encoded}/workspaces`, options);
 }
 
 export interface CreateWorkspaceInput {
