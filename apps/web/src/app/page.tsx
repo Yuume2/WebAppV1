@@ -5,6 +5,7 @@ import { Panel } from '@/components/Panel';
 import { listProjects as listMockProjects, listWorkspacesForProject } from '@/lib/data';
 import { getApiBaseUrl } from '@/lib/api/env';
 import { fetchProjects } from '@/lib/api/projects';
+import { CreateProjectEmptyState } from '@/features/projects/CreateProjectEmptyState';
 
 type ProjectsResult =
   | { source: 'api'; projects: Project[] }
@@ -34,7 +35,7 @@ export default async function HomePage() {
         {result.source === 'error' ? (
           <ErrorPanel message={result.message} />
         ) : result.projects.length === 0 ? (
-          <EmptyProjects />
+          <CreateProjectEmptyState />
         ) : (
           <ProjectGrid projects={result.projects} />
         )}
@@ -78,17 +79,6 @@ function ProjectGrid({ projects }: { projects: Project[] }) {
         );
       })}
     </div>
-  );
-}
-
-function EmptyProjects() {
-  return (
-    <Panel style={{ padding: '2rem', textAlign: 'center' }}>
-      <div style={{ color: '#e8e8ef', fontSize: '1rem' }}>No projects yet</div>
-      <div style={{ color: '#8a8a95', fontSize: '0.85rem', marginTop: 6 }}>
-        Create your first project to get started.
-      </div>
-    </Panel>
   );
 }
 
