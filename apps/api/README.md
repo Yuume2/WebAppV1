@@ -68,7 +68,17 @@ pnpm --filter @webapp/api smoke:ai
 
 The script signs up a fresh user, creates a project / workspace / chat-window, upserts the OpenAI key, posts a message "hello", and asserts an assistant reply was persisted. It **never logs the key value**. Missing `OPENAI_API_KEY` fails fast with a clear message.
 
-This script is **not** wired into CI: it spends real OpenAI tokens and assumes a live API on `http://localhost:4000`. Override the target with `SMOKE_API_BASE_URL=…` or the model with `SMOKE_MODEL=…`.
+For the streaming endpoint (`POST /v1/messages/stream`):
+
+```bash
+pnpm api:smoke:ai:stream
+# or
+pnpm --filter @webapp/api smoke:ai:stream
+```
+
+Same setup, but exercises the SSE path: opens the stream, parses every `data:` event, asserts ≥1 `delta` chunk + the `[DONE]` sentinel + a final `{done:true,assistantMessage:…}` event, and confirms the persisted content equals the concatenated deltas. Then re-fetches `/v1/messages` to verify the assistant row landed in the DB.
+
+Both scripts are **not** wired into CI: they spend real OpenAI tokens and assume a live API on `http://localhost:4000`. Override the target with `SMOKE_API_BASE_URL=…` or the model with `SMOKE_MODEL=…`.
 
 ## Env vars
 
