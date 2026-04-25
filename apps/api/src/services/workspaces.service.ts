@@ -31,6 +31,21 @@ export function appendWindowId(workspaceId: string, windowId: string): void {
   if (ws) ws.windowIds.push(windowId);
 }
 
+export function updateWorkspace(id: string, patch: { name?: string }): Workspace | undefined {
+  const ws = store.find((w) => w.id === id);
+  if (!ws) return undefined;
+  if (patch.name !== undefined) ws.name = patch.name;
+  ws.updatedAt = new Date().toISOString();
+  return { ...ws, windowIds: [...ws.windowIds] };
+}
+
+export function deleteWorkspace(id: string): boolean {
+  const i = store.findIndex((w) => w.id === id);
+  if (i === -1) return false;
+  store.splice(i, 1);
+  return true;
+}
+
 export function resetWorkspacesStore(): void {
   store = [];
 }

@@ -1,10 +1,15 @@
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import type { AIProvider } from '@webapp/types';
 import { chatWindows } from './schema.js';
 import { findWorkspaceById } from './workspaces.repo.js';
 
 export type Db = PostgresJsDatabase;
+
+export interface ChatWindowPatch {
+  title?: string;
+  model?: string;
+}
 
 /**
  * Returns chat windows for the workspace, or null if the workspace doesn't
@@ -69,4 +74,32 @@ export async function findChatWindowById(db: Db, id: string, userId: string) {
   if (!cw) return null;
   const ws = await findWorkspaceById(db, cw.workspaceId, userId);
   return ws ? cw : null;
+}
+
+/** Updates a chat window if owned. Returns the updated row, or null. */
+export async function updateChatWindow(
+  db: Db,
+  id: string,
+  userId: string,
+  patch: ChatWindowPatch,
+) {
+  const existing = await findChatWindowById(db, id, userId);
+  if (!existing) return null;
+  const setClauses: Record<string, unknown> = { updatedAt: sql`now()` };
+  if (patch.title !== undefined) setClauses['title'] = patch.title;
+  if (patch.model !== undefined) setClauses['model'] = patch.model;
+  const [row] = await db
+    .update(chatWindows)
+    .set(setClauses)
+    .where(eq(chatWindows.id, id))
+    .returning();
+  return row ?? null;
+}
+
+/** Deletes a chat window if owned. Returns true if deleted. Cascades to messages. */
+export async function deleteChatWindow(db: Db, id: string, userId: string): Promise<boolean> {
+  const existing = await findChatWindowById(db, id, userId);
+  if (!existing) return false;
+  await db.delete(chatWindows).where(eq(chatWindows.id, id));
+  return true;
 }

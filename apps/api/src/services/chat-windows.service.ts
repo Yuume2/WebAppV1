@@ -33,6 +33,25 @@ export function chatWindowExists(id: string): boolean {
   return store.some((w) => w.id === id);
 }
 
+export function updateChatWindow(
+  id: string,
+  patch: { title?: string; model?: string },
+): ChatWindow | undefined {
+  const cw = store.find((w) => w.id === id);
+  if (!cw) return undefined;
+  if (patch.title !== undefined) cw.title = patch.title;
+  if (patch.model !== undefined) cw.model = patch.model;
+  cw.updatedAt = new Date().toISOString();
+  return { ...cw };
+}
+
+export function deleteChatWindow(id: string): boolean {
+  const i = store.findIndex((w) => w.id === id);
+  if (i === -1) return false;
+  store.splice(i, 1);
+  return true;
+}
+
 export function resetChatWindowsStore(): void {
   store = [];
 }

@@ -32,6 +32,8 @@ function makeDeps(overrides: Partial<ProjectsDeps> = {}): ProjectsDeps {
     listProjects:  async () => [],
     createProject: async (userId, name, description) => mockProject(userId, { name, description: description ?? null }),
     findProject:   async () => null,
+    updateProject: async () => null,
+    deleteProject: async () => false,
     ...overrides,
   };
 }
@@ -60,6 +62,18 @@ function post(base: string, path: string, body: unknown) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+function patch(base: string, path: string, body: unknown) {
+  return fetch(`${base}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function del(base: string, path: string) {
+  return fetch(`${base}${path}`, { method: 'DELETE' });
 }
 
 // ── Unauthenticated access ────────────────────────────────────────────────────
@@ -187,6 +201,94 @@ describe('GET /v1/projects/:id — user isolation', () => {
   it('returns 404 for non-existent project', async () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
     const res = await get(baseUrl, '/v1/projects/does-not-exist');
+    expect(res.status).toBe(404);
+    await close();
+  });
+});
+
+describe('PATCH /v1/projects/:id — authenticated', () => {
+  it('renames a project owned by the user', async () => {
+    let received: { id: string; userId: string; patch: { name?: string; description?: string | null } } | null = null;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:   async () => USER_1,
+      updateProject: async (id, userId, patchBody) => {
+        received = { id, userId, patch: patchBody };
+        return mockProject(userId, { id, name: patchBody.name ?? 'My Project' });
+      },
+    }));
+    const res = await patch(baseUrl, '/v1/projects/proj-1', { name: 'Renamed' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiResponse<Project>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data.name).toBe('Renamed');
+    expect(received).toEqual({ id: 'proj-1', userId: USER_1.id, patch: { name: 'Renamed' } });
+    await close();
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => null }));
+    const res = await patch(baseUrl, '/v1/projects/proj-1', { name: 'X' });
+    expect(res.status).toBe(401);
+    await close();
+  });
+
+  it('returns 404 when project belongs to another user (no existence leak)', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:   async () => USER_1,
+      updateProject: async () => null,
+    }));
+    const res = await patch(baseUrl, '/v1/projects/u2-proj', { name: 'X' });
+    expect(res.status).toBe(404);
+    await close();
+  });
+
+  it('returns 400 invalid_body when name is empty', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
+    const res = await patch(baseUrl, '/v1/projects/proj-1', { name: '' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('invalid_body');
+    await close();
+  });
+
+  it('accepts a description-only patch (name optional)', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:   async () => USER_1,
+      updateProject: async (id, userId, patchBody) =>
+        mockProject(userId, { id, description: patchBody.description ?? null }),
+    }));
+    const res = await patch(baseUrl, '/v1/projects/proj-1', { description: 'updated' });
+    expect(res.status).toBe(200);
+    await close();
+  });
+});
+
+describe('DELETE /v1/projects/:id — authenticated', () => {
+  it('returns 204 No Content with empty body when delete succeeds', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:   async () => USER_1,
+      deleteProject: async () => true,
+    }));
+    const res = await del(baseUrl, '/v1/projects/proj-1');
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe('');
+    await close();
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => null }));
+    const res = await del(baseUrl, '/v1/projects/proj-1');
+    expect(res.status).toBe(401);
+    await close();
+  });
+
+  it('returns 404 when project belongs to another user (no existence leak)', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:   async () => USER_1,
+      deleteProject: async () => false,
+    }));
+    const res = await del(baseUrl, '/v1/projects/u2-proj');
     expect(res.status).toBe(404);
     await close();
   });

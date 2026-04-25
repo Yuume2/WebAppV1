@@ -6,13 +6,14 @@ import {
   respond,
   respondCreated,
   respondError,
+  respondNoContent,
   respondNotFound,
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
 import { s } from '../lib/schema.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
-import type { Db } from '../db/chat-windows.repo.js';
+import type { Db, ChatWindowPatch } from '../db/chat-windows.repo.js';
 import * as chatWindowsRepo from '../db/chat-windows.repo.js';
 
 // ── Internal DB row shape ──────────────────────────────────────────────────────
@@ -39,6 +40,8 @@ export interface ChatWindowsDeps {
   listChatWindows: (workspaceId: string, userId: string) => Promise<DbChatWindow[] | null>;
   createChatWindow: (workspaceId: string, userId: string, title: string, provider: AIProvider, model: string) => Promise<DbChatWindow | null>;
   findChatWindow: (id: string, userId: string) => Promise<DbChatWindow | null>;
+  updateChatWindow: (id: string, userId: string, patch: ChatWindowPatch) => Promise<DbChatWindow | null>;
+  deleteChatWindow: (id: string, userId: string) => Promise<boolean>;
 }
 
 export function makeChatWindowsDeps(db: Db, sessionDeps: SessionDeps): ChatWindowsDeps {
@@ -47,6 +50,8 @@ export function makeChatWindowsDeps(db: Db, sessionDeps: SessionDeps): ChatWindo
     listChatWindows:  (workspaceId, userId)               => chatWindowsRepo.listChatWindowsByWorkspaceAndUser(db, workspaceId, userId),
     createChatWindow: (workspaceId, userId, title, provider, model) => chatWindowsRepo.createChatWindow(db, workspaceId, userId, title, provider, model),
     findChatWindow:   (id, userId)                        => chatWindowsRepo.findChatWindowById(db, id, userId),
+    updateChatWindow: (id, userId, patch)                 => chatWindowsRepo.updateChatWindow(db, id, userId, patch),
+    deleteChatWindow: (id, userId)                        => chatWindowsRepo.deleteChatWindow(db, id, userId),
   };
 }
 
@@ -59,6 +64,11 @@ const CreateChatWindowDbBody = s.object({
   title:       s.string({ min: 1, max: 200, trim: true }),
   provider:    s.enumOf<AIProvider>(AI_PROVIDERS),
   model:       s.string({ min: 1, max: 200, trim: true }),
+});
+
+const PatchChatWindowDbBody = s.object({
+  title: s.optional(s.string({ min: 1, max: 200, trim: true })),
+  model: s.optional(s.string({ min: 1, max: 200, trim: true })),
 });
 
 // ── Private helpers ───────────────────────────────────────────────────────────
@@ -124,4 +134,31 @@ export async function getChatWindowDbController(
   const id = ctx.params['id'] ?? '';
   const row = await deps.findChatWindow(id, user.id);
   return row ? respond(toChatWindow(row)) : respondNotFound(`ChatWindow ${id} not found`);
+}
+
+export async function patchChatWindowDbController(
+  ctx: RequestContext,
+  deps: ChatWindowsDeps,
+): Promise<InternalResult> {
+  const user = await deps.resolveUser(ctx.req);
+  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+
+  const body = await parseJsonBody(ctx, PatchChatWindowDbBody);
+  if (!body.ok) return body.result;
+
+  const id = ctx.params['id'] ?? '';
+  const row = await deps.updateChatWindow(id, user.id, body.value);
+  return row ? respond(toChatWindow(row)) : respondNotFound(`ChatWindow ${id} not found`);
+}
+
+export async function deleteChatWindowDbController(
+  ctx: RequestContext,
+  deps: ChatWindowsDeps,
+): Promise<InternalResult> {
+  const user = await deps.resolveUser(ctx.req);
+  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+
+  const id = ctx.params['id'] ?? '';
+  const deleted = await deps.deleteChatWindow(id, user.id);
+  return deleted ? respondNoContent() : respondNotFound(`ChatWindow ${id} not found`);
 }

@@ -1,9 +1,27 @@
 import { healthController } from '../controllers/health.controller.js';
-import { createChatWindowController, getChatWindowController, listChatWindowsController } from '../controllers/chat-windows.controller.js';
+import {
+  createChatWindowController,
+  deleteChatWindowController,
+  getChatWindowController,
+  listChatWindowsController,
+  patchChatWindowController,
+} from '../controllers/chat-windows.controller.js';
 import { createMessageController, getMessageController, listMessagesController } from '../controllers/messages.controller.js';
-import { createProjectController, getProjectController, listProjectsController } from '../controllers/projects.controller.js';
+import {
+  createProjectController,
+  deleteProjectController,
+  getProjectController,
+  listProjectsController,
+  patchProjectController,
+} from '../controllers/projects.controller.js';
 import { stateController } from '../controllers/state.controller.js';
-import { createWorkspaceController, getWorkspaceController, listWorkspacesController } from '../controllers/workspaces.controller.js';
+import {
+  createWorkspaceController,
+  deleteWorkspaceController,
+  getWorkspaceController,
+  listWorkspacesController,
+  patchWorkspaceController,
+} from '../controllers/workspaces.controller.js';
 import { makeAuthDeps } from '../controllers/auth.controller.js';
 import { makeProjectsDeps } from '../controllers/projects-db.controller.js';
 import { makeWorkspacesDeps } from '../controllers/workspaces-db.controller.js';
@@ -46,27 +64,33 @@ const authRoutes: RouteDefinition[] = authDeps
 const projectRoutes: RouteDefinition[] = (db && authDeps)
   ? makeProjectDbRoutes(makeProjectsDeps(db, authDeps))
   : [
-    { method: 'GET',  path: API_PROJECTS_PATH,          handler: listProjectsController },
-    { method: 'POST', path: API_PROJECTS_PATH,          handler: createProjectController },
-    { method: 'GET',  path: `${API_PROJECTS_PATH}/:id`, handler: getProjectController },
+    { method: 'GET',    path: API_PROJECTS_PATH,          handler: listProjectsController },
+    { method: 'POST',   path: API_PROJECTS_PATH,          handler: createProjectController },
+    { method: 'GET',    path: `${API_PROJECTS_PATH}/:id`, handler: getProjectController },
+    { method: 'PATCH',  path: `${API_PROJECTS_PATH}/:id`, handler: patchProjectController },
+    { method: 'DELETE', path: `${API_PROJECTS_PATH}/:id`, handler: deleteProjectController },
   ];
 
 // Workspace routes: DB-backed user-scoped when DB is available, in-memory fallback otherwise.
 const workspaceRoutes: RouteDefinition[] = (db && authDeps)
   ? makeWorkspaceDbRoutes(makeWorkspacesDeps(db, authDeps))
   : [
-    { method: 'GET',  path: API_WORKSPACES_PATH,            handler: listWorkspacesController },
-    { method: 'POST', path: API_WORKSPACES_PATH,            handler: createWorkspaceController },
-    { method: 'GET',  path: `${API_WORKSPACES_PATH}/:id`,   handler: getWorkspaceController },
+    { method: 'GET',    path: API_WORKSPACES_PATH,            handler: listWorkspacesController },
+    { method: 'POST',   path: API_WORKSPACES_PATH,            handler: createWorkspaceController },
+    { method: 'GET',    path: `${API_WORKSPACES_PATH}/:id`,   handler: getWorkspaceController },
+    { method: 'PATCH',  path: `${API_WORKSPACES_PATH}/:id`,   handler: patchWorkspaceController },
+    { method: 'DELETE', path: `${API_WORKSPACES_PATH}/:id`,   handler: deleteWorkspaceController },
   ];
 
 // Chat-window routes: DB-backed user-scoped when DB is available, in-memory fallback otherwise.
 const chatWindowRoutes: RouteDefinition[] = (db && authDeps)
   ? makeChatWindowDbRoutes(makeChatWindowsDeps(db, authDeps))
   : [
-    { method: 'GET',  path: API_CHAT_WINDOWS_PATH,            handler: listChatWindowsController },
-    { method: 'POST', path: API_CHAT_WINDOWS_PATH,            handler: createChatWindowController },
-    { method: 'GET',  path: `${API_CHAT_WINDOWS_PATH}/:id`,   handler: getChatWindowController },
+    { method: 'GET',    path: API_CHAT_WINDOWS_PATH,            handler: listChatWindowsController },
+    { method: 'POST',   path: API_CHAT_WINDOWS_PATH,            handler: createChatWindowController },
+    { method: 'GET',    path: `${API_CHAT_WINDOWS_PATH}/:id`,   handler: getChatWindowController },
+    { method: 'PATCH',  path: `${API_CHAT_WINDOWS_PATH}/:id`,   handler: patchChatWindowController },
+    { method: 'DELETE', path: `${API_CHAT_WINDOWS_PATH}/:id`,   handler: deleteChatWindowController },
   ];
 
 // Message routes: DB-backed user-scoped when DB is available, in-memory fallback otherwise.

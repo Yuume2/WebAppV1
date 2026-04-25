@@ -54,6 +54,10 @@ export function respondNotFound(message: string): InternalResult {
   return { httpStatus: 404, body: fail('not_found', message) };
 }
 
+export function respondNoContent(): InternalResult {
+  return { httpStatus: 204, body: { ok: true, data: null } };
+}
+
 export function respondRateLimited(retryAfterSecs: number): InternalResult {
   return {
     httpStatus: 429,
@@ -75,6 +79,15 @@ export function writeJson(
   requestId: string,
   extraHeaders?: Record<string, string>,
 ): void {
+  if (status === 204) {
+    res.writeHead(204, {
+      'Cache-Control': 'no-store',
+      'X-Request-Id': requestId,
+      ...extraHeaders,
+    });
+    res.end();
+    return;
+  }
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',

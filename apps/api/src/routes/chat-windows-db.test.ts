@@ -34,6 +34,8 @@ function makeDeps(overrides: Partial<ChatWindowsDeps> = {}): ChatWindowsDeps {
     createChatWindow: async (workspaceId, _userId, title, provider, model) =>
       mockChatWindow(workspaceId, { title, provider, model }),
     findChatWindow:   async () => null,
+    updateChatWindow: async () => null,
+    deleteChatWindow: async () => false,
     ...overrides,
   };
 }
@@ -62,6 +64,18 @@ function post(base: string, path: string, body: unknown) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+function patch(base: string, path: string, body: unknown) {
+  return fetch(`${base}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function del(base: string, path: string) {
+  return fetch(`${base}${path}`, { method: 'DELETE' });
 }
 
 // ── Unauthenticated access ────────────────────────────────────────────────────
@@ -225,3 +239,79 @@ describe('GET /v1/chat-windows/:id — user isolation', () => {
     await close();
   });
 });
+
+
+describe("PATCH /v1/chat-windows/:id — authenticated", () => {
+  it("renames a chat window owned by the user", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:      async () => USER_1,
+      updateChatWindow: async (id, _userId, patchBody) =>
+        mockChatWindow("ws-1", { id, title: patchBody.title ?? "CW" }),
+    }));
+    const res = await patch(baseUrl, "/v1/chat-windows/cw-1", { title: "Renamed" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiResponse<ChatWindow>;
+    if (!body.ok) throw new Error("expected ok");
+    expect(body.data.title).toBe("Renamed");
+    await close();
+  });
+
+  it("returns 404 when chat window belongs to another user", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:      async () => USER_1,
+      updateChatWindow: async () => null,
+    }));
+    const res = await patch(baseUrl, "/v1/chat-windows/u2-cw", { title: "X" });
+    expect(res.status).toBe(404);
+    await close();
+  });
+
+  it("returns 400 invalid_body for empty title", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
+    const res = await patch(baseUrl, "/v1/chat-windows/cw-1", { title: "" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error("expected error");
+    expect(body.error.code).toBe("invalid_body");
+    await close();
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => null }));
+    const res = await patch(baseUrl, "/v1/chat-windows/cw-1", { title: "X" });
+    expect(res.status).toBe(401);
+    await close();
+  });
+});
+
+describe("DELETE /v1/chat-windows/:id — authenticated", () => {
+  it("returns 204 with empty body", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:      async () => USER_1,
+      deleteChatWindow: async () => true,
+    }));
+    const res = await del(baseUrl, "/v1/chat-windows/cw-1");
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
+    await close();
+  });
+
+  it("returns 404 when chat window belongs to another user", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:      async () => USER_1,
+      deleteChatWindow: async () => false,
+    }));
+    const res = await del(baseUrl, "/v1/chat-windows/u2-cw");
+    expect(res.status).toBe(404);
+    await close();
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => null }));
+    const res = await del(baseUrl, "/v1/chat-windows/cw-1");
+    expect(res.status).toBe(401);
+    await close();
+  });
+});
+
+
