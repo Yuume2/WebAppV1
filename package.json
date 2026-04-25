@@ -13,6 +13,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "api:smoke:ai": "pnpm --filter @webapp/api smoke:ai",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css,yml,yaml}\"",
     "clean": "turbo run clean && rm -rf node_modules",
