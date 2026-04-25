@@ -1,4 +1,5 @@
 import type { Workspace } from '@webapp/types';
+import { API_WORKSPACES_PATH } from '@webapp/types';
 import { apiFetch } from '@/lib/api/client';
 import { postJson } from '@/lib/api/http';
 
@@ -12,7 +13,7 @@ export function fetchProjectWorkspaces(
   options?: FetchOptions,
 ): Promise<Workspace[]> {
   const encoded = encodeURIComponent(projectId);
-  return apiFetch<Workspace[]>(`/v1/projects/${encoded}/workspaces`, options);
+  return apiFetch<Workspace[]>(`${API_WORKSPACES_PATH}?projectId=${encoded}`, options);
 }
 
 export interface CreateWorkspaceInput {
