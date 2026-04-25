@@ -14,6 +14,10 @@ export interface ChatSessionsApi {
   cancel: (chatWindowId: string) => void;
 }
 
+export interface UseChatSessionsOptions {
+  onError?: (chatWindowId: string, error: ApiCallError) => void;
+}
+
 interface SessionState {
   messages: MockMessage[];
   pendingTempId: string | null;
@@ -43,11 +47,16 @@ function asApiCallError(err: unknown): ApiCallError {
   return new Error(typeof err === 'string' ? err : 'Unknown error') as ApiCallError;
 }
 
-export function useChatSessions(initial: Record<string, MockMessage[]>): ChatSessionsApi {
+export function useChatSessions(
+  initial: Record<string, MockMessage[]>,
+  options?: UseChatSessionsOptions,
+): ChatSessionsApi {
   const [sessions, setSessions] = useState<Sessions>(() => toSessions(initial));
   const controllers = useRef<Map<string, AbortController>>(new Map());
   const sessionsRef = useRef<Sessions>(sessions);
   sessionsRef.current = sessions;
+  const onErrorRef = useRef(options?.onError);
+  onErrorRef.current = options?.onError;
 
   useEffect(() => {
     const map = controllers.current;
@@ -115,6 +124,7 @@ export function useChatSessions(initial: Record<string, MockMessage[]>): ChatSes
   const fulfillError = useCallback(
     (chatWindowId: string, tempId: string, err: unknown) => {
       const e = asApiCallError(err);
+      if (e.code !== 'canceled') onErrorRef.current?.(chatWindowId, e);
       setSessions((prev) => {
         const current = prev[chatWindowId];
         if (!current) return prev;
