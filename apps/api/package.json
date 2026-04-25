@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke:ai": "node --env-file-if-exists=.env scripts/smoke-ai.mjs",
+    "smoke:ai:stream": "node --env-file-if-exists=.env scripts/smoke-ai-stream.mjs",
     "clean": "rm -rf dist .turbo",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

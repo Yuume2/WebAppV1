@@ -14,6 +14,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "api:smoke:ai": "pnpm --filter @webapp/api smoke:ai",
+    "api:smoke:ai:stream": "pnpm --filter @webapp/api smoke:ai:stream",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css,yml,yaml}\"",
     "clean": "turbo run clean && rm -rf node_modules",
