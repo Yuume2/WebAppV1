@@ -34,6 +34,12 @@ export function Workspace({
       const win = windows.find((w) => w.id === chatWindowId);
       const prefix = win?.title ?? 'Send failed';
       const code = err.code ?? 'error';
+      if (code === 'provider_not_configured') {
+        toast.push('error', `${prefix}: ${err.message}`, {
+          action: { label: 'Add provider key →', href: '/settings/providers' },
+        });
+        return;
+      }
       toast.push('error', `${prefix}: ${code} — ${err.message}`);
     },
     [toast, windows],
