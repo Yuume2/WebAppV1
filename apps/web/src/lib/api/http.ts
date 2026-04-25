@@ -78,3 +78,11 @@ export function postJson<T>(path: string, body: unknown, signal?: AbortSignal): 
 export function putJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   return requestJson<T>('PUT', path, body, signal);
 }
+
+export function patchJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  return requestJson<T>('PATCH', path, body, signal);
+}
+
+export function deleteJson<T = null>(path: string, signal?: AbortSignal): Promise<T> {
+  return requestJson<T>('DELETE', path, undefined, signal);
+}

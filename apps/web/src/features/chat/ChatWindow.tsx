@@ -16,6 +16,7 @@ interface ChatWindowProps {
   onFocus?: (id: string) => void;
   onSend?: (id: string, content: string) => void;
   onRename?: (id: string, title: string) => void;
+  onDelete?: (id: string) => void;
   onRetry?: (id: string, clientTempId: string) => void;
   onCancel?: (id: string) => void;
 }
@@ -44,6 +45,7 @@ export function ChatWindow({
   onFocus,
   onSend,
   onRename,
+  onDelete,
   onRetry,
   onCancel,
 }: ChatWindowProps) {
@@ -176,27 +178,63 @@ export function ChatWindow({
           )}
           <ProviderBadge provider={provider} model={model} />
         </div>
-        {onClose ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose(id);
-            }}
-            aria-label="Close window"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#8a8a95',
-              cursor: 'pointer',
-              fontSize: '1.1rem',
-              padding: '0.25rem 0.5rem',
-              borderRadius: 6,
-              lineHeight: 1,
-            }}
-          >
-            ×
-          </button>
-        ) : null}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {onDelete ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (typeof window === 'undefined') {
+                  onDelete(id);
+                  return;
+                }
+                const ok = window.confirm(
+                  `Delete chat window "${title}"? This removes its messages and cannot be undone.`,
+                );
+                if (ok) onDelete(id);
+              }}
+              aria-label="Delete chat window"
+              title="Delete chat window"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#8a8a95',
+                cursor: 'pointer',
+                fontSize: '0.7rem',
+                fontWeight: 500,
+                padding: '0.25rem 0.5rem',
+                borderRadius: 6,
+                lineHeight: 1,
+                fontFamily: 'inherit',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}
+            >
+              Delete
+            </button>
+          ) : null}
+          {onClose ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose(id);
+              }}
+              aria-label="Close window"
+              title="Close window"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#8a8a95',
+                cursor: 'pointer',
+                fontSize: '1.1rem',
+                padding: '0.25rem 0.5rem',
+                borderRadius: 6,
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div

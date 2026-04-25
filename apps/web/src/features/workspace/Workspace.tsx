@@ -27,8 +27,17 @@ export function Workspace({
   windows,
   messagesByWindow,
 }: WorkspaceProps) {
-  const state = useWorkspaceState({ windows });
   const toast = useToast();
+  const handleWindowError = useCallback(
+    (action: 'rename' | 'delete', err: ApiCallError, win?: ChatWindow) => {
+      const verb = action === 'rename' ? 'Rename failed' : 'Delete failed';
+      const target = win?.title ? `“${win.title}”` : 'window';
+      const code = err.code ?? 'error';
+      toast.push('error', `${verb} for ${target}: ${code} — ${err.message}`);
+    },
+    [toast],
+  );
+  const state = useWorkspaceState({ windows, onError: handleWindowError });
   const handleSendError = useCallback(
     (chatWindowId: string, err: ApiCallError) => {
       const win = windows.find((w) => w.id === chatWindowId);
@@ -79,6 +88,7 @@ export function Workspace({
         onClose={state.close}
         onFocus={state.focus}
         onRename={state.renameWindow}
+        onDelete={state.deleteWindow}
         onReset={state.reset}
         onCreate={state.createWindow}
       />
