@@ -554,9 +554,11 @@ interface WindowRowProps {
 }
 
 function WindowRow({ window, active, muted, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
+  const stamp = formatRelative(window.updatedAt ?? window.createdAt);
   return (
     <div
       onClick={onClick}
+      aria-current={active ? 'true' : undefined}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -565,9 +567,11 @@ function WindowRow({ window, active, muted, onClick, onAction, actionLabel, acti
         borderRadius: 8,
         cursor: 'pointer',
         background: active ? '#1c1c28' : 'transparent',
-        border: `1px solid ${active ? '#3a3f6b' : 'transparent'}`,
-        opacity: muted ? 0.6 : 1,
+        border: `1px solid ${active ? '#4f6bff' : 'transparent'}`,
+        boxShadow: active ? '0 0 0 1px rgba(79,107,255,0.25)' : 'none',
+        opacity: muted ? 0.55 : 1,
         marginBottom: 2,
+        transition: 'background 120ms ease, border-color 120ms ease',
       }}
     >
       <span
@@ -577,30 +581,79 @@ function WindowRow({ window, active, muted, onClick, onAction, actionLabel, acti
           borderRadius: '50%',
           background: providerColor[window.provider],
           flexShrink: 0,
+          boxShadow: active ? '0 0 0 2px rgba(79,107,255,0.18)' : 'none',
         }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
             fontSize: '0.82rem',
-            color: '#e8e8ef',
+            color: active ? '#f5f5f5' : '#e8e8ef',
+            fontWeight: active ? 600 : 500,
             overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
           }}
         >
-          {window.title}
+          <span
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}
+          >
+            {window.title}
+          </span>
+          {active ? (
+            <span
+              style={{
+                marginLeft: 'auto',
+                fontSize: '0.62rem',
+                fontWeight: 600,
+                color: '#9aa6ff',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                flexShrink: 0,
+              }}
+            >
+              Active
+            </span>
+          ) : null}
         </div>
         <div
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
             fontSize: '0.68rem',
             color: '#8a8a95',
             overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
           }}
         >
-          {window.provider} · {window.model}
+          <span
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+            }}
+          >
+            {window.provider} · {window.model}
+          </span>
+          {stamp ? (
+            <span
+              style={{
+                marginLeft: 'auto',
+                color: '#6a6a75',
+                flexShrink: 0,
+              }}
+              title={window.updatedAt ?? window.createdAt}
+            >
+              {stamp}
+            </span>
+          ) : null}
         </div>
       </div>
       <button
@@ -624,4 +677,26 @@ function WindowRow({ window, active, muted, onClick, onAction, actionLabel, acti
       </button>
     </div>
   );
+}
+
+function formatRelative(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const diff = Date.now() - t;
+  if (diff < 0) return 'just now';
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return `${wk}w`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo}mo`;
+  const yr = Math.floor(day / 365);
+  return `${yr}y`;
 }
