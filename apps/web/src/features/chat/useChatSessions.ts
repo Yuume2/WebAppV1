@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MockMessage } from '@/lib/data';
 import { getApiBaseUrl } from '@/lib/api/env';
-import { isGeneratedPair, postMessage, type PostMessageResult } from '@/lib/api/messages';
+import {
+  isGeneratedPair,
+  postMessage,
+  streamMessage,
+  type PostMessageResult,
+} from '@/lib/api/messages';
+import type { Message } from '@webapp/types';
 import type { ApiCallError } from '@/lib/api/client';
 
 export interface ChatSessionsApi {
@@ -16,6 +22,13 @@ export interface ChatSessionsApi {
 
 export interface UseChatSessionsOptions {
   onError?: (chatWindowId: string, error: ApiCallError) => void;
+  stream?: boolean;
+}
+
+let streamTempCounter = 0;
+function nextStreamAssistantId(chatWindowId: string): string {
+  streamTempCounter += 1;
+  return `tmp-asst-${chatWindowId}-${Date.now()}-${streamTempCounter}`;
 }
 
 interface SessionState {
@@ -57,6 +70,8 @@ export function useChatSessions(
   sessionsRef.current = sessions;
   const onErrorRef = useRef(options?.onError);
   onErrorRef.current = options?.onError;
+  const streamRef = useRef(options?.stream === true);
+  streamRef.current = options?.stream === true;
 
   useEffect(() => {
     const map = controllers.current;
@@ -149,6 +164,184 @@ export function useChatSessions(
     [],
   );
 
+  const seedStreamingAssistant = useCallback(
+    (chatWindowId: string, assistantTempId: string) => {
+      const now = new Date().toISOString();
+      setSessions((prev) => {
+        const current = prev[chatWindowId];
+        if (!current) return prev;
+        const placeholder: MockMessage = {
+          id: assistantTempId,
+          chatWindowId,
+          role: 'assistant',
+          content: '',
+          createdAt: now,
+          status: 'streaming',
+          clientTempId: assistantTempId,
+        };
+        return {
+          ...prev,
+          [chatWindowId]: { ...current, messages: [...current.messages, placeholder] },
+        };
+      });
+    },
+    [],
+  );
+
+  const appendStreamDelta = useCallback(
+    (chatWindowId: string, assistantTempId: string, delta: string) => {
+      setSessions((prev) => {
+        const current = prev[chatWindowId];
+        if (!current) return prev;
+        return {
+          ...prev,
+          [chatWindowId]: {
+            ...current,
+            messages: current.messages.map((m) =>
+              m.clientTempId === assistantTempId
+                ? { ...m, content: m.content + delta }
+                : m,
+            ),
+          },
+        };
+      });
+    },
+    [],
+  );
+
+  const finalizeStream = useCallback(
+    (
+      chatWindowId: string,
+      userTempId: string,
+      assistantTempId: string,
+      userRow: Message | null,
+      assistantRow: Message | null,
+    ) => {
+      setSessions((prev) => {
+        const current = prev[chatWindowId];
+        if (!current) return prev;
+        const messages = current.messages
+          .map((m) => {
+            if (m.clientTempId === userTempId) {
+              if (userRow) {
+                return {
+                  id: userRow.id,
+                  chatWindowId: userRow.chatWindowId,
+                  role: userRow.role,
+                  content: userRow.content,
+                  createdAt: userRow.createdAt,
+                  status: 'ok' as const,
+                };
+              }
+              return { ...m, status: 'ok' as const };
+            }
+            if (m.clientTempId === assistantTempId) {
+              if (assistantRow) {
+                return {
+                  id: assistantRow.id,
+                  chatWindowId: assistantRow.chatWindowId,
+                  role: assistantRow.role,
+                  content: assistantRow.content,
+                  createdAt: assistantRow.createdAt,
+                  provider: assistantRow.provider ?? undefined,
+                  model: assistantRow.model ?? undefined,
+                  status: 'ok' as const,
+                };
+              }
+              return { ...m, status: 'ok' as const };
+            }
+            return m;
+          });
+        return {
+          ...prev,
+          [chatWindowId]: {
+            messages,
+            pendingTempId: current.pendingTempId === userTempId ? null : current.pendingTempId,
+          },
+        };
+      });
+    },
+    [],
+  );
+
+  const dropStreamingPlaceholder = useCallback(
+    (chatWindowId: string, assistantTempId: string) => {
+      setSessions((prev) => {
+        const current = prev[chatWindowId];
+        if (!current) return prev;
+        return {
+          ...prev,
+          [chatWindowId]: {
+            ...current,
+            messages: current.messages.filter((m) => m.clientTempId !== assistantTempId),
+          },
+        };
+      });
+    },
+    [],
+  );
+
+  const dispatchStream = useCallback(
+    (chatWindowId: string, tempId: string, content: string) => {
+      const ctrl = new AbortController();
+      controllers.current.get(chatWindowId)?.abort();
+      controllers.current.set(chatWindowId, ctrl);
+
+      const assistantTempId = nextStreamAssistantId(chatWindowId);
+      seedStreamingAssistant(chatWindowId, assistantTempId);
+
+      let userRow: Message | null = null;
+      let assistantRow: Message | null = null;
+
+      streamMessage(
+        { chatWindowId, role: 'user', content },
+        {
+          onUserMessage: (m) => {
+            userRow = m;
+          },
+          onDelta: (d) => appendStreamDelta(chatWindowId, assistantTempId, d),
+          onDone: (m) => {
+            assistantRow = m;
+          },
+        },
+        ctrl.signal,
+      )
+        .then(() => {
+          if (controllers.current.get(chatWindowId) === ctrl) {
+            controllers.current.delete(chatWindowId);
+          }
+          if (ctrl.signal.aborted) return;
+          finalizeStream(chatWindowId, tempId, assistantTempId, userRow, assistantRow);
+        })
+        .catch((err: unknown) => {
+          if (controllers.current.get(chatWindowId) === ctrl) {
+            controllers.current.delete(chatWindowId);
+          }
+          dropStreamingPlaceholder(chatWindowId, assistantTempId);
+          if (ctrl.signal.aborted) {
+            const code = (err as ApiCallError | null)?.code;
+            if (code === 'timeout') {
+              fulfillError(chatWindowId, tempId, err);
+            } else {
+              fulfillError(chatWindowId, tempId, {
+                code: 'canceled',
+                message: 'Request canceled',
+              });
+            }
+            return;
+          }
+          fulfillError(chatWindowId, tempId, err);
+        });
+    },
+    [
+      seedStreamingAssistant,
+      appendStreamDelta,
+      finalizeStream,
+      dropStreamingPlaceholder,
+      fulfillError,
+    ],
+  );
+
   const dispatchPost = useCallback(
     (chatWindowId: string, tempId: string, content: string) => {
       const ctrl = new AbortController();
@@ -211,9 +404,12 @@ export function useChatSessions(
           },
         };
       });
-      if (useApi) dispatchPost(chatWindowId, tempId, trimmed);
+      if (useApi) {
+        if (streamRef.current) dispatchStream(chatWindowId, tempId, trimmed);
+        else dispatchPost(chatWindowId, tempId, trimmed);
+      }
     },
-    [dispatchPost],
+    [dispatchPost, dispatchStream],
   );
 
   const retry = useCallback(
@@ -237,9 +433,10 @@ export function useChatSessions(
           },
         };
       });
-      dispatchPost(chatWindowId, clientTempId, target.content);
+      if (streamRef.current) dispatchStream(chatWindowId, clientTempId, target.content);
+      else dispatchPost(chatWindowId, clientTempId, target.content);
     },
-    [dispatchPost],
+    [dispatchPost, dispatchStream],
   );
 
   const cancel = useCallback((chatWindowId: string) => {

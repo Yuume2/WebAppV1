@@ -17,3 +17,8 @@ body {
     transform: rotate(360deg);
   }
 }
+
+@keyframes chat-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}

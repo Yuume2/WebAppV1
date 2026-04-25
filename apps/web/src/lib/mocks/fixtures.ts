@@ -1,6 +1,6 @@
 import type { AIProvider, ChatWindow, MessageRole, Project, Workspace } from '@webapp/types';
 
-export type MockMessageStatus = 'pending' | 'ok' | 'failed';
+export type MockMessageStatus = 'pending' | 'streaming' | 'ok' | 'failed';
 
 export interface MockMessage {
   id: string;

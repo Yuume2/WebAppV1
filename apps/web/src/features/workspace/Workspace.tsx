@@ -44,7 +44,10 @@ export function Workspace({
     },
     [toast, windows],
   );
-  const chat = useChatSessions(messagesByWindow, { onError: handleSendError });
+  const chat = useChatSessions(messagesByWindow, {
+    onError: handleSendError,
+    stream: true,
+  });
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
