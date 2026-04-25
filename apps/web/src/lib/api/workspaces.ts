@@ -1,7 +1,7 @@
 import type { Workspace } from '@webapp/types';
 import { API_WORKSPACES_PATH } from '@webapp/types';
 import { apiFetch } from '@/lib/api/client';
-import { postJson } from '@/lib/api/http';
+import { deleteJson, patchJson, postJson } from '@/lib/api/http';
 
 export interface FetchOptions {
   signal?: AbortSignal;
@@ -26,4 +26,22 @@ export function createWorkspace(
   signal?: AbortSignal,
 ): Promise<Workspace> {
   return postJson<Workspace>('/v1/workspaces', input, signal);
+}
+
+export interface PatchWorkspaceInput {
+  name?: string;
+}
+
+export function patchWorkspace(
+  id: string,
+  input: PatchWorkspaceInput,
+  signal?: AbortSignal,
+): Promise<Workspace> {
+  const encoded = encodeURIComponent(id);
+  return patchJson<Workspace>(`${API_WORKSPACES_PATH}/${encoded}`, input, signal);
+}
+
+export function deleteWorkspace(id: string, signal?: AbortSignal): Promise<null> {
+  const encoded = encodeURIComponent(id);
+  return deleteJson<null>(`${API_WORKSPACES_PATH}/${encoded}`, signal);
 }
