@@ -20,6 +20,7 @@ interface WorkspaceCanvasProps {
   onClose: (id: string) => void;
   onFocus: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onDelete: (id: string) => void;
   onReset: () => void;
   onCreate: (preset: WindowPreset, title?: string) => string;
 }
@@ -38,6 +39,7 @@ export function WorkspaceCanvas({
   onClose,
   onFocus,
   onRename,
+  onDelete,
   onReset,
   onCreate,
 }: WorkspaceCanvasProps) {
@@ -77,6 +79,7 @@ export function WorkspaceCanvas({
             onFocus={onFocus}
             onSend={onSend}
             onRename={onRename}
+            onDelete={onDelete}
             onRetry={onRetry}
             onCancel={onCancel}
           />

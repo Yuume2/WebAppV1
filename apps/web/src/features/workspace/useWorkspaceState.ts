@@ -1,13 +1,19 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { ChatWindow } from '@webapp/types';
 import type { WindowPreset } from '@/lib/data';
-import { createChatWindow } from '@/lib/api/chat-windows';
+import {
+  createChatWindow,
+  deleteChatWindow,
+  patchChatWindow,
+} from '@/lib/api/chat-windows';
+import type { ApiCallError } from '@/lib/api/client';
 import { getApiBaseUrl } from '@/lib/api/env';
 
 interface WorkspaceStateInit {
   windows: ChatWindow[];
+  onError?: (action: 'rename' | 'delete', error: ApiCallError, window?: ChatWindow) => void;
 }
 
 interface WorkspaceState {
@@ -22,15 +28,18 @@ interface WorkspaceState {
   reset: () => void;
   createWindow: (preset: WindowPreset, customTitle?: string) => string;
   renameWindow: (id: string, title: string) => void;
+  deleteWindow: (id: string) => void;
 }
 
 let creationCounter = 0;
 
-export function useWorkspaceState({ windows }: WorkspaceStateInit): WorkspaceState {
+export function useWorkspaceState({ windows, onError }: WorkspaceStateInit): WorkspaceState {
   const initialIds = useMemo(() => windows.map((w) => w.id), [windows]);
   const [pool, setPool] = useState<ChatWindow[]>(windows);
   const [openIds, setOpenIds] = useState<string[]>(initialIds);
   const [activeId, setActiveId] = useState<string | null>(initialIds[0] ?? null);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   const close = useCallback((id: string) => {
     setOpenIds((prev) => {
@@ -102,7 +111,62 @@ export function useWorkspaceState({ windows }: WorkspaceStateInit): WorkspaceSta
   const renameWindow = useCallback((id: string, title: string) => {
     const trimmed = title.trim();
     if (!trimmed) return;
-    setPool((prev) => prev.map((w) => (w.id === id ? { ...w, title: trimmed } : w)));
+    let previous: ChatWindow | undefined;
+    setPool((prev) => {
+      previous = prev.find((w) => w.id === id);
+      if (!previous || previous.title === trimmed) return prev;
+      return prev.map((w) => (w.id === id ? { ...w, title: trimmed } : w));
+    });
+    if (!previous || previous.title === trimmed) return;
+    if (!getApiBaseUrl() || id.startsWith('local-')) return;
+
+    void patchChatWindow(id, { title: trimmed })
+      .then((persisted) => {
+        setPool((prev) => prev.map((w) => (w.id === id ? persisted : w)));
+      })
+      .catch((err: unknown) => {
+        const e = err as ApiCallError;
+        const restored = previous!;
+        setPool((prev) => prev.map((w) => (w.id === id ? restored : w)));
+        onErrorRef.current?.('rename', e, restored);
+      });
+  }, []);
+
+  const deleteWindow = useCallback((id: string) => {
+    let removed: ChatWindow | undefined;
+    let removedOpenIndex = -1;
+    let removedOpen = false;
+    setPool((prev) => {
+      removed = prev.find((w) => w.id === id);
+      if (!removed) return prev;
+      return prev.filter((w) => w.id !== id);
+    });
+    setOpenIds((prev) => {
+      removedOpenIndex = prev.indexOf(id);
+      if (removedOpenIndex < 0) return prev;
+      removedOpen = true;
+      const next = prev.filter((x) => x !== id);
+      setActiveId((current) => (current === id ? (next[0] ?? null) : current));
+      return next;
+    });
+    if (!removed) return;
+    if (!getApiBaseUrl() || id.startsWith('local-')) return;
+
+    void deleteChatWindow(id).catch((err: unknown) => {
+      const e = err as ApiCallError;
+      const restored = removed!;
+      setPool((prev) => (prev.some((w) => w.id === id) ? prev : [...prev, restored]));
+      if (removedOpen) {
+        setOpenIds((prev) => {
+          if (prev.includes(id)) return prev;
+          const next = [...prev];
+          const insertAt = Math.min(Math.max(removedOpenIndex, 0), next.length);
+          next.splice(insertAt, 0, id);
+          return next;
+        });
+      }
+      onErrorRef.current?.('delete', e, restored);
+    });
   }, []);
 
   const visibleWindows = useMemo(
@@ -127,5 +191,6 @@ export function useWorkspaceState({ windows }: WorkspaceStateInit): WorkspaceSta
     reset,
     createWindow,
     renameWindow,
+    deleteWindow,
   };
 }
