@@ -141,4 +141,45 @@ describe('createOpenAIClient', () => {
       });
     });
   });
+
+  describe('createChatCompletionStream', () => {
+    function sseStream(payloads: string[]): Response {
+      const body = payloads.map((p) => `data: ${p}\n\n`).join('') + 'data: [DONE]\n\n';
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(body));
+          controller.close();
+        },
+      });
+      return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    }
+
+    it('yields delta + done chunks parsed from SSE', async () => {
+      vi.mocked(fetch).mockResolvedValue(sseStream([
+        JSON.stringify({ model: MODEL, choices: [{ delta: { content: 'Hi ' } }] }),
+        JSON.stringify({ model: MODEL, choices: [{ delta: { content: 'there' } }] }),
+        JSON.stringify({ model: MODEL, choices: [{ delta: {} }], usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 } }),
+      ]));
+
+      const chunks = [];
+      for await (const c of createOpenAIClient(API_KEY).createChatCompletionStream(MESSAGES, MODEL)) {
+        chunks.push(c);
+      }
+      const deltas = chunks.filter((c) => c.type === 'delta').map((c) => c.type === 'delta' ? c.content : '');
+      const done   = chunks.find((c) => c.type === 'done');
+      expect(deltas.join('')).toBe('Hi there');
+      expect(done).toBeTruthy();
+      if (done?.type !== 'done') throw new Error('expected done');
+      expect(done.usage.promptTokens).toBe(4);
+      expect(done.usage.completionTokens).toBe(2);
+      expect(done.model).toBe(MODEL);
+    });
+
+    it('throws ProviderError when upstream returns non-2xx', async () => {
+      vi.mocked(fetch).mockResolvedValue(makeErrorResponse(401, 'Invalid key'));
+
+      const it = createOpenAIClient(API_KEY).createChatCompletionStream(MESSAGES, MODEL)[Symbol.asyncIterator]();
+      await expect(it.next()).rejects.toBeInstanceOf(ProviderError);
+    });
+  });
 });

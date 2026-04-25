@@ -133,6 +133,7 @@ export const API_PROJECTS_PATH     = '/v1/projects' as const;
 export const API_WORKSPACES_PATH   = '/v1/workspaces' as const;
 export const API_CHAT_WINDOWS_PATH = '/v1/chat-windows' as const;
 export const API_MESSAGES_PATH     = '/v1/messages' as const;
+export const API_MESSAGES_STREAM_PATH = '/v1/messages/stream' as const;
 export const API_STATE_PATH        = '/v1/state' as const;
 export const API_AUTH_SIGNUP_PATH  = '/v1/auth/signup' as const;
 export const API_AUTH_LOGIN_PATH   = '/v1/auth/login' as const;

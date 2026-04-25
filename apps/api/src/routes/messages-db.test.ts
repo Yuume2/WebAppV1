@@ -63,6 +63,7 @@ function makeDeps(overrides: Partial<MessagesDeps> = {}): MessagesDeps {
     findChatWindow:     async () => mockChatWindow('anthropic'),
     getApiKey:          async () => null,
     generate:           async () => { throw new Error('should not be called in this test'); },
+    generateStream:     async function* () { throw new Error('should not be called in this test'); },
     maxContextMessages: 20,
     ...overrides,
   };
@@ -571,6 +572,140 @@ describe('GET /v1/messages/:id — user isolation', () => {
   it('returns 404 for non-existent message', async () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
     const res = await get(baseUrl, '/v1/messages/does-not-exist');
+    expect(res.status).toBe(404);
+    await close();
+  });
+});
+
+// ── Streaming ────────────────────────────────────────────────────────────────
+
+async function readSseEvents(res: Response): Promise<string[]> {
+  if (!res.body) throw new Error('no body');
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  const events: string[] = [];
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (line.startsWith('data:')) events.push(line.slice(5).trim());
+    }
+  }
+  return events;
+}
+
+describe('POST /v1/messages/stream — authenticated', () => {
+  it('streams deltas and persists the assistant message at the end', async () => {
+    let persistedAssistant: string | null = null;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:        async () => USER_1,
+      findChatWindow:     async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:          async () => 'sk-test',
+      listMessages:       async () => [],
+      generateStream:     async function* () {
+        yield { type: 'delta',  content: 'Hi ' };
+        yield { type: 'delta',  content: 'there!' };
+        yield { type: 'done',   model: 'gpt-4o-mini', usage: { promptTokens: 4, completionTokens: 3, totalTokens: 7 } };
+      },
+      persistMessagePair: async (chatWindowId, _userId, userContent, assistantContent) => {
+        persistedAssistant = assistantContent;
+        return mockPair(chatWindowId, userContent, assistantContent);
+      },
+    }));
+    const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hello' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type') ?? '').toMatch(/text\/event-stream/);
+
+    const events = await readSseEvents(res);
+    // Two deltas + final done payload + literal [DONE].
+    expect(events).toContain('[DONE]');
+    const deltas = events
+      .filter((e) => e !== '[DONE]')
+      .map((e) => JSON.parse(e) as { delta?: string; done?: boolean });
+    expect(deltas.filter((d) => typeof d.delta === 'string').map((d) => d.delta).join('')).toBe('Hi there!');
+    const final = deltas.find((d) => d.done === true);
+    expect(final).toBeTruthy();
+    expect(persistedAssistant).toBe('Hi there!');
+    await close();
+  });
+
+  it('emits an error event and does not persist when provider throws', async () => {
+    let persisted = false;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-test',
+      listMessages:   async () => [],
+      generateStream: async function* () {
+        yield { type: 'delta', content: 'partial' };
+        throw new Error('upstream boom');
+      },
+      persistMessagePair: async () => { persisted = true; return null; },
+    }));
+    const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hello' });
+    expect(res.status).toBe(200);
+    const events = await readSseEvents(res);
+    const errEvent = events
+      .filter((e) => e !== '[DONE]')
+      .map((e) => JSON.parse(e) as { error?: string })
+      .find((e) => typeof e.error === 'string');
+    expect(errEvent?.error).toContain('upstream boom');
+    expect(persisted).toBe(false);
+    await close();
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    const { baseUrl, close } = await startServer(makeDeps());
+    const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hi' });
+    expect(res.status).toBe(401);
+    await close();
+  });
+
+  it('returns 412 provider_not_configured when chat-window provider is not openai', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('anthropic'),
+    }));
+    const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hi' });
+    expect(res.status).toBe(412);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('provider_not_configured');
+    await close();
+  });
+
+  it('returns 412 when no openai connection is configured', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => null,
+    }));
+    const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hi' });
+    expect(res.status).toBe(412);
+    await close();
+  });
+
+  it('returns 400 when role is not user', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
+    const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'assistant', content: 'hi' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('validation_error');
+    await close();
+  });
+
+  it('returns 404 when chat-window does not exist or is not owned', async () => {
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => null,
+    }));
+    const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'nope', role: 'user', content: 'hi' });
     expect(res.status).toBe(404);
     await close();
   });

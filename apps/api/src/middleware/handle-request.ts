@@ -78,16 +78,18 @@ export async function handleRequest(
   }
 
   const { handler, params } = match;
-  const ctx: RequestContext = { method: rawMethod, path, url, requestId, req, params };
+  const ctx: RequestContext = { method: rawMethod, path, url, requestId, req, res, params };
 
   try {
-    const { httpStatus, body, headers } = await handler(ctx);
-    writeJson(res, httpStatus, body, requestId, headers);
+    const result = await handler(ctx);
+    if (!result.streamed) {
+      writeJson(res, result.httpStatus, result.body, requestId, result.headers);
+    }
     logger.info('request handled', {
       requestId,
       method: rawMethod,
       path,
-      status: httpStatus,
+      status: result.httpStatus,
       durationMs: Date.now() - startedAt,
     });
   } catch (err) {
