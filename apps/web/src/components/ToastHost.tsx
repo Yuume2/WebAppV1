@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import {
   createContext,
   useCallback,
@@ -13,15 +14,25 @@ import type { ApiCallError } from '@/lib/api/client';
 
 type ToastTone = 'success' | 'error' | 'info';
 
+export interface ToastAction {
+  label: string;
+  href: string;
+}
+
 export interface Toast {
   id: string;
   tone: ToastTone;
   message: string;
+  action?: ToastAction;
+}
+
+interface PushOptions {
+  action?: ToastAction;
 }
 
 interface ToastContextValue {
-  push: (tone: ToastTone, message: string) => void;
-  pushError: (error: unknown, prefix?: string) => void;
+  push: (tone: ToastTone, message: string, options?: PushOptions) => void;
+  pushError: (error: unknown, prefix?: string, options?: PushOptions) => void;
   dismiss: (id: string) => void;
 }
 
@@ -50,18 +61,18 @@ export function ToastHost({ children }: { children: ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const push = useCallback((tone: ToastTone, message: string) => {
+  const push = useCallback((tone: ToastTone, message: string, options?: PushOptions) => {
     const id = nextId();
-    setToasts((prev) => [...prev, { id, tone, message }]);
+    setToasts((prev) => [...prev, { id, tone, message, action: options?.action }]);
   }, []);
 
   const pushError = useCallback(
-    (error: unknown, prefix?: string) => {
+    (error: unknown, prefix?: string, options?: PushOptions) => {
       const e = error as ApiCallError | undefined;
       const code = e?.code ?? 'error';
       const msg = e?.message ?? 'Unknown error';
       const full = prefix ? `${prefix}: ${code} — ${msg}` : `${code} — ${msg}`;
-      push('error', full);
+      push('error', full, options);
     },
     [push],
   );
@@ -92,7 +103,19 @@ export function ToastHost({ children }: { children: ReactNode }) {
             style={{ ...toastStyle, ...toneStyles[t.tone] }}
             onClick={() => dismiss(t.id)}
           >
-            {t.message}
+            <div>{t.message}</div>
+            {t.action ? (
+              <Link
+                href={t.action.href}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dismiss(t.id);
+                }}
+                style={toastActionStyle}
+              >
+                {t.action.label}
+              </Link>
+            ) : null}
           </div>
         ))}
       </div>
@@ -118,6 +141,17 @@ const toastStyle: React.CSSProperties = {
   boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
   cursor: 'pointer',
   color: '#f5f5f5',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+};
+
+const toastActionStyle: React.CSSProperties = {
+  alignSelf: 'flex-start',
+  fontSize: '0.78rem',
+  fontWeight: 600,
+  textDecoration: 'underline',
+  color: 'inherit',
 };
 
 const toneStyles: Record<ToastTone, React.CSSProperties> = {
