@@ -344,6 +344,23 @@ function Spinner() {
   );
 }
 
+function StreamingCursor() {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: 'inline-block',
+        width: 7,
+        height: '0.95em',
+        marginLeft: 2,
+        background: '#f5f5f5',
+        verticalAlign: '-2px',
+        animation: 'chat-blink 1s steps(2, end) infinite',
+      }}
+    />
+  );
+}
+
 function MessageBubble({
   message,
   onRetry,
@@ -361,6 +378,7 @@ function MessageBubble({
   const showMeta = isAssistant && metaParts.length > 0;
   const status = message.status ?? 'ok';
   const isPending = status === 'pending';
+  const isStreaming = status === 'streaming';
   const isFailed = status === 'failed';
   const borderColor = isFailed ? '#6b2a2a' : '#24242c';
   const opacity = isPending ? 0.7 : 1;
@@ -408,6 +426,7 @@ function MessageBubble({
         )}
       </div>
       {message.content}
+      {isStreaming && <StreamingCursor />}
       {isFailed && (
         <div
           style={{
