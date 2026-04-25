@@ -2,7 +2,8 @@
 
 import type { ChatWindow, Workspace as WorkspaceType } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useWorkspaceState } from '@/features/workspace/useWorkspaceState';
 import { useChatSessions } from '@/features/chat/useChatSessions';
 import { WorkspaceSidebar } from '@/features/workspace/WorkspaceSidebar';
@@ -28,6 +29,10 @@ export function Workspace({
   messagesByWindow,
 }: WorkspaceProps) {
   const toast = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const initialWindowParam = searchParams?.get('window') ?? null;
   const handleWindowError = useCallback(
     (action: 'rename' | 'delete', err: ApiCallError, win?: ChatWindow) => {
       const verb = action === 'rename' ? 'Rename failed' : 'Delete failed';
@@ -37,7 +42,25 @@ export function Workspace({
     },
     [toast],
   );
-  const state = useWorkspaceState({ windows, onError: handleWindowError });
+  const state = useWorkspaceState({
+    windows,
+    initialActiveId: initialWindowParam,
+    onError: handleWindowError,
+  });
+  const lastSyncedWindowRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pathname) return;
+    const current = state.activeId;
+    if (lastSyncedWindowRef.current === current) return;
+    lastSyncedWindowRef.current = current;
+    if (current && current.startsWith('local-')) return;
+    const next = new URLSearchParams(searchParams?.toString() ?? '');
+    next.set('workspace', activeWorkspace.id);
+    if (current) next.set('window', current);
+    else next.delete('window');
+    const target = `${pathname}?${next.toString()}`;
+    router.replace(target, { scroll: false });
+  }, [pathname, router, searchParams, state.activeId, activeWorkspace.id]);
   const handleSendError = useCallback(
     (chatWindowId: string, err: ApiCallError) => {
       const win = windows.find((w) => w.id === chatWindowId);

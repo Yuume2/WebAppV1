@@ -13,7 +13,22 @@ import { getApiBaseUrl } from '@/lib/api/env';
 
 interface WorkspaceStateInit {
   windows: ChatWindow[];
+  initialActiveId?: string | null;
   onError?: (action: 'rename' | 'delete', error: ApiCallError, window?: ChatWindow) => void;
+}
+
+function pickInitialActive(windows: ChatWindow[], hint: string | null | undefined): string | null {
+  if (hint && windows.some((w) => w.id === hint)) return hint;
+  if (windows.length === 0) return null;
+  const sorted = [...windows].sort((a, b) => {
+    const ta = Date.parse(a.updatedAt ?? a.createdAt);
+    const tb = Date.parse(b.updatedAt ?? b.createdAt);
+    if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+    if (Number.isNaN(ta)) return 1;
+    if (Number.isNaN(tb)) return -1;
+    return tb - ta;
+  });
+  return sorted[0]?.id ?? null;
 }
 
 interface WorkspaceState {
@@ -33,11 +48,17 @@ interface WorkspaceState {
 
 let creationCounter = 0;
 
-export function useWorkspaceState({ windows, onError }: WorkspaceStateInit): WorkspaceState {
+export function useWorkspaceState({
+  windows,
+  initialActiveId,
+  onError,
+}: WorkspaceStateInit): WorkspaceState {
   const initialIds = useMemo(() => windows.map((w) => w.id), [windows]);
   const [pool, setPool] = useState<ChatWindow[]>(windows);
   const [openIds, setOpenIds] = useState<string[]>(initialIds);
-  const [activeId, setActiveId] = useState<string | null>(initialIds[0] ?? null);
+  const [activeId, setActiveId] = useState<string | null>(() =>
+    pickInitialActive(windows, initialActiveId),
+  );
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
@@ -61,8 +82,8 @@ export function useWorkspaceState({ windows, onError }: WorkspaceStateInit): Wor
   const reset = useCallback(() => {
     setPool(windows);
     setOpenIds(initialIds);
-    setActiveId(initialIds[0] ?? null);
-  }, [windows, initialIds]);
+    setActiveId(pickInitialActive(windows, initialActiveId));
+  }, [windows, initialIds, initialActiveId]);
 
   const createWindow = useCallback(
     (preset: WindowPreset, customTitle?: string) => {
