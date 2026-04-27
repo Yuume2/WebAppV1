@@ -223,11 +223,12 @@ export async function createMessageDbController(
       );
     }
 
-    // Non-openai provider: persist user message only, no generation.
-    // Provider support for this window is not yet enabled.
+    // Provider unsupported (no adapter): persist user message only, no generation.
+    // Reachable only if a chat-window was created with a provider that has since
+    // been removed from SUPPORTED_PROVIDERS — defensive fall-through.
   }
 
-  // Default path: persist the message as-is (non-user role, or non-openai provider).
+  // Default path: persist the message as-is (non-user role, or unsupported provider).
   const row = await deps.createMessage(chatWindowId, user.id, role, content);
   if (row === null) return respondNotFound(`ChatWindow ${chatWindowId} not found`);
   const msg = toMessage(row);
