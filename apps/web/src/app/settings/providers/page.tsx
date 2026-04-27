@@ -23,6 +23,12 @@ type LoadState =
   | { status: 'ready'; items: ProviderConnection[] }
   | { status: 'error'; message: string };
 
+type SaveResult =
+  | { status: 'saving'; provider: AIProvider }
+  | { status: 'testing'; provider: AIProvider }
+  | { status: 'ok'; provider: AIProvider }
+  | { status: 'failed'; provider: AIProvider; code: string; message: string };
+
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -44,6 +50,7 @@ export default function ProviderSettingsPage() {
   const [formApiKey, setFormApiKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [saveResult, setSaveResult] = useState<SaveResult | null>(null);
   const toast = useToast();
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -64,9 +71,18 @@ export default function ProviderSettingsPage() {
     return () => controller.abort();
   }, [load]);
 
+  useEffect(() => {
+    if (!saveResult || saveResult.status !== 'ok') return;
+    const t = setTimeout(() => {
+      setSaveResult((prev) => (prev && prev.status === 'ok' ? null : prev));
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [saveResult]);
+
   const onSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
+      if (saving) return;
       const key = formApiKey.trim();
       if (!key) {
         setFormError('API key is required.');
@@ -74,20 +90,50 @@ export default function ProviderSettingsPage() {
       }
       setSaving(true);
       setFormError(null);
+      setSaveResult({ status: 'saving', provider: formProvider });
+      let savedConnection: ProviderConnection | null = null;
       try {
-        await upsertProviderConnection(formProvider, key);
+        savedConnection = await upsertProviderConnection(formProvider, key);
         setFormApiKey('');
-        toast.push('success', `${formProvider} connection saved`);
         await load();
       } catch (err) {
         const e = err as ApiCallError | undefined;
-        setFormError(e?.message ?? 'Unable to save connection');
+        const code = e?.code ?? 'error';
+        const message = e?.message ?? 'Unable to save connection';
+        setFormError(message);
+        setSaveResult({ status: 'failed', provider: formProvider, code, message });
         toast.pushError(err, formProvider);
+        setSaving(false);
+        return;
+      }
+      // Save succeeded — auto-test for confidence.
+      setSaveResult({ status: 'testing', provider: formProvider });
+      try {
+        const result = await testProviderConnection(savedConnection.id);
+        if (result.ok) {
+          setSaveResult({ status: 'ok', provider: formProvider });
+          toast.push('success', `${formProvider} key saved and verified`);
+        } else {
+          setSaveResult({
+            status: 'failed',
+            provider: formProvider,
+            code: result.code ?? 'test_failed',
+            message: result.message ?? 'Saved, but the key did not pass the live test.',
+          });
+        }
+      } catch (err) {
+        const e = err as ApiCallError | undefined;
+        setSaveResult({
+          status: 'failed',
+          provider: formProvider,
+          code: e?.code ?? 'test_error',
+          message: e?.message ?? 'Saved, but the live test could not run.',
+        });
       } finally {
         setSaving(false);
       }
     },
-    [formApiKey, formProvider, toast, load],
+    [formApiKey, formProvider, saving, toast, load],
   );
 
   const onTest = useCallback(
@@ -174,9 +220,14 @@ export default function ProviderSettingsPage() {
               {formError}
             </div>
           )}
+          {saveResult ? <SaveResultBanner result={saveResult} /> : null}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <Button type="submit" disabled={saving || !formApiKey.trim()}>
-              {saving ? 'Saving…' : 'Save connection'}
+              {saveResult?.status === 'saving'
+                ? 'Saving…'
+                : saveResult?.status === 'testing'
+                  ? 'Testing…'
+                  : 'Save connection'}
             </Button>
           </div>
         </form>
@@ -279,6 +330,54 @@ export default function ProviderSettingsPage() {
   );
 }
 
+function SaveResultBanner({ result }: { result: SaveResult }) {
+  if (result.status === 'saving') {
+    return (
+      <div role="status" aria-live="polite" style={infoBannerStyle}>
+        <Spinner /> Saving {result.provider} connection…
+      </div>
+    );
+  }
+  if (result.status === 'testing') {
+    return (
+      <div role="status" aria-live="polite" style={infoBannerStyle}>
+        <Spinner /> Saved. Testing the key against {result.provider}…
+      </div>
+    );
+  }
+  if (result.status === 'ok') {
+    return (
+      <div role="status" aria-live="polite" style={successBannerStyle}>
+        ✓ {result.provider} connection saved and verified.
+      </div>
+    );
+  }
+  return (
+    <div role="alert" style={errorBoxStyle}>
+      <strong>{result.provider}</strong> — {result.code} · {result.message}
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: 'inline-block',
+        width: 10,
+        height: 10,
+        borderRadius: '50%',
+        border: '2px solid rgba(245,245,245,0.18)',
+        borderTopColor: '#f5f5f5',
+        animation: 'chat-spin 0.7s linear infinite',
+        marginRight: 8,
+        verticalAlign: '-1px',
+      }}
+    />
+  );
+}
+
 function ApiKeyInput({
   value,
   onChange,
@@ -339,6 +438,26 @@ function ApiKeyInput({
 const hintStyle: React.CSSProperties = {
   fontSize: '0.72rem',
   color: '#8a8a95',
+};
+
+const infoBannerStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  background: '#1b1b23',
+  border: '1px solid #2a2a30',
+  color: '#cfcfd6',
+  borderRadius: 6,
+  padding: '0.55rem 0.7rem',
+  fontSize: '0.85rem',
+};
+
+const successBannerStyle: React.CSSProperties = {
+  background: '#13321d',
+  border: '1px solid #2a6a43',
+  color: '#c9f4d6',
+  borderRadius: 6,
+  padding: '0.55rem 0.7rem',
+  fontSize: '0.85rem',
 };
 
 const pageStyle: React.CSSProperties = {
