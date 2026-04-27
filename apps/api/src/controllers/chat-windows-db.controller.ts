@@ -15,6 +15,7 @@ import { s } from '../lib/schema.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db, ChatWindowPatch } from '../db/chat-windows.repo.js';
 import * as chatWindowsRepo from '../db/chat-windows.repo.js';
+import { SUPPORTED_PROVIDERS } from '../providers/registry.js';
 
 // ── Internal DB row shape ──────────────────────────────────────────────────────
 
@@ -58,7 +59,6 @@ export function makeChatWindowsDeps(db: Db, sessionDeps: SessionDeps): ChatWindo
 // ── Body schemas ──────────────────────────────────────────────────────────────
 
 const AI_PROVIDERS = ['openai', 'anthropic', 'perplexity'] as const;
-const SUPPORTED_PROVIDERS = new Set<AIProvider>(['openai']);
 
 const CreateChatWindowDbBody = s.object({
   workspaceId: s.string({ min: 1 }),

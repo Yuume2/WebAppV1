@@ -203,7 +203,7 @@ describe('POST /v1/chat-windows — authenticated', () => {
     await close();
   });
 
-  for (const provider of ['anthropic', 'perplexity'] as const) {
+  for (const provider of ['perplexity'] as const) {
     it(`rejects valid-but-unsupported provider '${provider}' with 400 validation_error (no silent dead-end)`, async () => {
       let createCalled = false;
       const { baseUrl, close } = await startServer(makeDeps({

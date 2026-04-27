@@ -19,9 +19,9 @@ import {
   updateChatWindow,
 } from '../services/chat-windows.service.js';
 import { workspaceExists } from '../services/workspaces.service.js';
+import { SUPPORTED_PROVIDERS } from '../providers/registry.js';
 
 const AI_PROVIDERS = ['openai', 'anthropic', 'perplexity'] as const;
-const SUPPORTED_PROVIDERS = new Set<AIProvider>(['openai']);
 
 const CreateChatWindowBody = s.object({
   workspaceId: s.string({ min: 1 }),

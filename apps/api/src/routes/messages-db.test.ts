@@ -32,7 +32,7 @@ function mockMessage(chatWindowId: string, overrides: Partial<{
   };
 }
 
-function mockChatWindow(provider: AIProvider = 'anthropic', model = 'claude-3') {
+function mockChatWindow(provider: AIProvider = 'perplexity', model = 'sonar') {
   return {
     id:          'cw-1',
     workspaceId: 'ws-1',
@@ -59,8 +59,8 @@ function makeDeps(overrides: Partial<MessagesDeps> = {}): MessagesDeps {
     persistMessagePair: async (chatWindowId, _userId, userContent, assistantContent) =>
       mockPair(chatWindowId, userContent, assistantContent),
     findMessage:        async () => null,
-    // Default: non-openai window so existing tests bypass generation path.
-    findChatWindow:     async () => mockChatWindow('anthropic'),
+    // Default: unsupported-provider window so existing tests bypass generation path.
+    findChatWindow:     async () => mockChatWindow('perplexity'),
     getApiKey:          async () => null,
     generate:           async () => { throw new Error('should not be called in this test'); },
     generateStream:     async function* () { throw new Error('should not be called in this test'); },
@@ -189,10 +189,10 @@ describe('POST /v1/messages — standard path', () => {
     await close();
   });
 
-  it('creates user message in non-openai window (anthropic), returns single message', async () => {
+  it('creates user message in unsupported-provider window (perplexity), returns single message', async () => {
     const { baseUrl, close } = await startServer(makeDeps({
       resolveUser:    async () => USER_1,
-      findChatWindow: async () => mockChatWindow('anthropic'),
+      findChatWindow: async () => mockChatWindow('perplexity'),
       createMessage:  async (chatWindowId, _userId, role, content) =>
         mockMessage(chatWindowId, { id: 'new-msg', role, content }),
     }));
@@ -358,7 +358,7 @@ describe('POST /v1/messages — openai generation path', () => {
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('provider_not_configured');
-    expect(body.error.message).toContain('OpenAI');
+    expect(body.error.message).toContain('openai');
     await close();
   });
 
@@ -450,7 +450,7 @@ describe('POST /v1/messages — openai generation path', () => {
       getApiKey:          async () => 'sk-key',
       listMessages:       async () => history,
       maxContextMessages: 3,
-      generate: async (_, msgs) => {
+      generate: async (_provider, _apiKey, msgs) => {
         capturedMessages.push(...msgs);
         return { content: 'reply', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
       },
@@ -485,7 +485,7 @@ describe('POST /v1/messages — openai generation path', () => {
       getApiKey:          async () => 'sk-key',
       listMessages:       async () => history,
       maxContextMessages: 20,
-      generate: async (_, msgs) => {
+      generate: async (_provider, _apiKey, msgs) => {
         capturedMessages.push(...msgs);
         return { content: 'ok', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
       },
@@ -666,10 +666,10 @@ describe('POST /v1/messages/stream — authenticated', () => {
     await close();
   });
 
-  it('returns 412 provider_not_configured when chat-window provider is not openai', async () => {
+  it('returns 412 provider_not_configured when chat-window provider is unsupported (perplexity)', async () => {
     const { baseUrl, close } = await startServer(makeDeps({
       resolveUser:    async () => USER_1,
-      findChatWindow: async () => mockChatWindow('anthropic'),
+      findChatWindow: async () => mockChatWindow('perplexity'),
     }));
     const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hi' });
     expect(res.status).toBe(412);

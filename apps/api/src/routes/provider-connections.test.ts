@@ -238,9 +238,9 @@ describe('PUT /v1/provider-connections/:provider — authenticated', () => {
     await close();
   });
 
-  it('returns 400 for unsupported but valid provider (anthropic)', async () => {
+  it('returns 400 for unsupported but valid provider (perplexity)', async () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
-    const res = await put(baseUrl, '/v1/provider-connections/anthropic', { apiKey: 'sk-ant-test' });
+    const res = await put(baseUrl, '/v1/provider-connections/perplexity', { apiKey: 'pplx-test' });
     expect(res.status).toBe(400);
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');

@@ -13,11 +13,11 @@ import { s } from '../lib/schema.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db, ProviderConnectionMeta } from '../db/provider-connections.repo.js';
 import * as providerRepo from '../db/provider-connections.repo.js';
-import { verifyOpenAIKey } from '../providers/openai.provider.js';
+import { verifyProviderKey, SUPPORTED_PROVIDERS } from '../providers/registry.js';
 import { RateLimiter, type RateLimitResult } from '../lib/rate-limiter.js';
 
 const VALID_PROVIDERS = new Set<AIProvider>(['openai', 'anthropic', 'perplexity']);
-const ENABLED_PROVIDERS = new Set<AIProvider>(['openai']);
+const ENABLED_PROVIDERS = SUPPORTED_PROVIDERS;
 
 const UpsertConnectionBody = s.object({
   apiKey: s.string({ min: 1, max: 500, trim: true }),
@@ -45,14 +45,14 @@ export interface ProviderConnectionsDeps {
 const providerTestLimiter = new RateLimiter(1, 60 * 1000);
 
 async function pingProvider(provider: AIProvider, apiKey: string): Promise<PingResult> {
-  if (provider === 'openai') return verifyOpenAIKey(apiKey);
-  return 'provider_error';
+  if (!SUPPORTED_PROVIDERS.has(provider)) return 'provider_error';
+  return verifyProviderKey(provider, apiKey);
 }
 
 export function makeProviderConnectionsDeps(db: Db, sessionDeps: SessionDeps): ProviderConnectionsDeps {
   return {
     resolveUser:         (req)                   => resolveCurrentUser(req, sessionDeps),
-    verifyKey:           (_provider, apiKey)     => verifyOpenAIKey(apiKey),
+    verifyKey:           (provider, apiKey)      => verifyProviderKey(provider, apiKey),
     upsertConnection:    (userId, provider, key) => providerRepo.upsertProviderConnection(db, userId, provider, key),
     findConnection:      (userId, provider)      => providerRepo.findProviderConnection(db, userId, provider),
     listConnections:     (userId)                => providerRepo.listProviderConnections(db, userId),
