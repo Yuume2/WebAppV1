@@ -156,21 +156,18 @@ export default function ProviderSettingsPage() {
           </label>
           <label style={labelStyle}>
             <span>API key</span>
-            <input
-              type="password"
-              name="apiKey"
-              autoComplete="off"
-              spellCheck={false}
+            <ApiKeyInput
               value={formApiKey}
-              onChange={(e) => {
-                setFormApiKey(e.target.value);
+              onChange={(next) => {
+                setFormApiKey(next);
                 if (formError) setFormError(null);
               }}
               disabled={saving}
-              placeholder="sk-…"
-              aria-invalid={formError ? 'true' : undefined}
-              style={inputStyle}
+              invalid={!!formError}
             />
+            <span style={hintStyle}>
+              Sent securely to the API and immediately cleared from this page. Stored encrypted.
+            </span>
           </label>
           {formError && (
             <div role="alert" style={errorBoxStyle}>
@@ -194,7 +191,9 @@ export default function ProviderSettingsPage() {
       )}
 
       {state.status === 'ready' && state.items.length === 0 && (
-        <p style={mutedStyle}>No provider connections yet.</p>
+        <p style={mutedStyle}>
+          No provider connections yet. Add an OpenAI key above to start a chat.
+        </p>
       )}
 
       {state.status === 'ready' && state.items.length > 0 && (
@@ -202,35 +201,35 @@ export default function ProviderSettingsPage() {
           <thead>
             <tr>
               <th style={thStyle}>Provider</th>
-              <th style={thStyle}>Label</th>
               <th style={thStyle}>Created</th>
-              <th style={thStyle}>Last used</th>
+              <th style={thStyle}>Updated</th>
               <th style={thStyle} aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
-            {state.items.map((c) => (
-              <tr key={c.id}>
-                <td style={tdStyle}>{c.provider}</td>
-                <td style={tdStyle}>—</td>
-                <td style={tdStyle}>{formatDate(c.createdAt)}</td>
-                <td style={tdStyle}>—</td>
-                <td style={{ ...tdStyle, textAlign: 'right' }}>
-                  <div style={{ display: 'inline-flex', gap: '0.5rem' }}>
-                    <Button
-                      variant="ghost"
-                      onClick={() => void onTest(c)}
-                      disabled={testingId === c.id}
-                    >
-                      {testingId === c.id ? 'Testing…' : 'Test'}
-                    </Button>
-                    <Button variant="ghost" onClick={() => setPendingDelete(c)}>
-                      Delete
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {[...state.items]
+              .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+              .map((c) => (
+                <tr key={c.id}>
+                  <td style={tdStyle}>{c.provider}</td>
+                  <td style={tdStyle} title={c.createdAt}>{formatDate(c.createdAt)}</td>
+                  <td style={tdStyle} title={c.updatedAt}>{formatDate(c.updatedAt)}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <div style={{ display: 'inline-flex', gap: '0.5rem' }}>
+                      <Button
+                        variant="ghost"
+                        onClick={() => void onTest(c)}
+                        disabled={testingId === c.id}
+                      >
+                        {testingId === c.id ? 'Testing…' : 'Test'}
+                      </Button>
+                      <Button variant="ghost" onClick={() => setPendingDelete(c)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       )}
@@ -279,6 +278,68 @@ export default function ProviderSettingsPage() {
     </main>
   );
 }
+
+function ApiKeyInput({
+  value,
+  onChange,
+  disabled,
+  invalid,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  disabled: boolean;
+  invalid: boolean;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ position: 'relative', display: 'flex' }}>
+      <input
+        type={show ? 'text' : 'password'}
+        name="apiKey"
+        autoComplete="off"
+        spellCheck={false}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder="sk-…"
+        aria-invalid={invalid ? 'true' : undefined}
+        style={{ ...inputStyle, flex: 1, paddingRight: '3.5rem' }}
+      />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        disabled={disabled}
+        aria-label={show ? 'Hide API key' : 'Show API key'}
+        aria-pressed={show}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          right: 6,
+          transform: 'translateY(-50%)',
+          background: 'transparent',
+          border: 'none',
+          color: '#a0a0aa',
+          fontSize: '0.72rem',
+          fontWeight: 500,
+          padding: '4px 8px',
+          borderRadius: 4,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          fontFamily: 'inherit',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          opacity: disabled ? 0.5 : 1,
+        }}
+      >
+        {show ? 'Hide' : 'Show'}
+      </button>
+    </div>
+  );
+}
+
+const hintStyle: React.CSSProperties = {
+  fontSize: '0.72rem',
+  color: '#8a8a95',
+};
 
 const pageStyle: React.CSSProperties = {
   maxWidth: 880,

@@ -123,14 +123,11 @@ export function AuthForm({ mode }: AuthFormProps) {
             />
           </Field>
           <Field label="Password">
-            <input
-              type="password"
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+              onChange={setPassword}
               minLength={mode === 'register' ? 8 : undefined}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              style={inputStyle}
             />
           </Field>
 
@@ -171,6 +168,58 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span style={{ fontSize: '0.78rem', color: '#8a8a95' }}>{label}</span>
       {children}
     </label>
+  );
+}
+
+function PasswordInput({
+  value,
+  onChange,
+  minLength,
+  autoComplete,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  minLength?: number;
+  autoComplete?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ position: 'relative', display: 'flex' }}>
+      <input
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required
+        minLength={minLength}
+        autoComplete={autoComplete}
+        style={{ ...inputStyle, flex: 1, paddingRight: '3.5rem' }}
+      />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        aria-label={show ? 'Hide password' : 'Show password'}
+        aria-pressed={show}
+        style={{
+          position: 'absolute',
+          top: '50%',
+          right: 6,
+          transform: 'translateY(-50%)',
+          background: 'transparent',
+          border: 'none',
+          color: '#a0a0aa',
+          fontSize: '0.72rem',
+          fontWeight: 500,
+          padding: '4px 8px',
+          borderRadius: 4,
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+        }}
+      >
+        {show ? 'Hide' : 'Show'}
+      </button>
+    </div>
   );
 }
 
