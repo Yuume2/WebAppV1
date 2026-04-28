@@ -138,6 +138,25 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it.each([
+    ['missing-at-sign',     'aliceexample.com'],
+    ['empty-local-part',    '@example.com'],
+    ['empty-domain',        'alice@'],
+    ['missing-tld',         'alice@localhost'],
+    ['embedded-space',      'al ice@example.com'],
+    ['double-at',           'alice@@example.com'],
+    ['leading-at-only',     '@'],
+  ])('rejects malformed email "%s" (%s) with invalid_body', async (_label, badEmail) => {
+    // The signup schema's regex is /^[^@\s]+@[^@\s]+\.[^@\s]+$/ — pin a
+    // representative set of malformed emails so a future loosening of the
+    // pattern can't ship without updating these cases.
+    const res = await post(base, '/v1/auth/signup', { email: badEmail, password: 'password123' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('invalid_body');
+  });
+
   it('returns 400 invalid_body for short password', async () => {
     const res = await post(base, '/v1/auth/signup', { email: 'a@b.com', password: 'short' });
     expect(res.status).toBe(400);
