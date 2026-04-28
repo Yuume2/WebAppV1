@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/Button';
 import { Panel } from '@/components/Panel';
@@ -29,6 +29,14 @@ function CreateProjectModal({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const [name, setName] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [submitting, onClose]);
 
   const onSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
