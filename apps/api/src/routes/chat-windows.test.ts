@@ -117,7 +117,7 @@ describe('POST /v1/chat-windows', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
-  for (const provider of ['anthropic', 'perplexity'] as const) {
+  for (const provider of ['perplexity'] as const) {
     it(`rejects valid-but-unsupported provider '${provider}' with 400 validation_error`, async () => {
       const ws = await createWorkspace(harness.baseUrl);
       const res = await fetch(`${harness.baseUrl}/v1/chat-windows`, {

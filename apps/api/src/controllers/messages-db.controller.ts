@@ -18,7 +18,7 @@ import type { Db, AssistantMessageMetadata } from '../db/messages.repo.js';
 import * as messagesRepo from '../db/messages.repo.js';
 import * as chatWindowsRepo from '../db/chat-windows.repo.js';
 import { getDecryptedApiKey } from '../db/provider-connections.repo.js';
-import { createOpenAIClient } from '../providers/openai.provider.js';
+import { getProviderClient, isSupportedProvider } from '../providers/registry.js';
 import type {
   ChatCompletionResult,
   ChatCompletionStreamChunk,
@@ -78,11 +78,12 @@ export interface MessagesDeps {
   createMessage:  (chatWindowId: string, userId: string, role: MessageRole, content: string) => Promise<DbMessage | null>;
   persistMessagePair: (chatWindowId: string, userId: string, userContent: string, assistantContent: string, assistantMetadata?: AssistantMessageMetadata) => Promise<{ userRow: DbMessage; assistantRow: DbMessage } | null>;
   findMessage:    (id: string, userId: string) => Promise<DbMessage | null>;
-  // Provider generation deps — used only when posting a user message to an openai chat window.
+  // Provider generation deps — used when posting a user message to a chat window
+  // whose provider has a working adapter (see SUPPORTED_PROVIDERS in providers/registry.ts).
   findChatWindow:    (chatWindowId: string, userId: string) => Promise<DbChatWindow | null>;
   getApiKey:         (userId: string, provider: AIProvider) => Promise<string | null>;
-  generate:          (apiKey: string, messages: ChatMessage[], model: string) => Promise<ChatCompletionResult>;
-  generateStream:    (apiKey: string, messages: ChatMessage[], model: string) => AsyncIterable<ChatCompletionStreamChunk>;
+  generate:          (provider: AIProvider, apiKey: string, messages: ChatMessage[], model: string) => Promise<ChatCompletionResult>;
+  generateStream:    (provider: AIProvider, apiKey: string, messages: ChatMessage[], model: string) => AsyncIterable<ChatCompletionStreamChunk>;
   maxContextMessages: number;
   providerTimeoutMs?: number;
 }
@@ -96,8 +97,8 @@ export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps
     findMessage:    (id, userId)                          => messagesRepo.findMessageById(db, id, userId),
     findChatWindow:    (chatWindowId, userId)              => chatWindowsRepo.findChatWindowById(db, chatWindowId, userId),
     getApiKey:         (userId, provider)                  => getDecryptedApiKey(db, userId, provider),
-    generate:          (apiKey, msgs, model)               => createOpenAIClient(apiKey).createChatCompletion(msgs, model),
-    generateStream:    (apiKey, msgs, model)               => createOpenAIClient(apiKey).createChatCompletionStream(msgs, model),
+    generate:          (provider, apiKey, msgs, model)     => getProviderClient(provider, apiKey).createChatCompletion(msgs, model),
+    generateStream:    (provider, apiKey, msgs, model)     => getProviderClient(provider, apiKey).createChatCompletionStream(msgs, model),
     maxContextMessages: env.openaiMaxContextMessages,
   };
 }
@@ -165,12 +166,12 @@ export async function createMessageDbController(
     const cw = await deps.findChatWindow(chatWindowId, user.id);
     if (cw === null) return respondNotFound(`ChatWindow ${chatWindowId} not found`);
 
-    if (cw.provider === 'openai') {
-      const apiKey = await deps.getApiKey(user.id, 'openai');
+    if (isSupportedProvider(cw.provider)) {
+      const apiKey = await deps.getApiKey(user.id, cw.provider);
       if (!apiKey) {
         return respondError(
           'provider_not_configured',
-          'No OpenAI connection configured. Add your API key in provider settings.',
+          `No ${cw.provider} connection configured. Add your API key in provider settings.`,
           412,
         );
       }
@@ -190,7 +191,7 @@ export async function createMessageDbController(
       const startedAt = Date.now();
       try {
         completion = await withTimeout(
-          deps.generate(apiKey, contextMessages, cw.model),
+          deps.generate(cw.provider, apiKey, contextMessages, cw.model),
           deps.providerTimeoutMs ?? PROVIDER_TIMEOUT_MS,
         );
       } catch (err) {
@@ -269,18 +270,18 @@ export async function streamMessageDbController(
 
   const cw = await deps.findChatWindow(chatWindowId, user.id);
   if (cw === null) return respondNotFound(`ChatWindow ${chatWindowId} not found`);
-  if (cw.provider !== 'openai') {
+  if (!isSupportedProvider(cw.provider)) {
     return respondError(
       'provider_not_configured',
-      `Streaming is only supported for openai chat windows (got '${cw.provider}')`,
+      `Streaming is not supported for provider '${cw.provider}' yet`,
       412,
     );
   }
-  const apiKey = await deps.getApiKey(user.id, 'openai');
+  const apiKey = await deps.getApiKey(user.id, cw.provider);
   if (!apiKey) {
     return respondError(
       'provider_not_configured',
-      'No OpenAI connection configured. Add your API key in provider settings.',
+      `No ${cw.provider} connection configured. Add your API key in provider settings.`,
       412,
     );
   }
@@ -312,7 +313,7 @@ export async function streamMessageDbController(
   ctx.req.on('close', () => { aborted = true; });
 
   try {
-    for await (const chunk of deps.generateStream(apiKey, contextMessages, cw.model)) {
+    for await (const chunk of deps.generateStream(cw.provider, apiKey, contextMessages, cw.model)) {
       if (aborted) break;
       if (chunk.type === 'delta') {
         assistantContent += chunk.content;
@@ -340,7 +341,7 @@ export async function streamMessageDbController(
 
   const latencyMs = Date.now() - startedAt;
   const assistantMetadata: AssistantMessageMetadata = {
-    provider:         'openai',
+    provider:         cw.provider,
     model,
     promptTokens:     usage.promptTokens,
     completionTokens: usage.completionTokens,
