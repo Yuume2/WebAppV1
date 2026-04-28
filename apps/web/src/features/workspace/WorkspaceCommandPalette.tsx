@@ -133,10 +133,26 @@ export function WorkspaceCommandPalette({
     return out;
   }, [query, recentIds, activeId, visibleWindows, closedWindows]);
 
+  const pinnedEntries: PaletteWindow[] = useMemo(() => {
+    if (query.trim()) return [];
+    if (pinnedSet.size === 0) return [];
+    const recentIdSet = new Set(recentEntries.map((r) => r.window.id));
+    const all = [
+      ...visibleWindows.map((w) => ({ window: w, open: true })),
+      ...closedWindows.map((w) => ({ window: w, open: false })),
+    ];
+    return all
+      .filter((it) => pinnedSet.has(it.window.id) && it.window.id !== activeId && !recentIdSet.has(it.window.id))
+      .slice(0, 6);
+  }, [query, pinnedSet, recentEntries, activeId, visibleWindows, closedWindows]);
+
   const unifiedItems: UnifiedItem[] = useMemo(() => {
     const out: UnifiedItem[] = [];
     for (const it of recentEntries) {
       out.push({ kind: 'window', key: `recent-${it.window.id}`, entry: it });
+    }
+    for (const it of pinnedEntries) {
+      out.push({ kind: 'window', key: `pinned-${it.window.id}`, entry: it });
     }
     if (filteredWorkspaces.length > 1) {
       for (const w of filteredWorkspaces) {
@@ -145,6 +161,7 @@ export function WorkspaceCommandPalette({
     }
     for (const it of filtered) {
       if (recentEntries.some((r) => r.window.id === it.window.id)) continue;
+      if (pinnedEntries.some((r) => r.window.id === it.window.id)) continue;
       out.push({ kind: 'window', key: `w-${it.window.id}`, entry: it });
     }
     for (let i = 0; i < messageMatches.length; i += 1) {
@@ -153,7 +170,7 @@ export function WorkspaceCommandPalette({
       out.push({ kind: 'message', key: `m-${m.windowId}-${m.messageId}-${i}`, match: m });
     }
     return out;
-  }, [recentEntries, filteredWorkspaces, filtered, messageMatches]);
+  }, [recentEntries, pinnedEntries, filteredWorkspaces, filtered, messageMatches]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 200);
@@ -357,6 +374,37 @@ export function WorkspaceCommandPalette({
             </ul>
           </div>
         ) : null}
+        {pinnedEntries.length > 0 ? (
+          <div>
+            <div style={sectionLabelStyle}>Pinned</div>
+            <ul role="list" style={listStyle}>
+              {pinnedEntries.map((it) => {
+                const idx = unifiedItems.findIndex(
+                  (u) => u.kind === 'window' && u.key === `pinned-${it.window.id}`,
+                );
+                const isHover = idx === Math.min(hover, unifiedItems.length - 1);
+                return (
+                  <li key={`pinned-${it.window.id}`} role="option" aria-selected={isHover}
+                    onMouseEnter={() => idx >= 0 && setHover(idx)}
+                    onClick={() => choose(it)}
+                    style={{
+                      ...rowStyle,
+                      background: isHover ? '#1c1c28' : 'transparent',
+                      border: `1px solid ${isHover ? '#3a3f6b' : 'transparent'}`,
+                    }}
+                  >
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {it.window.title}
+                    </span>
+                    <span style={metaStyle}>{it.window.provider} · {it.window.model}</span>
+                    {!it.open ? <span style={badgeStyle}>closed</span> : null}
+                    <span style={pinnedBadgeStyle}>pinned</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
         {filteredWorkspaces.length > 1 ? (
           <div>
             <div style={sectionLabelStyle}>Workspaces</div>
@@ -395,10 +443,10 @@ export function WorkspaceCommandPalette({
           </div>
         ) : null}
         <ul role="listbox" aria-label="Chat windows" style={listStyle}>
-          {filtered.length === 0 && messageMatches.length === 0 && filteredWorkspaces.length <= 1 && recentEntries.length === 0 ? (
+          {filtered.length === 0 && messageMatches.length === 0 && filteredWorkspaces.length <= 1 && recentEntries.length === 0 && pinnedEntries.length === 0 ? (
             <li style={emptyStyle}>No matches.</li>
           ) : (
-            filtered.filter((it) => !recentEntries.some((r) => r.window.id === it.window.id)).map((it) => {
+            filtered.filter((it) => !recentEntries.some((r) => r.window.id === it.window.id) && !pinnedEntries.some((p) => p.window.id === it.window.id)).map((it) => {
               const idx = unifiedItems.findIndex((u) => u.kind === 'window' && u.entry.window.id === it.window.id);
               const isHover = idx === Math.min(hover, unifiedItems.length - 1);
               const isActive = it.window.id === activeId;
