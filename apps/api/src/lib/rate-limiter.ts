@@ -8,8 +8,13 @@ interface Window {
   resetAt: number;
 }
 
+/** Sweep stale entries no more often than this — keeps the amortised cost
+ *  per `check()` bounded even for high-cardinality key spaces (per-IP). */
+const SWEEP_INTERVAL_MS = 60_000;
+
 export class RateLimiter {
   private readonly store = new Map<string, Window>();
+  private lastSweepAt = 0;
 
   constructor(
     private readonly max: number,
@@ -18,6 +23,7 @@ export class RateLimiter {
 
   check(key: string): RateLimitResult {
     const now = Date.now();
+    this.maybeSweep(now);
     const entry = this.store.get(key);
 
     if (!entry || now >= entry.resetAt) {
@@ -35,5 +41,16 @@ export class RateLimiter {
 
   reset(key: string): void {
     this.store.delete(key);
+  }
+
+  /** Walks the store and drops entries whose window has fully elapsed.
+   *  Bounds memory under high-cardinality keys (e.g. per-IP rate limiting
+   *  on a public endpoint) without an external timer. */
+  private maybeSweep(now: number): void {
+    if (now - this.lastSweepAt < SWEEP_INTERVAL_MS) return;
+    this.lastSweepAt = now;
+    for (const [k, w] of this.store) {
+      if (now >= w.resetAt) this.store.delete(k);
+    }
   }
 }

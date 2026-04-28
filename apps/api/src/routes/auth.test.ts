@@ -103,7 +103,16 @@ describe('POST /v1/auth/signup', () => {
     const cookie = getSetCookie(res);
     expect(cookie).toBeTruthy();
     expect(cookie).toContain(`${SESSION_COOKIE_NAME}=`);
+    // Lock down the cookie hardening attributes so a future refactor that
+    // accidentally drops SameSite or Path cannot ship without failing CI.
     expect(cookie).toContain('HttpOnly');
+    expect(cookie).toMatch(/SameSite=(Lax|Strict|None)/);
+    expect(cookie).toContain('Path=/');
+    // Max-Age must be positive on a fresh session — a 0 here would be the
+    // signature of a 'log everyone out' deploy bug.
+    const maxAgeMatch = cookie?.match(/Max-Age=(\d+)/);
+    expect(maxAgeMatch).not.toBeNull();
+    expect(Number(maxAgeMatch?.[1])).toBeGreaterThan(0);
   });
 
   it('normalises email to lowercase', async () => {
@@ -380,6 +389,13 @@ describe('rate limiting — signup', () => {
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('rate_limited');
     expect(res.headers.get('retry-after')).toBe('60');
+    // 429 must still ride the standard security + hardening + observability
+    // headers — defenders should be able to triage rate-limit storms with the
+    // same tooling they use for any other 4xx.
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 

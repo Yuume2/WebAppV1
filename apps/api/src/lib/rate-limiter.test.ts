@@ -56,4 +56,20 @@ describe('RateLimiter', () => {
     rl.reset('a');
     expect(rl.check('a').ok).toBe(true);
   });
+
+  it('opportunistically evicts expired entries so the store does not grow unbounded', () => {
+    const rl = new RateLimiter(10, 1_000);
+    // Seed many distinct keys whose windows will all elapse.
+    for (let i = 0; i < 1_000; i++) rl.check(`k-${i}`);
+    expect((rl as unknown as { store: Map<string, unknown> }).store.size).toBe(1_000);
+
+    // Advance well past the per-window reset AND past the sweep interval so
+    // the next check() triggers a sweep that walks the store.
+    vi.advanceTimersByTime(61_000);
+
+    // A single check should now drop everything that has expired.
+    rl.check('fresh');
+    const remaining = (rl as unknown as { store: Map<string, unknown> }).store.size;
+    expect(remaining).toBe(1); // only the just-inserted 'fresh' key
+  });
 });

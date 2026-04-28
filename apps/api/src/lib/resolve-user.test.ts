@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { resolveCurrentUser } from './resolve-user.js';
 import { hashSessionToken } from './session-token.js';
 import { SESSION_COOKIE_NAME } from '../config/auth.js';
@@ -72,5 +72,45 @@ describe('resolveCurrentUser', () => {
       findUserById:           async () => null,
     });
     expect(r).toBeNull();
+  });
+
+  it('treats a session whose expiresAt equals "now" as already expired (boundary)', async () => {
+    // Lock the clock so we can assert the exact equality semantics.
+    const now = new Date('2026-01-01T00:00:00Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    try {
+      const r = await resolveCurrentUser(reqWith(`${SESSION_COOKIE_NAME}=edge`), {
+        findSessionByTokenHash: async () => ({ userId: USER.id, expiresAt: new Date(now) }),
+        findUserById:           async () => USER,
+      });
+      expect(r).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('returns null when the cookie value is the empty string', async () => {
+    // A malformed/cleared session cookie (e.g. `${SESSION_COOKIE_NAME}=`) must not
+    // round-trip into a session lookup with an empty token — that would let
+    // anyone with an empty cookie value probe for a token-hash collision.
+    const r = await resolveCurrentUser(reqWith(`${SESSION_COOKIE_NAME}=`), {
+      findSessionByTokenHash: async () => { throw new Error('should not be called'); },
+      findUserById:           async () => { throw new Error('should not be called'); },
+    });
+    expect(r).toBeNull();
+  });
+
+  it('propagates repo errors instead of swallowing them as "no session"', async () => {
+    // A DB outage in findSessionByTokenHash must NOT silently auth-as-anonymous —
+    // that would mask infrastructure failures behind a 401, making them
+    // indistinguishable from genuine logged-out traffic. Bubble it up so
+    // handleRequest's catch ships a proper 500 + Sentry capture.
+    await expect(
+      resolveCurrentUser(reqWith(`${SESSION_COOKIE_NAME}=anything`), {
+        findSessionByTokenHash: async () => { throw new Error('db connection lost'); },
+        findUserById:           async () => USER,
+      }),
+    ).rejects.toThrow('db connection lost');
   });
 });

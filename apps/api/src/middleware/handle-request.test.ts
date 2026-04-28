@@ -46,6 +46,20 @@ describe('dispatch — error envelopes', () => {
     expect(res.headers.get('referrer-policy')).toBe('no-referrer');
   });
 
+  it('emits hardening headers (cross-domain-policies, dns-prefetch-control, robots-tag)', async () => {
+    const res = await fetch(`${harness.baseUrl}/health`);
+    expect(res.headers.get('x-permitted-cross-domain-policies')).toBe('none');
+    expect(res.headers.get('x-dns-prefetch-control')).toBe('off');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+
+  it('hardening headers ride 404 responses too', async () => {
+    const res = await fetch(`${harness.baseUrl}/nope`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get('x-permitted-cross-domain-policies')).toBe('none');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+
   it('emits security headers even on a 404 envelope', async () => {
     const res = await fetch(`${harness.baseUrl}/nope`);
     expect(res.status).toBe(404);
@@ -166,6 +180,53 @@ describe('CSRF protection — wildcard origin (dev)', () => {
       body: JSON.stringify({ name: 'X' }),
     });
     expect(res.status).not.toBe(403);
+    await close();
+  });
+});
+
+// ── 500 internal_error envelope ───────────────────────────────────────────────
+
+async function startWithThrowingHandler(): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+  const router = new Router();
+  router.register({
+    method: 'GET',
+    path: '/boom',
+    handler: () => { throw new Error('synthetic handler crash'); },
+  });
+  const server: Server = createApiServer(router);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    close: () => new Promise<void>((resolve, reject) =>
+      server.close((err) => (err ? reject(err) : resolve())),
+    ),
+  };
+}
+
+describe('dispatch — handler crash 500 envelope', () => {
+  it('returns 500 internal_error envelope when a handler throws', async () => {
+    const { baseUrl, close } = await startWithThrowingHandler();
+    const res = await fetch(`${baseUrl}/boom`);
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as ApiResponse<unknown>;
+    if (body.ok) throw new Error('expected error envelope');
+    expect(body.error.code).toBe('internal_error');
+    // The raw thrown message must NOT leak — the catch handler ships a generic
+    // string while the real error is sent to Sentry / logs.
+    expect(body.error.message).not.toContain('synthetic handler crash');
+    await close();
+  });
+
+  it('still emits X-Request-Id, security headers and Cache-Control: no-store on a 500', async () => {
+    const { baseUrl, close } = await startWithThrowingHandler();
+    const res = await fetch(`${baseUrl}/boom`);
+    expect(res.status).toBe(500);
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 });

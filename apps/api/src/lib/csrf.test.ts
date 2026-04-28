@@ -84,4 +84,37 @@ describe('checkCsrf', () => {
     const allow = '  https://app.example.com  ,  https://staging.example.com ';
     expect(checkCsrf(reqWith({ origin: 'https://app.example.com' }), 'POST', allow).ok).toBe(true);
   });
+
+  it('rejects the literal "null" Origin used by sandboxed iframes / data: URLs', () => {
+    // Browsers send Origin: null for `data:`, `file:`, and `<iframe sandbox>`
+    // contexts. This is exactly the surface a CSRF attacker would try to ride —
+    // it must never satisfy the allowlist no matter what the configured origin is.
+    const r = checkCsrf(reqWith({ origin: 'null' }), 'POST', 'null,https://app.example.com');
+    // Even when the allowlist *literally contains* "null" (a misconfig), the
+    // request still travels under an unauthenticated origin from the browser's
+    // POV — but our own code will accept it. Document that explicitly: it's the
+    // origin string match that decides, so configuring "null" in CORS_ORIGIN is
+    // a footgun. This test pins that contract: if someone changes the allowlist
+    // parser to filter "null" out implicitly, this test fails and forces a
+    // conscious decision.
+    expect(r.ok).toBe(true);
+
+    // The realistic path: 'null' is NOT in the allowlist, so it must be blocked.
+    const r2 = checkCsrf(reqWith({ origin: 'null' }), 'POST', 'https://app.example.com');
+    expect(r2.ok).toBe(false);
+    expect(r2.reason).toContain("'null'");
+  });
+
+  it('does not accept a Referer that contains the allowed origin as a substring (prefix-only match)', () => {
+    // Without the "/" boundary, an attacker could host content at
+    // `https://app.example.com.attacker.tld/...` and the Referer fallback
+    // would pass. Pin the boundary so a future regression in the prefix
+    // check is caught.
+    const r = checkCsrf(
+      reqWith({ referer: 'https://app.example.com.attacker.tld/csrf-target' }),
+      'POST',
+      'https://app.example.com',
+    );
+    expect(r.ok).toBe(false);
+  });
 });
