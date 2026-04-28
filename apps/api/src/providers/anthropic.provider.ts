@@ -19,6 +19,8 @@ const DEFAULT_MAX_TOKENS = 1024;
 
 export type AnthropicVerifyResult = 'ok' | 'unauthorized' | 'provider_error';
 
+const VERIFY_TIMEOUT_MS = 10_000;
+
 export async function verifyAnthropicKey(apiKey: string): Promise<AnthropicVerifyResult> {
   let res: Response;
   try {
@@ -28,6 +30,7 @@ export async function verifyAnthropicKey(apiKey: string): Promise<AnthropicVerif
         'x-api-key':         apiKey,
         'anthropic-version': ANTHROPIC_VERSION,
       },
+      signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
     });
   } catch {
     return 'provider_error';

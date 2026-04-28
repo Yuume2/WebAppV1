@@ -37,6 +37,13 @@ describe('verifyAnthropicKey', () => {
     vi.mocked(fetch).mockRejectedValue(new Error('boom'));
     expect(await verifyAnthropicKey(API_KEY)).toBe('provider_error');
   });
+
+  it('passes an AbortSignal so the call cannot hang forever', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 200 }));
+    await verifyAnthropicKey(API_KEY);
+    const init = vi.mocked(fetch).mock.calls[0]![1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
 });
 
 describe('createAnthropicClient.createChatCompletion', () => {
