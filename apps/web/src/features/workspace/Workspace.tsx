@@ -137,6 +137,9 @@ export function Workspace({
         onCreate={state.createWindow}
       />
       <WorkspaceCommandPalette
+        projectId={projectId}
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspace.id}
         visibleWindows={state.visibleWindows}
         closedWindows={state.closedWindows}
         activeId={state.activeId}

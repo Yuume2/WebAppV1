@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { ChatWindow } from '@webapp/types';
+import type { ChatWindow, Workspace } from '@webapp/types';
 
 interface PaletteWindow {
   window: ChatWindow;
@@ -9,6 +10,9 @@ interface PaletteWindow {
 }
 
 interface WorkspaceCommandPaletteProps {
+  projectId: string;
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
   visibleWindows: ChatWindow[];
   closedWindows: ChatWindow[];
   activeId: string | null;
@@ -25,6 +29,9 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 export function WorkspaceCommandPalette({
+  projectId,
+  workspaces,
+  activeWorkspaceId,
   visibleWindows,
   closedWindows,
   activeId,
@@ -51,6 +58,12 @@ export function WorkspaceCommandPalette({
       return t.includes(q) || it.window.model.toLowerCase().includes(q);
     });
   }, [items, query]);
+
+  const filteredWorkspaces = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return workspaces;
+    return workspaces.filter((w) => w.name.toLowerCase().includes(q));
+  }, [workspaces, query]);
 
   useEffect(() => {
     setHover(0);
@@ -135,10 +148,43 @@ export function WorkspaceCommandPalette({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onInputKeyDown}
-          placeholder="Type a window title or model…"
-          aria-label="Filter chat windows"
+          placeholder="Type a window title, model, or workspace…"
+          aria-label="Filter chat windows or workspaces"
           style={inputStyle}
         />
+        {filteredWorkspaces.length > 1 ? (
+          <div>
+            <div style={sectionLabelStyle}>Workspaces</div>
+            <ul role="list" style={listStyle}>
+              {filteredWorkspaces.map((w) => {
+                const active = w.id === activeWorkspaceId;
+                return (
+                  <li key={w.id} style={{ listStyle: 'none' }}>
+                    <Link
+                      href={`/project/${projectId}?workspace=${w.id}`}
+                      onClick={() => {
+                        setOpen(false);
+                        setQuery('');
+                      }}
+                      style={{
+                        ...rowStyle,
+                        textDecoration: 'none',
+                        color: active ? '#9aa6ff' : '#cfcfd6',
+                        background: active ? '#1c1c28' : 'transparent',
+                      }}
+                    >
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {w.name}
+                      </span>
+                      {active ? <span style={activeBadgeStyle}>active</span> : null}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+            <div style={sectionLabelStyle}>Chat windows</div>
+          </div>
+        ) : null}
         <ul role="listbox" aria-label="Chat windows" style={listStyle}>
           {filtered.length === 0 ? (
             <li style={emptyStyle}>No matches.</li>
@@ -314,4 +360,13 @@ const pinnedBadgeStyle: React.CSSProperties = {
   background: '#1c1f12',
   border: '1px solid #6b5a2a',
   color: '#f0c14b',
+};
+
+
+const sectionLabelStyle: React.CSSProperties = {
+  fontSize: '0.62rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  color: '#6a6a75',
+  padding: '0.5rem 0.55rem 0.25rem',
 };
