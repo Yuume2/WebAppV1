@@ -74,6 +74,10 @@ describe('GET /v1/health/deep', () => {
     const res = await fetch(`${baseUrl}/v1/health/deep`);
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
+    // Mirror of the /health pin — keep the deep probe out of search
+    // engine indexes too. Same risk profile (always 200 in healthy
+    // state, small predictable JSON body).
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
     await close();
   });
 });
