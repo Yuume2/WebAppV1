@@ -602,6 +602,13 @@ describe('POST /v1/messages/stream — authenticated', () => {
     const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hello' });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type') ?? '').toMatch(/text\/event-stream/);
+    // Ride-headers regression: SSE-critical hints must reach the client so
+    // proxies don't buffer the stream. Pin them on the success path so a
+    // future writeHead refactor can't quietly strip them.
+    expect(res.headers.get('cache-control') ?? '').toMatch(/no-store/);
+    expect(res.headers.get('cache-control') ?? '').toMatch(/no-transform/);
+    expect(res.headers.get('x-accel-buffering')).toBe('no');
+    expect(res.headers.get('x-request-id')).toBeTruthy();
 
     const events = await readSseEvents(res);
     // Two deltas + final done payload + literal [DONE].
