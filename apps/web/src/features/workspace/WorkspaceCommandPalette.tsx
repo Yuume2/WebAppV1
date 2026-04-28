@@ -68,8 +68,17 @@ export function WorkspaceCommandPalette({
   }, [workspaces, query]);
 
   useEffect(() => {
-    setHover(0);
-  }, [query, open]);
+    if (!open) {
+      setHover(0);
+      return;
+    }
+    if (query) {
+      setHover(0);
+      return;
+    }
+    const idx = filtered.findIndex((it) => unreadByWindow?.[it.window.id]);
+    setHover(idx >= 0 ? idx : 0);
+  }, [query, open, filtered, unreadByWindow]);
 
   useEffect(() => {
     if (!open) return;
