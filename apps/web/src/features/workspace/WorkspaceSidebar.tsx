@@ -20,6 +20,8 @@ interface WorkspaceSidebarProps {
   visibleWindows: ChatWindow[];
   closedWindows: ChatWindow[];
   activeId: string | null;
+  lastActivityByWindow?: Record<string, string | undefined>;
+  pendingByWindow?: Record<string, boolean>;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
   onReopen: (id: string) => void;
@@ -41,6 +43,8 @@ export function WorkspaceSidebar({
   visibleWindows,
   closedWindows,
   activeId,
+  lastActivityByWindow,
+  pendingByWindow,
   onFocus,
   onClose,
   onReopen,
@@ -170,6 +174,8 @@ export function WorkspaceSidebar({
               window={w}
               active={activeId === w.id}
               pinned={pinnedSet.has(w.id)}
+              lastActivity={lastActivityByWindow?.[w.id]}
+              pending={pendingByWindow?.[w.id]}
               onClick={() => onFocus(w.id)}
               onAction={() => onClose(w.id)}
               actionLabel="×"
@@ -189,6 +195,7 @@ export function WorkspaceSidebar({
                 window={w}
                 active={false}
                 muted
+                lastActivity={lastActivityByWindow?.[w.id]}
                 onClick={() => onReopen(w.id)}
                 onAction={() => onReopen(w.id)}
                 actionLabel="↺"
@@ -651,14 +658,16 @@ interface WindowRowProps {
   active: boolean;
   muted?: boolean;
   pinned?: boolean;
+  lastActivity?: string;
+  pending?: boolean;
   onClick: () => void;
   onAction: () => void;
   actionLabel: string;
   actionAria: string;
 }
 
-function WindowRow({ window, active, muted, pinned, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
-  const stamp = formatRelative(window.updatedAt ?? window.createdAt);
+function WindowRow({ window, active, muted, pinned, lastActivity, pending, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
+  const stamp = formatRelative(lastActivity ?? window.updatedAt ?? window.createdAt);
   const rowRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!active) return;
@@ -792,14 +801,30 @@ function WindowRow({ window, active, muted, pinned, onClick, onAction, actionLab
           >
             {window.provider} · {window.model}
           </span>
+          {pending ? (
+            <span
+              aria-label="Reply in progress"
+              title="Reply in progress"
+              style={{
+                marginLeft: 'auto',
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: '#9aa6ff',
+                animation: 'chat-blink 1s steps(2, end) infinite',
+                flexShrink: 0,
+                marginRight: stamp ? 4 : 0,
+              }}
+            />
+          ) : null}
           {stamp ? (
             <span
               style={{
-                marginLeft: 'auto',
+                marginLeft: pending ? 0 : 'auto',
                 color: '#6a6a75',
                 flexShrink: 0,
               }}
-              title={window.updatedAt ?? window.createdAt}
+              title={lastActivity ?? window.updatedAt ?? window.createdAt}
             >
               {stamp}
             </span>
