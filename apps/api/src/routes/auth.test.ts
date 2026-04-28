@@ -389,6 +389,13 @@ describe('rate limiting — signup', () => {
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('rate_limited');
     expect(res.headers.get('retry-after')).toBe('60');
+    // 429 must still ride the standard security + hardening + observability
+    // headers — defenders should be able to triage rate-limit storms with the
+    // same tooling they use for any other 4xx.
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 
