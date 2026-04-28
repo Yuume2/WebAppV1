@@ -96,4 +96,19 @@ describe('schema.object', () => {
     expect(Body.parse(null).ok).toBe(false);
     expect(Body.parse('x').ok).toBe(false);
   });
+
+  it('silently drops unknown fields (forward-compatible accept policy)', () => {
+    // The shape iterates declared keys only — anything extra in the input
+    // is intentionally not surfaced in errors and not carried into the
+    // parsed value. This is the "be liberal in what you accept" posture
+    // for client forward-compat: a v2 client that adds a new field can
+    // still talk to a v1 server. Pin it explicitly so a future strict-
+    // mode opt-in has to update this test, not silently break clients.
+    const r = Body.parse({ name: 'A', age: 1, extra: 'should-be-dropped', nested: { x: 1 } });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('expected ok');
+    expect(r.value).toEqual({ name: 'A', age: 1 });
+    expect('extra' in r.value).toBe(false);
+    expect('nested' in r.value).toBe(false);
+  });
 });
