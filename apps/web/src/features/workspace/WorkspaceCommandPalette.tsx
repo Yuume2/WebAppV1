@@ -684,9 +684,17 @@ export function WorkspaceCommandPalette({
         </div>
         <div style={footerStyle}>
           <span>
-            {query.trim().length > 0
-              ? '↑↓ navigate · Enter to open · Esc clears query, again to close'
-              : '↑↓ navigate · Enter to open · Esc to close · type ≥2 chars to search messages'}
+            {(() => {
+              const sel = unifiedItems[Math.min(hover, unifiedItems.length - 1)];
+              const enterAction =
+                sel?.kind === 'workspace'
+                  ? 'Enter to switch workspace'
+                  : sel?.kind === 'message'
+                    ? 'Enter to jump to message'
+                    : 'Enter to open';
+              if (query.trim().length > 0) return `↑↓ navigate · ${enterAction} · Esc clears query, again to close`;
+              return `↑↓ navigate · ${enterAction} · Esc to close · type ≥2 chars to search messages`;
+            })()}
           </span>
         </div>
       </div>
