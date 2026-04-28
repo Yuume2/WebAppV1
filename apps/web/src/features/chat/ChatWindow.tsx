@@ -271,6 +271,7 @@ export function ChatWindow({
     if (active) lastSeenAtRef.current = Date.now();
     wasActiveRef.current = active;
     return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, messagesSignature]);
 
   useEffect(() => {
