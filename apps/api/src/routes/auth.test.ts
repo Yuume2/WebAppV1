@@ -395,6 +395,32 @@ describe('GET /v1/auth/me', () => {
     expect(b1.error.code).toBe('unauthenticated');
     expect(b2.error.code).toBe('unauthenticated');
     expect(b3.error.code).toBe('unauthenticated');
+    // The human-readable message is also unified across all paths so a
+    // sophisticated probe can't distinguish 'session expired' from 'user
+    // deleted' from 'no cookie' via the message string. Pin all three.
+    expect(b1.error.message).toBe('Not authenticated');
+    expect(b2.error.message).toBe('Not authenticated');
+    expect(b3.error.message).toBe('Not authenticated');
+  });
+
+  it('rejects whitespace-only session cookie without touching the session repo', async () => {
+    // Probe with a whitespace-only token: must short-circuit before any DB
+    // lookup and return the same envelope as a missing cookie. Otherwise an
+    // attacker could measure the timing difference between 'no cookie' and
+    // 'cookie that ends up calling the repo'.
+    let lookupCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async () => { lookupCalls++; return null; },
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=   ` },
+    });
+    expect(res.status).toBe(401);
+    expect(lookupCalls).toBe(0);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.message).toBe('Not authenticated');
+    await close();
   });
 });
 
