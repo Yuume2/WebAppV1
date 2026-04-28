@@ -204,11 +204,16 @@ export function ChatWindow({
         e.preventDefault();
         setTitleDraft(title);
         setEditing(true);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'w' || e.key === 'W') && onClose) {
+        e.preventDefault();
+        onClose(id);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, onRename, title]);
+  }, [active, onRename, onClose, title, id]);
 
   const commitRename = () => {
     const trimmed = titleDraft.trim();
