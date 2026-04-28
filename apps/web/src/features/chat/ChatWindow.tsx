@@ -7,6 +7,7 @@ import {
   useState,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
 } from 'react';
 import type { AIProvider } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
@@ -62,9 +63,18 @@ export function ChatWindow({
   const [draft, setDraft] = useState<string>(() => readDraft(draftStorageKey));
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(title);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const trimmedQuery = searchQuery.trim();
+  const lowerQuery = trimmedQuery.toLowerCase();
+  const filteredMessages = lowerQuery
+    ? messages.filter((m) => m.content.toLowerCase().includes(lowerQuery))
+    : messages;
+  const matchCount = lowerQuery ? filteredMessages.length : 0;
   const messagesSignature = messages
     .map((m) => `${m.id}:${m.content.length}:${m.status ?? 'ok'}`)
     .join('|');
@@ -201,6 +211,40 @@ export function ChatWindow({
           <ProviderBadge provider={provider} model={model} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSearchOpen((v) => {
+                const next = !v;
+                if (next) {
+                  requestAnimationFrame(() => searchInputRef.current?.focus());
+                } else {
+                  setSearchQuery('');
+                }
+                return next;
+              });
+            }}
+            aria-label={searchOpen ? 'Close search' : 'Find in chat'}
+            aria-pressed={searchOpen}
+            title={searchOpen ? 'Close search' : 'Find in chat'}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: searchOpen ? '#9aa6ff' : '#8a8a95',
+              cursor: 'pointer',
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              padding: '0.25rem 0.5rem',
+              borderRadius: 6,
+              lineHeight: 1,
+              fontFamily: 'inherit',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            Find
+          </button>
           {onDelete ? (
             <button
               type="button"
@@ -261,6 +305,72 @@ export function ChatWindow({
         </div>
       </div>
 
+      {searchOpen ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '0.45rem 0.75rem',
+            borderBottom: '1px solid #24242c',
+            background: '#10101a',
+          }}
+        >
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setSearchQuery('');
+                setSearchOpen(false);
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Find in chat…"
+            aria-label="Find in chat"
+            style={{
+              flex: 1,
+              background: '#1b1b23',
+              border: '1px solid #2a2a30',
+              borderRadius: 6,
+              padding: '0.35rem 0.55rem',
+              color: '#f5f5f5',
+              fontSize: '0.8rem',
+              fontFamily: 'inherit',
+              outline: 'none',
+            }}
+          />
+          {trimmedQuery ? (
+            <span style={{ fontSize: '0.7rem', color: '#8a8a95' }} aria-live="polite">
+              {matchCount} {matchCount === 1 ? 'match' : 'matches'}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSearchQuery('');
+              setSearchOpen(false);
+            }}
+            aria-label="Close search"
+            style={{
+              background: 'transparent',
+              border: '1px solid #2a2a30',
+              color: '#cfcfd6',
+              borderRadius: 6,
+              padding: '2px 8px',
+              fontSize: '0.7rem',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            Close
+          </button>
+        </div>
+      ) : null}
+
       <div
         ref={scrollRef}
         onScroll={updateStickiness}
@@ -293,11 +403,23 @@ export function ChatWindow({
               Type below — Enter to send, Shift+Enter for a newline.
             </div>
           </div>
+        ) : lowerQuery && filteredMessages.length === 0 ? (
+          <div
+            style={{
+              margin: 'auto',
+              textAlign: 'center',
+              color: '#8a8a95',
+              fontSize: '0.85rem',
+            }}
+          >
+            No messages match &ldquo;{trimmedQuery}&rdquo;.
+          </div>
         ) : (
-          messages.map((m) => (
+          filteredMessages.map((m) => (
             <MessageBubble
               key={m.id}
               message={m}
+              highlight={lowerQuery || undefined}
               onRetry={
                 onRetry && m.clientTempId ? () => onRetry(id, m.clientTempId!) : undefined
               }
@@ -492,10 +614,12 @@ function MessageBubble({
   message,
   onRetry,
   onRegenerate,
+  highlight,
 }: {
   message: MockMessage;
   onRetry?: () => void;
   onRegenerate?: () => void;
+  highlight?: string;
 }) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -564,7 +688,7 @@ function MessageBubble({
           </span>
         )}
       </div>
-      {message.content}
+      {highlight ? renderWithHighlight(message.content, highlight) : message.content}
       {isStreaming && <StreamingCursor />}
       {isFailed && (
         <div
@@ -772,4 +896,36 @@ function writeDraft(key: string, value: string): void {
   } catch {
     // localStorage unavailable / quota exceeded; ignore
   }
+}
+
+function renderWithHighlight(content: string, query: string): ReactNode {
+  if (!query) return content;
+  const out: ReactNode[] = [];
+  const lowerContent = content.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  let cursor = 0;
+  let key = 0;
+  while (cursor < content.length) {
+    const idx = lowerContent.indexOf(lowerQuery, cursor);
+    if (idx < 0) {
+      out.push(content.slice(cursor));
+      break;
+    }
+    if (idx > cursor) out.push(content.slice(cursor, idx));
+    out.push(
+      <mark
+        key={key++}
+        style={{
+          background: '#4f6bff44',
+          color: 'inherit',
+          borderRadius: 2,
+          padding: '0 1px',
+        }}
+      >
+        {content.slice(idx, idx + query.length)}
+      </mark>,
+    );
+    cursor = idx + query.length;
+  }
+  return out;
 }
