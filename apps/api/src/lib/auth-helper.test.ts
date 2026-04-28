@@ -42,4 +42,26 @@ describe('requireUser', () => {
       requireUser(fakeReq, async () => { throw new Error('db down'); }),
     ).rejects.toThrow('db down');
   });
+
+  it('emits a 401 result with NO headers attached (no Set-Cookie, no Allow leakage)', async () => {
+    // The 401 response from requireUser is built via respondError('unauthenticated', ...).
+    // It must not carry a headers object — a refactor that decided to attach
+    // Set-Cookie or Allow on unauth would leak information (e.g. Allow could
+    // tell an unauthenticated probe which methods exist on the route, and a
+    // Set-Cookie clear is the responsibility of the explicit logout path).
+    const r = await requireUser(fakeReq, async () => null);
+    if (r.ok) throw new Error('expected fail');
+    expect(r.result.headers).toBeUndefined();
+    expect(r.result.streamed).toBeUndefined();
+  });
+
+  it('returns a 400-default-overridden 401 status (not the respondError default)', async () => {
+    // respondError defaults to 400. The helper passes 401 explicitly. Pin
+    // that explicit override so a refactor that drops the 401 argument and
+    // accidentally falls back to 400 fails CI.
+    const r = await requireUser(fakeReq, async () => null);
+    if (r.ok) throw new Error('expected fail');
+    expect(r.result.httpStatus).toBe(401);
+    expect(r.result.httpStatus).not.toBe(400);
+  });
 });
