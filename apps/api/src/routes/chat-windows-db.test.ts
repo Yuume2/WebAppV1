@@ -223,6 +223,7 @@ describe('GET /v1/chat-windows/:id — user isolation', () => {
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.id).toBe('own-cw');
     expect(body.data.provider).toBe('openai');
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 

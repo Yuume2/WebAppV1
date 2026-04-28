@@ -188,6 +188,9 @@ describe('GET /v1/projects/:id — user isolation', () => {
     const body = (await res.json()) as ApiResponse<Project>;
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.id).toBe('own-proj');
+    // Per-user data — no shared-cache caching. Same logic as the list
+    // endpoints; pin no-store on every user-scoped GET-by-id too.
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 

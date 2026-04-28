@@ -209,6 +209,7 @@ describe('GET /v1/workspaces/:id — user isolation', () => {
     const body = (await res.json()) as ApiResponse<Workspace>;
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.id).toBe('own-ws');
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 

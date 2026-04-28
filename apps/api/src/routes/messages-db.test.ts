@@ -597,6 +597,7 @@ describe('GET /v1/messages/:id — user isolation', () => {
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.id).toBe('own-msg');
     expect(body.data.role).toBe('user');
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 
