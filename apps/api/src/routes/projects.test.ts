@@ -104,6 +104,21 @@ describe('POST /v1/projects', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('accepts application/json with charset=utf-8 (RFC 8259 normative)', async () => {
+    // The content-type check uses substring includes('application/json') so
+    // a Content-Type with parameters must still pass. Pin it because a
+    // future tightening to strict equality would break clients that use
+    // fetch() defaults (which often append the charset).
+    const res = await fetch(`${harness.baseUrl}/v1/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ name: 'with-charset' }),
+    });
+    // Either 201 (success) or 401 (auth not configured here) is fine — the
+    // critical regression is that this is NOT 415 unsupported_media_type.
+    expect(res.status).not.toBe(415);
+  });
+
   it('returns 400 invalid_body for a JSON array body (not an object)', async () => {
     // Same path: object schema rejects arrays. Caller must not be able to
     // sneak past validation by sending [{...}] hoping the array-form is
