@@ -32,6 +32,7 @@ export function WorkspaceCommandPalette({
   onReopen,
 }: WorkspaceCommandPaletteProps) {
   const [open, setOpen] = useState(false);
+  const [pinnedSet, setPinnedSet] = useState<Set<string>>(() => readPinned());
   const [query, setQuery] = useState('');
   const [hover, setHover] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -54,6 +55,14 @@ export function WorkspaceCommandPalette({
   useEffect(() => {
     setHover(0);
   }, [query, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setPinnedSet(readPinned());
+    const onChange = () => setPinnedSet(readPinned());
+    window.addEventListener('wav:pin-changed', onChange);
+    return () => window.removeEventListener('wav:pin-changed', onChange);
+  }, [open]);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -156,6 +165,7 @@ export function WorkspaceCommandPalette({
                   <span style={metaStyle}>
                     {it.window.provider} · {it.window.model}
                   </span>
+                  {pinnedSet.has(it.window.id) ? <span style={pinnedBadgeStyle}>pinned</span> : null}
                   {!it.open ? <span style={badgeStyle}>closed</span> : null}
                   {isActive ? <span style={activeBadgeStyle}>active</span> : null}
                 </li>
@@ -278,4 +288,30 @@ const footerStyle: React.CSSProperties = {
   paddingTop: 4,
   borderTop: '1px solid #1d1d22',
   marginTop: 4,
+};
+
+
+function readPinned(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  const out = new Set<string>();
+  try {
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (!key || !key.startsWith('wav.chat.pinned.')) continue;
+      const v = window.sessionStorage.getItem(key);
+      if (v === '1' || v === 'true') {
+        out.add(key.slice('wav.chat.pinned.'.length));
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return out;
+}
+
+const pinnedBadgeStyle: React.CSSProperties = {
+  ...badgeStyle,
+  background: '#1c1f12',
+  border: '1px solid #6b5a2a',
+  color: '#f0c14b',
 };

@@ -11,6 +11,7 @@ import {
 } from 'react';
 import type { AIProvider } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
+import { useToast } from '@/components/ToastHost';
 
 interface ChatWindowProps {
   id: string;
@@ -91,6 +92,21 @@ export function ChatWindow({
   const scrollSaveTimerRef = useRef<number | null>(null);
   const [scrolledAway, setScrolledAway] = useState(false);
   const [exportLabel, setExportLabel] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const toast = useToast();
+  const pinStorageKey = `wav.chat.pinned.${id}`;
+  const [pinned, setPinned] = useState<boolean>(() => readBoolFlag(pinStorageKey));
+  const pinInitRef = useRef(false);
+  useEffect(() => {
+    writeBoolFlag(pinStorageKey, pinned);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wav:pin-changed', { detail: { id, pinned } }));
+    }
+    if (!pinInitRef.current) {
+      pinInitRef.current = true;
+      return;
+    }
+    toast.push('info', pinned ? `${title} pinned` : `${title} unpinned`);
+  }, [pinStorageKey, pinned, id, title, toast]);
 
   const updateStickiness = () => {
     const el = scrollRef.current;
@@ -145,8 +161,10 @@ export function ChatWindow({
         document.body.removeChild(ta);
       }
       setExportLabel('copied');
+      toast.push('success', `${title} — conversation copied as Markdown`);
     } catch {
       setExportLabel('failed');
+      toast.push('error', `${title} — could not copy conversation`);
     }
     setTimeout(() => setExportLabel('idle'), 1800);
   };
@@ -375,6 +393,7 @@ export function ChatWindow({
       ta.focus();
       ta.selectionStart = ta.selectionEnd = ta.value.length;
     });
+    toast.push('info', `Quoted into ${title}`);
   };
 
   const starredStorageKey = `wav.chat.starred.${id}`;
@@ -385,8 +404,10 @@ export function ChatWindow({
   const toggleStar = (msgId: string) => {
     setStarredIds((prev) => {
       const next = new Set(prev);
+      const willStar = !next.has(msgId);
       if (next.has(msgId)) next.delete(msgId);
       else next.add(msgId);
+      toast.push('info', willStar ? 'Message starred' : 'Message unstarred');
       return next;
     });
   };
@@ -486,6 +507,32 @@ export function ChatWindow({
           <ProviderBadge provider={provider} model={model} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPinned((v) => !v);
+            }}
+            aria-label={pinned ? 'Unpin chat window' : 'Pin chat window'}
+            aria-pressed={pinned}
+            title={pinned ? 'Unpin (kept first in sidebar)' : 'Pin (keep first in sidebar)'}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: pinned ? '#f0c14b' : '#8a8a95',
+              cursor: 'pointer',
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              padding: '0.25rem 0.5rem',
+              borderRadius: 6,
+              lineHeight: 1,
+              fontFamily: 'inherit',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            {pinned ? 'Pinned' : 'Pin'}
+          </button>
           <button
             type="button"
             onClick={(e) => {
@@ -911,7 +958,13 @@ export function ChatWindow({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onComposerKeyDown}
           onFocus={() => onFocus?.(id)}
-          placeholder={pending ? 'Waiting for reply…' : 'Send a message…  (Shift+Enter for newline)'}
+          placeholder={
+            pending
+              ? 'Waiting for reply…'
+              : userPromptHistory.length > 0 && draft.length === 0
+                ? 'Send a message…  (Shift+Enter newline · ↑ history)'
+                : 'Send a message…  (Shift+Enter for newline)'
+          }
           aria-label={`Message ${title}`}
           disabled={pending}
           style={{
