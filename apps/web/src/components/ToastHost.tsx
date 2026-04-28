@@ -87,6 +87,17 @@ export function ToastHost({ children }: { children: ReactNode }) {
     };
   }, [toasts, dismiss]);
 
+  useEffect(() => {
+    if (toasts.length === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setToasts([]);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toasts.length]);
+
   const value = useMemo<ToastContextValue>(
     () => ({ push, pushError, dismiss }),
     [push, pushError, dismiss],
@@ -101,9 +112,21 @@ export function ToastHost({ children }: { children: ReactNode }) {
             key={t.id}
             role="status"
             style={{ ...toastStyle, ...toneStyles[t.tone] }}
-            onClick={() => dismiss(t.id)}
           >
-            <div>{t.message}</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>{t.message}</div>
+              <button
+                type="button"
+                aria-label="Dismiss notification"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dismiss(t.id);
+                }}
+                style={toastCloseStyle}
+              >
+                ×
+              </button>
+            </div>
             {t.action ? (
               <Link
                 href={t.action.href}
@@ -139,11 +162,23 @@ const toastStyle: React.CSSProperties = {
   borderRadius: 8,
   fontSize: '0.875rem',
   boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-  cursor: 'pointer',
   color: '#f5f5f5',
   display: 'flex',
   flexDirection: 'column',
   gap: 6,
+};
+
+const toastCloseStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: 'inherit',
+  cursor: 'pointer',
+  fontSize: '1.05rem',
+  lineHeight: 1,
+  padding: '0 4px',
+  opacity: 0.65,
+  fontFamily: 'inherit',
+  flexShrink: 0,
 };
 
 const toastActionStyle: React.CSSProperties = {
