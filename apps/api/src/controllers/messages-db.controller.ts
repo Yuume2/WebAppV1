@@ -331,6 +331,15 @@ export async function streamMessageDbController(
       upstreamAbort.abort();
     }
   });
+  // A mid-stream socket error (ECONNRESET, EPIPE) emits 'error' on the
+  // ServerResponse. With no listener, Node treats it as unhandled and the
+  // process can crash. Treat it like a client disconnect: cancel upstream,
+  // mark aborted, and swallow — the catch block downstream will see the
+  // for-await throw and exit cleanly.
+  res.on('error', () => {
+    aborted = true;
+    upstreamAbort.abort();
+  });
 
   try {
     for await (const chunk of deps.generateStream(cw.provider, apiKey, contextMessages, cw.model, { signal: upstreamAbort.signal })) {
