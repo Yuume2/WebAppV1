@@ -46,6 +46,20 @@ describe('dispatch — error envelopes', () => {
     expect(res.headers.get('referrer-policy')).toBe('no-referrer');
   });
 
+  it('emits hardening headers (cross-domain-policies, dns-prefetch-control, robots-tag)', async () => {
+    const res = await fetch(`${harness.baseUrl}/health`);
+    expect(res.headers.get('x-permitted-cross-domain-policies')).toBe('none');
+    expect(res.headers.get('x-dns-prefetch-control')).toBe('off');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+
+  it('hardening headers ride 404 responses too', async () => {
+    const res = await fetch(`${harness.baseUrl}/nope`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get('x-permitted-cross-domain-policies')).toBe('none');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+
   it('emits security headers even on a 404 envelope', async () => {
     const res = await fetch(`${harness.baseUrl}/nope`);
     expect(res.status).toBe(404);

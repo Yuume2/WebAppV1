@@ -68,6 +68,18 @@ export async function handleRequest(
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
+  // Block legacy Adobe cross-domain policy probes (crossdomain.xml /
+  // clientaccesspolicy.xml) — we don't serve any, but we also don't want
+  // a permissive default to be inferred. Same shape as Helmet's default.
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+  // No DNS prefetching for embedded URLs — browsers ignore this for our
+  // JSON anyway, but it's a free hardening signal for any HTML error page
+  // a misconfigured proxy might surface.
+  res.setHeader('X-DNS-Prefetch-Control', 'off');
+  // Tell crawlers not to index API endpoints. Most never reach them, but
+  // misrouted Googlebot hits do happen and indexing JSON envelopes is just
+  // noise + a small information-disclosure surface.
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
 
   if (rawMethod === 'OPTIONS') {
     res.writeHead(204);
