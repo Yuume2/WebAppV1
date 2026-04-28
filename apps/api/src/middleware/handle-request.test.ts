@@ -79,6 +79,14 @@ describe('dispatch — error envelopes', () => {
     const notFound = await fetch(`${harness.baseUrl}/nope`);
     expect(notFound.headers.get('cache-control')).toBe('no-store');
   });
+
+  it('emits Allow header on 405 listing the methods the path actually supports', async () => {
+    // /health is a GET-only route; a DELETE must surface Allow: GET (RFC 7231).
+    const res = await fetch(`${harness.baseUrl}/health`, { method: 'DELETE' });
+    expect(res.status).toBe(405);
+    const allow = res.headers.get('allow') ?? '';
+    expect(allow).toContain('GET');
+  });
 });
 
 // ── CSRF protection ───────────────────────────────────────────────────────────
