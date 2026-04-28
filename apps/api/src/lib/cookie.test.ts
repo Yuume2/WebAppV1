@@ -78,6 +78,22 @@ describe('serializeSetCookie', () => {
     // raw "; " would terminate the cookie attribute list — the encoded form is safe.
     expect(cookie).toContain(encodeURIComponent('a; b=c'));
   });
+
+  it('does NOT emit a Domain attribute (host-only cookie semantics)', () => {
+    // Without Domain= the cookie is bound to the exact host that issued
+    // it — no leakage to subdomains. A future addition of Domain=
+    // (e.g. ".example.com") would broaden the attack surface to every
+    // subdomain. Pin the absence so that change has to update the test.
+    const cookie = serializeSetCookie('sid', 'v', true);
+    expect(cookie).not.toMatch(/\bDomain=/i);
+  });
+
+  it('escapes "=" inside cookie value via URL-encoding (no premature attribute split)', () => {
+    // A token-like value with an internal "=" must not be interpreted as
+    // an attribute boundary. encodeURIComponent maps "=" to "%3D".
+    const cookie = serializeSetCookie('sid', 'a=b', false);
+    expect(cookie.startsWith('sid=a%3Db;')).toBe(true);
+  });
 });
 
 describe('clearCookieHeader', () => {
@@ -92,5 +108,23 @@ describe('clearCookieHeader', () => {
 
   it('emits Secure when secure=true', () => {
     expect(clearCookieHeader('sid', true)).toContain('Secure');
+  });
+
+  it('NO Domain attribute (matches serializeSetCookie so the browser actually clears)', () => {
+    // Browsers only delete a cookie when the clearing Set-Cookie matches
+    // the original on (name, Path, Domain). serializeSetCookie omits
+    // Domain → clearCookieHeader must omit it too. Pin the symmetry so
+    // a future addition of Domain= to one but not the other doesn't
+    // produce 'cookie won't go away on logout' bugs.
+    const cookie = clearCookieHeader('sid', true);
+    expect(cookie).not.toMatch(/\bDomain=/i);
+  });
+
+  it('Path matches the issuing serializeSetCookie (so the clear actually targets the same cookie)', () => {
+    // Browsers also key on Path. clearCookieHeader hard-codes Path=/ ;
+    // serializeSetCookie reads Path from SESSION_COOKIE_OPTIONS. Pin the
+    // observable equivalence: both produce 'Path=/' so the clear works.
+    expect(clearCookieHeader('sid', false)).toContain('Path=/');
+    expect(serializeSetCookie('sid', 'v', false)).toContain('Path=/');
   });
 });

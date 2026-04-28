@@ -278,6 +278,70 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('signup 201 does not emit a Location header (auth response is data + Set-Cookie, not a redirect target)', async () => {
+    // POST /v1/auth/signup returns 201 with the SafeUser body in the
+    // response — there's no canonical resource URL to point at. A
+    // refactor that switched to respondCreated would attach a Location
+    // header, which clients might follow as a 302 once it ships in
+    // some HTTP libraries. Pin the absence so that change has to update
+    // the test deliberately.
+    const res = await post(base, '/v1/auth/signup', { email: 'noloc@example.com', password: 'password123' });
+    expect(res.status).toBe(201);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
+  it('signup that crashes during createUser does not emit Set-Cookie (no half-grant)', async () => {
+    // The throw becomes a 500 via handleRequest's catch. The 500 envelope
+    // is built by writeJson with no extra headers, so Set-Cookie cannot
+    // ride that response. Pin it so a future refactor that pre-built
+    // cookieHeader before calling createUser cannot accidentally ship a
+    // cookie with no matching DB row behind it.
+    const { baseUrl, close } = await startServer(makeDeps({
+      createUser: async () => { throw new Error('crash'); },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'half@example.com', password: 'password123' });
+    expect(res.status).toBe(500);
+    expect(res.headers.get('set-cookie')).toBeNull();
+    await close();
+  });
+
+  it('createSession is called only AFTER createUser succeeds (no orphan session)', async () => {
+    // Pin: if createUser throws, createSession must not have been called.
+    // Otherwise a partial-failure could leave a session row pointing at a
+    // user_id that was never persisted — a foreign-key violation in
+    // production, and a real-userId-spoof oracle in dev where FKs are
+    // off. Pin the call ordering with a spy.
+    let createSessionCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      createUser:    async () => { throw new Error('user-create-boom'); },
+      createSession: async (h, userId, expiresAt) => {
+        createSessionCalls++;
+        return { id: h, userId, expiresAt, createdAt: new Date() };
+      },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'orphan@example.com', password: 'password123' });
+    // The route's catch-all in handleRequest converts the throw to a 500.
+    expect(res.status).toBe(500);
+    expect(createSessionCalls).toBe(0);
+    await close();
+  });
+
+  it('409 conflict fires BEFORE createUser (no orphan user row on duplicate-email path)', async () => {
+    // Order-of-operations pin: a duplicate-email probe must NOT trigger
+    // createUser. Otherwise a unique-constraint violation would surface as
+    // a 500 instead of a clean 409, AND we'd be wasting a row insert
+    // attempt + the password hash that came before it.
+    let createCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async () => mockUser(),
+      createUser:      async () => { createCalls++; return mockUser(); },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'dupe@example.com', password: 'password123' });
+    expect(res.status).toBe(409);
+    expect(createCalls).toBe(0);
+    await close();
+  });
+
   it('returns 409 for duplicate email', async () => {
     const { baseUrl, close: c } = await startServer(
       makeDeps({ findUserByEmail: async () => mockUser() }),
@@ -402,6 +466,28 @@ describe('POST /v1/auth/login', () => {
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('unauthenticated');
+    await close();
+  });
+
+  it('500 from createSession crash emits no Set-Cookie + does not reset the rate-limit bucket', async () => {
+    // A login that authenticated correctly but crashed mid-session-create
+    // must NOT ship a cookie (no DB-backed session means a 'logged in'
+    // indicator that fails immediately). Also: the rate-limit reset only
+    // fires AFTER createSession succeeds, so a half-failure must keep the
+    // bucket counted — otherwise an attacker who can crash createSession
+    // (e.g. via a transient DB hiccup) gets to retry without paying the
+    // brute-force tax.
+    const okHash = await hashPassword('rightpw');
+    let resetCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async () => mockUser({ passwordHash: okHash }),
+      createSession:   async () => { throw new Error('session-create-boom'); },
+      resetRateLimit:  () => { resetCalls++; },
+    }));
+    const res = await post(baseUrl, '/v1/auth/login', { email: 'test@example.com', password: 'rightpw' });
+    expect(res.status).toBe(500);
+    expect(res.headers.get('set-cookie')).toBeNull();
+    expect(resetCalls).toBe(0);
     await close();
   });
 
@@ -650,6 +736,24 @@ describe('GET /v1/auth/me', () => {
     });
     expect(res.status).toBe(401);
     expect(res.headers.get('set-cookie')).toBeNull();
+    await close();
+  });
+
+  it('ignores Authorization Bearer header — only cookie auth is supported', async () => {
+    // We are cookie-auth only. A client that sends a Bearer token in
+    // Authorization is either confused (wrong API) or attempting a
+    // confusion attack. /me must NOT honour the Authorization header
+    // and must NOT call the session repo for it. Pin both: the
+    // response is 401, and no session lookup is triggered.
+    let lookupCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async () => { lookupCalls++; return null; },
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${'a'.repeat(64)}` },
+    });
+    expect(res.status).toBe(401);
+    expect(lookupCalls).toBe(0);
     await close();
   });
 
