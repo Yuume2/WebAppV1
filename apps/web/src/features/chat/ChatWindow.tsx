@@ -327,32 +327,62 @@ export function ChatWindow({
             background: '#10101a',
           }}
         >
-          <input
-            ref={searchInputRef}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                setSearchQuery('');
-                setSearchOpen(false);
-              }
-            }}
-            onClick={(e) => e.stopPropagation()}
-            placeholder="Find in chat…"
-            aria-label="Find in chat"
-            style={{
-              flex: 1,
-              background: '#1b1b23',
-              border: '1px solid #2a2a30',
-              borderRadius: 6,
-              padding: '0.35rem 0.55rem',
-              color: '#f5f5f5',
-              fontSize: '0.8rem',
-              fontFamily: 'inherit',
-              outline: 'none',
-            }}
-          />
+          <div style={{ position: 'relative', flex: 1, display: 'flex' }}>
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setSearchQuery('');
+                  setSearchOpen(false);
+                }
+              }}
+              onClick={(e) => e.stopPropagation()}
+              placeholder="Find in chat…"
+              aria-label="Find in chat"
+              style={{
+                flex: 1,
+                background: '#1b1b23',
+                border: '1px solid #2a2a30',
+                borderRadius: 6,
+                padding: '0.35rem 1.6rem 0.35rem 0.55rem',
+                color: '#f5f5f5',
+                fontSize: '0.8rem',
+                fontFamily: 'inherit',
+                outline: 'none',
+              }}
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
+                aria-label="Clear search"
+                style={{
+                  position: 'absolute',
+                  top: '50%',
+                  right: 4,
+                  transform: 'translateY(-50%)',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#8a8a95',
+                  cursor: 'pointer',
+                  fontSize: '0.95rem',
+                  lineHeight: 1,
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  fontFamily: 'inherit',
+                }}
+              >
+                ×
+              </button>
+            ) : null}
+          </div>
           {trimmedQuery ? (
             <span style={{ fontSize: '0.7rem', color: '#8a8a95' }} aria-live="polite">
               {matchCount} {matchCount === 1 ? 'match' : 'matches'}
