@@ -60,6 +60,9 @@ export function WorkspaceSidebar({
   onReset,
 }: WorkspaceSidebarProps) {
   const total = visibleWindows.length + closedWindows.length;
+  const totalUnreadVisible = unreadByWindow
+    ? visibleWindows.reduce((acc, w) => acc + (unreadByWindow[w.id] ? 1 : 0), 0)
+    : 0;
   const [windowFilter, setWindowFilter] = useState('');
   const filterEnabled = total >= 5;
   const lowerFilter = windowFilter.trim().toLowerCase();
@@ -173,6 +176,27 @@ export function WorkspaceSidebar({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <SectionLabel>
             Open · {filterEnabled && lowerFilter ? `${filteredVisible.length}/${visibleWindows.length}` : visibleWindows.length}
+            {totalUnreadVisible > 0 ? (
+              <span
+                aria-label={`${totalUnreadVisible} window${totalUnreadVisible === 1 ? '' : 's'} with unread replies`}
+                title={`${totalUnreadVisible} unread`}
+                style={{
+                  marginLeft: 6,
+                  fontSize: '0.6rem',
+                  padding: '0 5px',
+                  height: 14,
+                  lineHeight: '14px',
+                  borderRadius: 7,
+                  background: '#15203b',
+                  border: '1px solid #3a3f6b',
+                  color: '#9aa6ff',
+                  display: 'inline-block',
+                  verticalAlign: 'middle',
+                }}
+              >
+                {totalUnreadVisible} new
+              </span>
+            ) : null}
           </SectionLabel>
           {onMarkAllAsRead ? (
             <button
