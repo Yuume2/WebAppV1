@@ -11,6 +11,7 @@ import { ProviderError } from './provider.interface.js';
 export type OpenAIVerifyResult = 'ok' | 'unauthorized' | 'provider_error';
 
 const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
+const VERIFY_TIMEOUT_MS = 10_000;
 
 export async function verifyOpenAIKey(apiKey: string): Promise<OpenAIVerifyResult> {
   let res: Response;
@@ -18,8 +19,10 @@ export async function verifyOpenAIKey(apiKey: string): Promise<OpenAIVerifyResul
     res = await fetch(OPENAI_MODELS_URL, {
       method: 'GET',
       headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
     });
   } catch {
+    // network failure or abort — treat as transient, surface to caller as 502.
     return 'provider_error';
   }
   if (res.status === 200) return 'ok';
