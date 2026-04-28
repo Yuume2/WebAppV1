@@ -104,6 +104,17 @@ export function ChatWindow({
     writeDraft(draftStorageKey, draft);
   }, [draft, draftStorageKey]);
 
+  useEffect(() => {
+    if (!lowerQuery) return;
+    const first = filteredMessages[0];
+    if (!first) return;
+    const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(first.id)}`);
+    if (el && 'scrollIntoView' in el) {
+      (el as HTMLElement).scrollIntoView({ block: 'start', behavior: 'auto' });
+    }
+    stickyRef.current = false;
+  }, [lowerQuery, filteredMessages]);
+
   const commitRename = () => {
     const trimmed = titleDraft.trim();
     if (trimmed && trimmed !== title) onRename?.(id, trimmed);
@@ -932,4 +943,11 @@ function renderWithHighlight(content: string, query: string): ReactNode {
     cursor = idx + query.length;
   }
   return out;
+}
+
+function cssEscapeId(id: string): string {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(id);
+  }
+  return id.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
 }
