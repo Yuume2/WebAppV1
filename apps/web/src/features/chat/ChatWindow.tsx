@@ -648,6 +648,9 @@ function MessageBubble({
 
   return (
     <div
+      id={`msg-${message.id}`}
+      data-role={message.role}
+      data-status={status}
       style={{
         alignSelf: isUser ? 'flex-end' : 'flex-start',
         maxWidth: '85%',
@@ -660,6 +663,7 @@ function MessageBubble({
         color: '#e8e8ef',
         whiteSpace: 'pre-wrap',
         opacity,
+        scrollMarginTop: 16,
       }}
     >
       <div
