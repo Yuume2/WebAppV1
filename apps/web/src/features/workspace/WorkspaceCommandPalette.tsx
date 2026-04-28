@@ -133,10 +133,26 @@ export function WorkspaceCommandPalette({
     return out;
   }, [query, recentIds, activeId, visibleWindows, closedWindows]);
 
+  const pinnedEntries: PaletteWindow[] = useMemo(() => {
+    if (query.trim()) return [];
+    if (pinnedSet.size === 0) return [];
+    const recentIdSet = new Set(recentEntries.map((r) => r.window.id));
+    const all = [
+      ...visibleWindows.map((w) => ({ window: w, open: true })),
+      ...closedWindows.map((w) => ({ window: w, open: false })),
+    ];
+    return all
+      .filter((it) => pinnedSet.has(it.window.id) && it.window.id !== activeId && !recentIdSet.has(it.window.id))
+      .slice(0, 6);
+  }, [query, pinnedSet, recentEntries, activeId, visibleWindows, closedWindows]);
+
   const unifiedItems: UnifiedItem[] = useMemo(() => {
     const out: UnifiedItem[] = [];
     for (const it of recentEntries) {
       out.push({ kind: 'window', key: `recent-${it.window.id}`, entry: it });
+    }
+    for (const it of pinnedEntries) {
+      out.push({ kind: 'window', key: `pinned-${it.window.id}`, entry: it });
     }
     if (filteredWorkspaces.length > 1) {
       for (const w of filteredWorkspaces) {
@@ -145,6 +161,7 @@ export function WorkspaceCommandPalette({
     }
     for (const it of filtered) {
       if (recentEntries.some((r) => r.window.id === it.window.id)) continue;
+      if (pinnedEntries.some((r) => r.window.id === it.window.id)) continue;
       out.push({ kind: 'window', key: `w-${it.window.id}`, entry: it });
     }
     for (let i = 0; i < messageMatches.length; i += 1) {
@@ -153,7 +170,7 @@ export function WorkspaceCommandPalette({
       out.push({ kind: 'message', key: `m-${m.windowId}-${m.messageId}-${i}`, match: m });
     }
     return out;
-  }, [recentEntries, filteredWorkspaces, filtered, messageMatches]);
+  }, [recentEntries, pinnedEntries, filteredWorkspaces, filtered, messageMatches]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 200);
@@ -199,7 +216,12 @@ export function WorkspaceCommandPalette({
         setOpen((v) => {
           const next = !v;
           if (next) {
-            requestAnimationFrame(() => inputRef.current?.focus());
+            const restored = readLastQuery(activeWorkspaceId);
+            if (restored) setQuery(restored);
+            requestAnimationFrame(() => {
+              inputRef.current?.focus();
+              inputRef.current?.select();
+            });
           } else {
             setQuery('');
           }
@@ -209,13 +231,21 @@ export function WorkspaceCommandPalette({
       }
       if (open && e.key === 'Escape') {
         e.preventDefault();
-        setOpen(false);
-        setQuery('');
+        if (query.length > 0) {
+          setQuery('');
+        } else {
+          setOpen(false);
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
+  }, [open, query, activeWorkspaceId]);
+
+  useEffect(() => {
+    if (!open) return;
+    writeLastQuery(activeWorkspaceId, query);
+  }, [open, query, activeWorkspaceId]);
 
   const choose = (it: PaletteWindow) => {
     if (it.open) onFocus(it.window.id);
@@ -284,15 +314,45 @@ export function WorkspaceCommandPalette({
         <h2 id="cmdk-title" style={titleStyle}>
           Switch chat window
         </h2>
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onInputKeyDown}
-          placeholder="Search windows, workspaces, or messages…"
-          aria-label="Filter chat windows or workspaces"
-          style={inputStyle}
-        />
+        <div style={{ position: 'relative' }}>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onInputKeyDown}
+            placeholder="Search windows, workspaces, or messages…"
+            aria-label="Filter chat windows or workspaces"
+            style={{ ...inputStyle, paddingRight: query.length > 0 ? 28 : undefined }}
+          />
+          {query.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                inputRef.current?.focus();
+              }}
+              aria-label="Clear search"
+              title="Clear search"
+              style={{
+                position: 'absolute',
+                right: 6,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                color: '#8a8a95',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                lineHeight: 1,
+                padding: '2px 6px',
+                borderRadius: 4,
+                fontFamily: 'inherit',
+              }}
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
         {query.trim().length >= 2 && activeId ? (
           <div style={{ display: 'flex', gap: 6, padding: '0 0.1rem' }}>
             <button
@@ -354,6 +414,37 @@ export function WorkspaceCommandPalette({
             </ul>
           </div>
         ) : null}
+        {pinnedEntries.length > 0 ? (
+          <div>
+            <div style={sectionLabelStyle}>Pinned</div>
+            <ul role="list" style={listStyle}>
+              {pinnedEntries.map((it) => {
+                const idx = unifiedItems.findIndex(
+                  (u) => u.kind === 'window' && u.key === `pinned-${it.window.id}`,
+                );
+                const isHover = idx === Math.min(hover, unifiedItems.length - 1);
+                return (
+                  <li key={`pinned-${it.window.id}`} role="option" aria-selected={isHover}
+                    onMouseEnter={() => idx >= 0 && setHover(idx)}
+                    onClick={() => choose(it)}
+                    style={{
+                      ...rowStyle,
+                      background: isHover ? '#1c1c28' : 'transparent',
+                      border: `1px solid ${isHover ? '#3a3f6b' : 'transparent'}`,
+                    }}
+                  >
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {it.window.title}
+                    </span>
+                    <span style={metaStyle}>{it.window.provider} · {it.window.model}</span>
+                    {!it.open ? <span style={badgeStyle}>closed</span> : null}
+                    <span style={pinnedBadgeStyle}>pinned</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
         {filteredWorkspaces.length > 1 ? (
           <div>
             <div style={sectionLabelStyle}>Workspaces</div>
@@ -392,10 +483,16 @@ export function WorkspaceCommandPalette({
           </div>
         ) : null}
         <ul role="listbox" aria-label="Chat windows" style={listStyle}>
-          {filtered.length === 0 && messageMatches.length === 0 && filteredWorkspaces.length <= 1 && recentEntries.length === 0 ? (
-            <li style={emptyStyle}>No matches.</li>
+          {filtered.length === 0 && messageMatches.length === 0 && filteredWorkspaces.length <= 1 && recentEntries.length === 0 && pinnedEntries.length === 0 ? (
+            <li style={emptyStyle}>
+              {query.trim().length === 0
+                ? 'No chat windows yet.'
+                : query.trim().length < 2
+                  ? `No window titled “${query}”. Type 2+ chars to also search messages.`
+                  : `No matches for “${query}” in titles or messages.`}
+            </li>
           ) : (
-            filtered.filter((it) => !recentEntries.some((r) => r.window.id === it.window.id)).map((it) => {
+            filtered.filter((it) => !recentEntries.some((r) => r.window.id === it.window.id) && !pinnedEntries.some((p) => p.window.id === it.window.id)).map((it) => {
               const idx = unifiedItems.findIndex((u) => u.kind === 'window' && u.entry.window.id === it.window.id);
               const isHover = idx === Math.min(hover, unifiedItems.length - 1);
               const isActive = it.window.id === activeId;
@@ -499,8 +596,33 @@ export function WorkspaceCommandPalette({
             </ul>
           </>
         ) : null}
+        <div
+          aria-live="polite"
+          aria-atomic="true"
+          style={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: 'hidden',
+            clip: 'rect(0,0,0,0)',
+            whiteSpace: 'nowrap',
+            border: 0,
+          }}
+        >
+          {(() => {
+            const total = unifiedItems.length;
+            if (total === 0) return query.trim() ? `No matches for ${query}` : 'No items';
+            return query.trim() ? `${total} result${total === 1 ? '' : 's'} for ${query}` : `${total} item${total === 1 ? '' : 's'}`;
+          })()}
+        </div>
         <div style={footerStyle}>
-          <span>↑↓ navigate · Enter to open · Esc to close · type ≥2 chars to search messages</span>
+          <span>
+            {query.trim().length > 0
+              ? '↑↓ navigate · Enter to open · Esc clears query, again to close'
+              : '↑↓ navigate · Enter to open · Esc to close · type ≥2 chars to search messages'}
+          </span>
         </div>
       </div>
     </div>
@@ -702,6 +824,26 @@ function readRecents(workspaceId: string): string[] {
     return parsed.filter((x): x is string => typeof x === 'string').slice(0, 8);
   } catch {
     return [];
+  }
+}
+
+function readLastQuery(workspaceId: string): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = window.sessionStorage.getItem(`wav.palette.lastQuery.${workspaceId}`);
+    return typeof raw === 'string' ? raw.slice(0, 200) : '';
+  } catch {
+    return '';
+  }
+}
+
+function writeLastQuery(workspaceId: string, q: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (q) window.sessionStorage.setItem(`wav.palette.lastQuery.${workspaceId}`, q.slice(0, 200));
+    else window.sessionStorage.removeItem(`wav.palette.lastQuery.${workspaceId}`);
+  } catch {
+    // ignore
   }
 }
 
