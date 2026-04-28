@@ -138,6 +138,24 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('persists lowercase email (createUser receives the normalised form, not the raw input)', async () => {
+    // The response email is lowercase (pinned by 'normalises email to
+    // lowercase'), but that doesn't prove the *storage* call also got
+    // the normalised form — a refactor could lowercase post-create
+    // and break the unique-constraint guarantee on the column. Pin
+    // that the createUser dep receives the lowercased email directly.
+    let createdEmail: string | undefined;
+    const { baseUrl, close } = await startServer(makeDeps({
+      createUser: async (email, hash, displayName) => {
+        createdEmail = email;
+        return mockUser({ email, passwordHash: hash, displayName: displayName ?? null });
+      },
+    }));
+    await post(baseUrl, '/v1/auth/signup', { email: 'CaSeD@Example.COM', password: 'password123' });
+    expect(createdEmail).toBe('cased@example.com');
+    await close();
+  });
+
   it.each([
     ['missing-at-sign',     'aliceexample.com'],
     ['empty-local-part',    '@example.com'],
