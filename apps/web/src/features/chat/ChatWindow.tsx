@@ -95,12 +95,18 @@ export function ChatWindow({
   const toast = useToast();
   const pinStorageKey = `wav.chat.pinned.${id}`;
   const [pinned, setPinned] = useState<boolean>(() => readBoolFlag(pinStorageKey));
+  const pinInitRef = useRef(false);
   useEffect(() => {
     writeBoolFlag(pinStorageKey, pinned);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('wav:pin-changed', { detail: { id, pinned } }));
     }
-  }, [pinStorageKey, pinned, id]);
+    if (!pinInitRef.current) {
+      pinInitRef.current = true;
+      return;
+    }
+    toast.push('info', pinned ? `${title} pinned` : `${title} unpinned`);
+  }, [pinStorageKey, pinned, id, title, toast]);
 
   const updateStickiness = () => {
     const el = scrollRef.current;
