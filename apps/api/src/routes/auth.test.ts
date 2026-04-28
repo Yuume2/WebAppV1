@@ -113,6 +113,12 @@ describe('POST /v1/auth/signup', () => {
     const maxAgeMatch = cookie?.match(/Max-Age=(\d+)/);
     expect(maxAgeMatch).not.toBeNull();
     expect(Number(maxAgeMatch?.[1])).toBeGreaterThan(0);
+    // CRITICAL: a successful signup ships a Set-Cookie with the session
+    // token. If this response gets cached by a CDN, every cache HIT below
+    // hands the same session cookie to a different user. Cache-Control:
+    // no-store is the only thing keeping that catastrophe from being one
+    // misconfigured CDN away.
+    expect(res.headers.get('cache-control')).toBe('no-store');
   });
 
   it('normalises email to lowercase', async () => {
@@ -149,6 +155,13 @@ describe('POST /v1/auth/signup', () => {
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('conflict');
+    // 409 must not be cacheable either — a cached 409 would falsely tell a
+    // legit signup attempt that their email is taken even after the
+    // conflicting account was deleted upstream.
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    // 409 must NOT emit a Set-Cookie either — there's no session to grant
+    // when the signup failed.
+    expect(res.headers.get('set-cookie')).toBeNull();
     await c();
   });
 });
@@ -177,6 +190,10 @@ describe('POST /v1/auth/login', () => {
     const cookie = getSetCookie(res);
     expect(cookie).toBeTruthy();
     expect(cookie).toContain(`${SESSION_COOKIE_NAME}=`);
+    // Same caching catastrophe as signup: a 200 with Set-Cookie that hits a
+    // shared cache would broadcast one user's session to everyone. Pin
+    // Cache-Control: no-store on the success path explicitly.
+    expect(res.headers.get('cache-control')).toBe('no-store');
 
     await close();
   });
@@ -395,6 +412,49 @@ describe('GET /v1/auth/me', () => {
     expect(b1.error.code).toBe('unauthenticated');
     expect(b2.error.code).toBe('unauthenticated');
     expect(b3.error.code).toBe('unauthenticated');
+    // The human-readable message is also unified across all paths so a
+    // sophisticated probe can't distinguish 'session expired' from 'user
+    // deleted' from 'no cookie' via the message string. Pin all three.
+    expect(b1.error.message).toBe('Not authenticated');
+    expect(b2.error.message).toBe('Not authenticated');
+    expect(b3.error.message).toBe('Not authenticated');
+  });
+
+  it('401 from /me does not emit a Set-Cookie header (no surprise session clear)', async () => {
+    // /me is a read endpoint. A 401 should not mutate the caller's cookie
+    // jar — only the explicit /logout path is allowed to emit Set-Cookie
+    // for the session cookie. Pin this so a refactor that defensively
+    // 'cleans up' a stale cookie on /me 401 doesn't accidentally log out
+    // a legit user whose session got invalidated server-side.
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async () => null,
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${'a'.repeat(64)}` },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('set-cookie')).toBeNull();
+    await close();
+  });
+
+  it('rejects whitespace-only session cookie without touching the session repo', async () => {
+    // Probe with a whitespace-only token: must short-circuit before any DB
+    // lookup and return the same envelope as a missing cookie. Otherwise an
+    // attacker could measure the timing difference between 'no cookie' and
+    // 'cookie that ends up calling the repo'.
+    let lookupCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async () => { lookupCalls++; return null; },
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=   ` },
+    });
+    expect(res.status).toBe(401);
+    expect(lookupCalls).toBe(0);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.message).toBe('Not authenticated');
+    await close();
   });
 });
 
@@ -458,6 +518,21 @@ describe('POST /v1/auth/logout', () => {
     expect(res.status).toBe(200);
     const cookie = getSetCookie(res);
     expect(cookie).toContain('Max-Age=0');
+    await close();
+  });
+
+  it('does not call deleteSession when the cookie value is whitespace-only', async () => {
+    // Same probe-resistance logic as meController: a whitespace-only token
+    // must not reach the session repo. The cookie is still cleared on the
+    // way out (Max-Age=0) so a subsequent normal logout still works.
+    let deleteCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      deleteSession: async () => { deleteCalls++; },
+    }));
+    const res = await post(baseUrl, '/v1/auth/logout', {}, { Cookie: `${SESSION_COOKIE_NAME}=  ` });
+    expect(res.status).toBe(200);
+    expect(deleteCalls).toBe(0);
+    expect(getSetCookie(res)).toContain('Max-Age=0');
     await close();
   });
 
@@ -543,6 +618,21 @@ describe('rate limiting — signup', () => {
     expect(res.status).toBe(201);
     await close();
   });
+
+  it('rate-limit gate fires BEFORE the user-lookup / hash work on signup', async () => {
+    // Mirror of the login gate-ordering test: a full bucket must short-
+    // circuit BEFORE findUserByEmail so an attacker can't enumerate emails
+    // by timing the difference between rate-limited-existing-user and
+    // rate-limited-fresh-email.
+    let userLookups = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      checkRateLimit:  () => ({ ok: false, retryAfterSecs: 60 }),
+      findUserByEmail: async () => { userLookups++; return null; },
+    }));
+    await post(baseUrl, '/v1/auth/signup', { email: 'a@b.com', password: 'password123' });
+    expect(userLookups).toBe(0);
+    await close();
+  });
 });
 
 describe('rate limiting — login', () => {
@@ -556,6 +646,40 @@ describe('rate limiting — login', () => {
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('rate_limited');
     expect(res.headers.get('retry-after')).toBe('120');
+    await close();
+  });
+
+  it('rejects whitespace-only email with 400 invalid_body (schema trims and enforces min:1)', async () => {
+    // The login schema trims the email field — pin that whitespace-only
+    // input rejects with invalid_body, not 401, and never reaches the
+    // user repo. Otherwise an attacker could probe whether the system
+    // accepts 'empty' emails as a backdoor (it won't, but pin it).
+    let lookupCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async () => { lookupCalls++; return null; },
+    }));
+    const res = await post(baseUrl, '/v1/auth/login', { email: '   ', password: 'anything' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('invalid_body');
+    expect(lookupCalls).toBe(0);
+    await close();
+  });
+
+  it('rate-limit gate fires BEFORE the user lookup (no enumeration via timing)', async () => {
+    // Pin the order of operations: when the bucket is full, login must
+    // short-circuit BEFORE calling findUserByEmail. Otherwise a probe
+    // could measure the response time difference between an existing-
+    // user-but-rate-limited path and a non-existing-user-rate-limited
+    // path, which is an account-enumeration oracle.
+    let userLookups = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      checkRateLimit:  () => ({ ok: false, retryAfterSecs: 60 }),
+      findUserByEmail: async () => { userLookups++; return null; },
+    }));
+    await post(baseUrl, '/v1/auth/login', { email: 'a@b.com', password: 'whatever' });
+    expect(userLookups).toBe(0);
     await close();
   });
 

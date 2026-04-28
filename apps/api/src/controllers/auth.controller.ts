@@ -161,7 +161,10 @@ export async function logoutController(ctx: RequestContext, deps: AuthDeps): Pro
   const cookies = parseCookies(ctx.req.headers.cookie);
   const token   = cookies[SESSION_COOKIE_NAME];
 
-  if (token) {
+  // Same trim-empty short-circuit as meController: a whitespace-only cookie
+  // is a probe / clearing artefact, not a real session — don't waste a
+  // session-by-hash lookup on it.
+  if (token && token.trim().length > 0) {
     await deps.deleteSession(hashSessionToken(token));
   }
 
@@ -173,27 +176,37 @@ export async function logoutController(ctx: RequestContext, deps: AuthDeps): Pro
   };
 }
 
+// All 401 paths from /v1/auth/me share this single envelope so a caller can
+// not distinguish 'no cookie' / 'session unknown' / 'session expired' /
+// 'user deleted' from the response message — that distinction is an
+// account-enumeration oracle. Test pin: see auth.test.ts ("always returns the
+// unauthenticated code on 401"). The error code is already uniform; this
+// unifies the human-readable message too.
+const ME_UNAUTH = respondError('unauthenticated', 'Not authenticated', 401);
+
 export async function meController(ctx: RequestContext, deps: AuthDeps): Promise<InternalResult> {
   const cookies = parseCookies(ctx.req.headers.cookie);
   const token   = cookies[SESSION_COOKIE_NAME];
 
-  if (!token) return respondError('unauthenticated', 'Not authenticated', 401);
+  // Reject empty AND whitespace-only token values without ever touching the
+  // session repo. A trimmed-empty cookie is either a clearing artefact or a
+  // probe — both should short-circuit identically to a missing cookie.
+  if (!token || token.trim().length === 0) return ME_UNAUTH;
 
   const tokenHash = hashSessionToken(token);
   const session = await deps.findSessionByTokenHash(tokenHash);
-  if (!session) {
-    return respondError('unauthenticated', 'Session expired or invalid', 401);
-  }
+  if (!session) return ME_UNAUTH;
+
   if (session.expiresAt <= new Date()) {
     // Opportunistic cleanup — the matching row is now strictly stale, no
     // value keeping it in the DB. Fire-and-forget so we don't add latency
     // to the response, and swallow errors (best-effort hygiene).
     deps.deleteSession(tokenHash).catch(() => { /* ignore */ });
-    return respondError('unauthenticated', 'Session expired or invalid', 401);
+    return ME_UNAUTH;
   }
 
   const user = await deps.findUserById(session.userId);
-  if (!user) return respondError('unauthenticated', 'User not found', 401);
+  if (!user) return ME_UNAUTH;
 
   return respond(toSafeUser(user));
 }
