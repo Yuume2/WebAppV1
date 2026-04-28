@@ -1072,6 +1072,7 @@ export function ChatWindow({
             open={templatesOpen}
             onToggle={() => setTemplatesOpen((v) => !v)}
             onClose={() => setTemplatesOpen(false)}
+            currentDraft={draft}
             onPick={(prefix) => {
               setTemplatesOpen(false);
               setDraft((prev) => {
@@ -1791,6 +1792,41 @@ interface TemplateMenuProps {
   onToggle: () => void;
   onClose: () => void;
   onPick: (prefix: string) => void;
+  currentDraft: string;
+}
+
+type TemplateKey = string;
+
+const RECENT_TEMPLATES_KEY = 'wav.templates.recent';
+const RECENT_TEMPLATES_MAX = 3;
+
+function readRecentTemplates(): TemplateKey[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(RECENT_TEMPLATES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string').slice(0, RECENT_TEMPLATES_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentTemplates(items: TemplateKey[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(RECENT_TEMPLATES_KEY, JSON.stringify(items.slice(0, RECENT_TEMPLATES_MAX)));
+    window.dispatchEvent(new Event('wav:templates-changed'));
+  } catch {
+    // ignore quota
+  }
+}
+
+function pushRecentTemplate(key: TemplateKey): void {
+  const current = readRecentTemplates();
+  const next = [key, ...current.filter((k) => k !== key)].slice(0, RECENT_TEMPLATES_MAX);
+  writeRecentTemplates(next);
 }
 
 const TEMPLATES: Array<{ label: string; prefix: string }> = [
@@ -1838,9 +1874,11 @@ function writeUserTemplates(items: UserTemplate[]): void {
   }
 }
 
-function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
+function TemplateMenu({ open, onToggle, onClose, onPick, currentDraft }: TemplateMenuProps) {
   const [userTemplates, setUserTemplates] = useState<UserTemplate[]>(() => readUserTemplates());
+  const [recents, setRecents] = useState<TemplateKey[]>(() => readRecentTemplates());
   const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [newPrefix, setNewPrefix] = useState('');
   useEffect(() => {
@@ -1848,7 +1886,10 @@ function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    const onChange = () => setUserTemplates(readUserTemplates());
+    const onChange = () => {
+      setUserTemplates(readUserTemplates());
+      setRecents(readRecentTemplates());
+    };
     window.addEventListener('keydown', onKey);
     window.addEventListener('wav:templates-changed', onChange);
     return () => {
@@ -1856,27 +1897,78 @@ function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
       window.removeEventListener('wav:templates-changed', onChange);
     };
   }, [open, onClose]);
+  const handlePick = (key: TemplateKey, prefix: string) => {
+    pushRecentTemplate(key);
+    onPick(prefix);
+  };
   const onSaveNew = () => {
     const label = newLabel.trim();
     const prefix = newPrefix.trim();
     if (!label || !prefix) return;
-    const next: UserTemplate = {
-      id: `t-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
-      label,
-      prefix,
-    };
-    const updated = [next, ...userTemplates].slice(0, 50);
-    setUserTemplates(updated);
-    writeUserTemplates(updated);
+    if (editingId) {
+      const updated = userTemplates.map((t) => (t.id === editingId ? { ...t, label, prefix } : t));
+      setUserTemplates(updated);
+      writeUserTemplates(updated);
+    } else {
+      const next: UserTemplate = {
+        id: `t-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        label,
+        prefix,
+      };
+      const updated = [next, ...userTemplates].slice(0, 50);
+      setUserTemplates(updated);
+      writeUserTemplates(updated);
+    }
     setNewLabel('');
     setNewPrefix('');
     setAdding(false);
+    setEditingId(null);
   };
   const onDelete = (id: string) => {
     const updated = userTemplates.filter((t) => t.id !== id);
     setUserTemplates(updated);
     writeUserTemplates(updated);
+    if (editingId === id) {
+      setEditingId(null);
+      setAdding(false);
+      setNewLabel('');
+      setNewPrefix('');
+    }
   };
+  const onEdit = (t: UserTemplate) => {
+    setEditingId(t.id);
+    setAdding(true);
+    setNewLabel(t.label);
+    setNewPrefix(t.prefix);
+  };
+  const onSaveDraft = () => {
+    setEditingId(null);
+    setAdding(true);
+    setNewLabel('');
+    setNewPrefix(currentDraft);
+  };
+  const cancelForm = () => {
+    setAdding(false);
+    setEditingId(null);
+    setNewLabel('');
+    setNewPrefix('');
+  };
+  const builtinByLabel = new Map(TEMPLATES.map((t) => [t.label, t]));
+  const userById = new Map(userTemplates.map((t) => [t.id, t]));
+  const recentEntries = recents
+    .map((key) => {
+      if (key.startsWith('user:')) {
+        const t = userById.get(key.slice(5));
+        return t ? { key, label: t.label, prefix: t.prefix } : null;
+      }
+      if (key.startsWith('builtin:')) {
+        const t = builtinByLabel.get(key.slice(8));
+        return t ? { key, label: t.label, prefix: t.prefix } : null;
+      }
+      return null;
+    })
+    .filter((x): x is { key: string; label: string; prefix: string } => x !== null);
+  const draftHasContent = currentDraft.trim().length > 0;
   return (
     <div style={{ position: 'relative', alignSelf: 'stretch' }} onClick={(e) => e.stopPropagation()}>
       <button
@@ -1926,18 +2018,48 @@ function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
               gap: 2,
             }}
           >
+            {recentEntries.length > 0 ? (
+              <>
+                <div style={tplSectionStyle}>Recent</div>
+                {recentEntries.map((r) => (
+                  <button
+                    key={`recent-${r.key}`}
+                    role="menuitem"
+                    type="button"
+                    onClick={() => handlePick(r.key, r.prefix)}
+                    title={r.prefix}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      textAlign: 'left',
+                      padding: '0.4rem 0.55rem',
+                      borderRadius: 4,
+                      color: '#e8e8ef',
+                      fontSize: '0.82rem',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </>
+            ) : null}
             {userTemplates.length > 0 ? (
               <>
                 <div style={tplSectionStyle}>Yours</div>
                 {userTemplates.map((t) => (
                   <div
                     key={t.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 2 }}
                   >
                     <button
                       role="menuitem"
                       type="button"
-                      onClick={() => onPick(t.prefix)}
+                      onClick={() => handlePick(`user:${t.id}`, t.prefix)}
                       title={t.prefix}
                       style={{
                         flex: 1,
@@ -1956,6 +2078,24 @@ function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
                       }}
                     >
                       {t.label}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onEdit(t)}
+                      aria-label={`Edit template ${t.label}`}
+                      title={`Edit template ${t.label}`}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#8a8a95',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        padding: '0 6px',
+                        borderRadius: 4,
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      ✎
                     </button>
                     <button
                       type="button"
@@ -1985,7 +2125,7 @@ function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
                 key={t.label}
                 role="menuitem"
                 type="button"
-                onClick={() => onPick(t.prefix)}
+                onClick={() => handlePick(`builtin:${t.label}`, t.prefix)}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -2004,49 +2144,75 @@ function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
             <div style={{ height: 1, background: '#1d1d22', margin: '4px 0' }} />
             {adding ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0.3rem 0.5rem 0.5rem' }}>
+                <div style={{ fontSize: '0.65rem', color: '#8a8a95', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {editingId ? 'Edit template' : 'New template'}
+                </div>
                 <input
                   autoFocus
                   value={newLabel}
                   onChange={(e) => setNewLabel(e.target.value)}
                   placeholder="Label"
-                  aria-label="New template label"
+                  aria-label={editingId ? 'Edit template label' : 'New template label'}
                   style={tplInputStyle}
                 />
                 <textarea
                   value={newPrefix}
                   onChange={(e) => setNewPrefix(e.target.value)}
                   placeholder="Prefix to insert at the end of the draft"
-                  aria-label="New template prefix"
+                  aria-label={editingId ? 'Edit template prefix' : 'New template prefix'}
                   rows={3}
                   style={{ ...tplInputStyle, resize: 'vertical', minHeight: 60, lineHeight: 1.4 }}
                 />
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                  <button type="button" onClick={() => { setAdding(false); setNewLabel(''); setNewPrefix(''); }} style={tplGhostBtnStyle}>
+                  <button type="button" onClick={cancelForm} style={tplGhostBtnStyle}>
                     Cancel
                   </button>
                   <button type="button" onClick={onSaveNew} disabled={!newLabel.trim() || !newPrefix.trim()} style={tplPrimaryBtnStyle}>
-                    Save
+                    {editingId ? 'Update' : 'Save'}
                   </button>
                 </div>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => setAdding(true)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  textAlign: 'left',
-                  padding: '0.4rem 0.55rem',
-                  borderRadius: 4,
-                  color: '#9aa6ff',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}
-              >
-                + New template
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <button
+                  type="button"
+                  onClick={() => { setEditingId(null); setAdding(true); }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    textAlign: 'left',
+                    padding: '0.4rem 0.55rem',
+                    borderRadius: 4,
+                    color: '#9aa6ff',
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  + New template
+                </button>
+                {draftHasContent ? (
+                  <button
+                    type="button"
+                    onClick={onSaveDraft}
+                    aria-label="Save current draft as a new template"
+                    title="Pre-fill the form with your current draft"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      textAlign: 'left',
+                      padding: '0.4rem 0.55rem',
+                      borderRadius: 4,
+                      color: '#9aa6ff',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    + Save current draft as template
+                  </button>
+                ) : null}
+              </div>
             )}
           </div>
         </>
