@@ -138,6 +138,27 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('signup creates a session whose expiry is strictly in the future (no zero/past expiry)', async () => {
+    // The createSession dep receives an expiresAt Date built from
+    // sessionExpiresAt(). Pin that the route actually passes a future Date —
+    // a refactor that lost the +SESSION_EXPIRY_MS offset would create
+    // already-expired sessions, locking everyone out the moment they sign
+    // up. The unit test on sessionExpiresAt() pins the helper; this pins
+    // the wiring through the controller.
+    let receivedExpiresAt: Date | null = null;
+    const before = Date.now();
+    const { baseUrl, close } = await startServer(makeDeps({
+      createSession: async (h, userId, expiresAt) => {
+        receivedExpiresAt = expiresAt;
+        return { id: h, userId, expiresAt, createdAt: new Date() };
+      },
+    }));
+    await post(baseUrl, '/v1/auth/signup', { email: 'expiry@example.com', password: 'password123' });
+    expect(receivedExpiresAt).not.toBeNull();
+    expect((receivedExpiresAt as unknown as Date).getTime()).toBeGreaterThan(before);
+    await close();
+  });
+
   it('persists lowercase email (createUser receives the normalised form, not the raw input)', async () => {
     // The response email is lowercase (pinned by 'normalises email to
     // lowercase'), but that doesn't prove the *storage* call also got
