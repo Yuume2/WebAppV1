@@ -413,5 +413,13 @@ export async function streamMessageDbController(
   });
   res.write('data: [DONE]\n\n');
   res.end();
+  logger.info('stream completed', {
+    requestId:        ctx.requestId,
+    provider:         cw.provider,
+    model,
+    promptTokens:     usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    latencyMs,
+  });
   return respondStreamed(200);
 }
