@@ -98,9 +98,27 @@ function ErrorPanel({ message }: { message: string }) {
       <div style={{ color: '#8a8a95', fontSize: '0.78rem', marginTop: 10 }}>
         Check that <code>apps/api</code> is running and <code>NEXT_PUBLIC_API_URL</code> points to it.
       </div>
+      <div style={{ marginTop: 12 }}>
+        <Link href="/" style={retryButtonStyle} prefetch={false}>
+          Try again
+        </Link>
+      </div>
     </Panel>
   );
 }
+
+const retryButtonStyle: React.CSSProperties = {
+  display: 'inline-block',
+  background: '#f5f5f5',
+  color: '#0b0b0d',
+  border: 'none',
+  borderRadius: 8,
+  padding: '0.4rem 0.8rem',
+  fontFamily: 'inherit',
+  fontSize: '0.8rem',
+  fontWeight: 500,
+  textDecoration: 'none',
+};
 
 function SourceBadge({ result }: { result: ProjectsResult }) {
   const config =
