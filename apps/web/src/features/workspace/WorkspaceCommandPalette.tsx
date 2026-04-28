@@ -566,8 +566,33 @@ export function WorkspaceCommandPalette({
             </ul>
           </>
         ) : null}
+        <div
+          aria-live="polite"
+          aria-atomic="true"
+          style={{
+            position: 'absolute',
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: 'hidden',
+            clip: 'rect(0,0,0,0)',
+            whiteSpace: 'nowrap',
+            border: 0,
+          }}
+        >
+          {(() => {
+            const total = unifiedItems.length;
+            if (total === 0) return query.trim() ? `No matches for ${query}` : 'No items';
+            return query.trim() ? `${total} result${total === 1 ? '' : 's'} for ${query}` : `${total} item${total === 1 ? '' : 's'}`;
+          })()}
+        </div>
         <div style={footerStyle}>
-          <span>↑↓ navigate · Enter to open · Esc to close · type ≥2 chars to search messages</span>
+          <span>
+            {query.trim().length > 0
+              ? '↑↓ navigate · Enter to open · Esc clears query, again to close'
+              : '↑↓ navigate · Enter to open · Esc to close · type ≥2 chars to search messages'}
+          </span>
         </div>
       </div>
     </div>
