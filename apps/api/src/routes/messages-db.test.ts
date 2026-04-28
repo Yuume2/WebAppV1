@@ -220,6 +220,23 @@ describe('POST /v1/messages — standard path', () => {
     await close();
   });
 
+  it('rejects content over 32_000 chars with invalid_body (schema cap)', async () => {
+    // Pin the upper-bound on content. Without this, a refactor that
+    // dropped max: 32_000 would let the controller forward arbitrarily-
+    // large prompts to the provider, blowing through the body-size
+    // limit (100KB) only when the body parser sees it — which would
+    // surface as 413 instead of the helpful 400 invalid_body.
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'cw-1', role: 'user', content: 'A'.repeat(32_001),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('invalid_body');
+    await close();
+  });
+
   it('role=system message persists as-is, no provider call attempted', async () => {
     // The 'system' role is allowed by the schema (MESSAGE_ROLES) and travels
     // the default persist-as-is path — no AI generation, no findChatWindow
