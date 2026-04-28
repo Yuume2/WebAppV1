@@ -23,7 +23,7 @@ function buildCorsHeaders(corsOrigin: string, requestOrigin: string | null): Rec
   if (corsOrigin === '*') {
     return {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     };
   }
@@ -38,7 +38,7 @@ function buildCorsHeaders(corsOrigin: string, requestOrigin: string | null): Rec
       : (allowed[0] ?? corsOrigin);
   return {
     'Access-Control-Allow-Origin': echoed,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Credentials': 'true',
     'Vary': 'Origin',
