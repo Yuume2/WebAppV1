@@ -219,21 +219,42 @@ export function ChatWindow({
   }, [searchStorageKey, searchQuery]);
 
   const [flashedMsgId, setFlashedMsgId] = useState<string | null>(null);
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+  const handleHashJump = () => {
+    if (typeof window === 'undefined') return null;
     const hash = window.location.hash;
-    if (!hash || !hash.startsWith('#msg-')) return;
+    if (!hash || !hash.startsWith('#msg-')) return null;
     const targetId = hash.slice(5);
     const exists = messages.some((m) => m.id === targetId);
-    if (!exists) return;
+    if (!exists) return null;
     const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(targetId)}`);
     if (el && 'scrollIntoView' in el) {
       (el as HTMLElement).scrollIntoView({ block: 'start', behavior: 'auto' });
     }
     stickyRef.current = false;
     setFlashedMsgId(targetId);
+    return targetId;
+  };
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const targetId = handleHashJump();
+    if (!targetId) return;
     const t = setTimeout(() => setFlashedMsgId(null), 1500);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messagesSignature]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onHash = () => {
+      const targetId = handleHashJump();
+      if (timer) clearTimeout(timer);
+      if (targetId) timer = setTimeout(() => setFlashedMsgId(null), 1500);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => {
+      window.removeEventListener('hashchange', onHash);
+      if (timer) clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messagesSignature]);
 

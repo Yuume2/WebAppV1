@@ -262,6 +262,7 @@ export function Workspace({
         activeId={state.activeId}
         unreadByWindow={unreadByWindow}
         unreadCountByWindow={unreadCountByWindow}
+        getMessages={chat.getMessages}
         onFocus={state.focus}
         onReopen={state.reopen}
       />

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { ChatWindow, Workspace } from '@webapp/types';
+import type { MockMessage } from '@/lib/data';
 
 interface PaletteWindow {
   window: ChatWindow;
@@ -18,6 +19,7 @@ interface WorkspaceCommandPaletteProps {
   activeId: string | null;
   unreadByWindow?: Record<string, boolean>;
   unreadCountByWindow?: Record<string, number>;
+  getMessages?: (windowId: string) => MockMessage[];
   onFocus: (id: string) => void;
   onReopen: (id: string) => void;
 }
@@ -39,6 +41,7 @@ export function WorkspaceCommandPalette({
   activeId,
   unreadByWindow,
   unreadCountByWindow,
+  getMessages,
   onFocus,
   onReopen,
 }: WorkspaceCommandPaletteProps) {
@@ -68,6 +71,39 @@ export function WorkspaceCommandPalette({
     if (!q) return workspaces;
     return workspaces.filter((w) => w.name.toLowerCase().includes(q));
   }, [workspaces, query]);
+
+  const messageMatches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || q.length < 2 || !getMessages) return [] as Array<{ windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; createdAt: string }>;
+    const allWindows = [...visibleWindows, ...closedWindows];
+    const out: Array<{ windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; createdAt: string }> = [];
+    for (const w of allWindows) {
+      const list = getMessages(w.id);
+      for (const m of list) {
+        const content = m.content;
+        if (!content) continue;
+        const lc = content.toLowerCase();
+        const idx = lc.indexOf(q);
+        if (idx < 0) continue;
+        const start = Math.max(0, idx - 28);
+        const end = Math.min(content.length, idx + q.length + 60);
+        let snippet = content.slice(start, end);
+        if (start > 0) snippet = '…' + snippet;
+        if (end < content.length) snippet = snippet + '…';
+        out.push({
+          windowId: w.id,
+          window: w,
+          messageId: m.id,
+          role: m.role,
+          snippet: snippet.replace(/\s+/g, ' ').trim(),
+          createdAt: m.createdAt,
+        });
+        if (out.length >= 24) break;
+      }
+      if (out.length >= 24) break;
+    }
+    return out;
+  }, [query, getMessages, visibleWindows, closedWindows]);
 
   useEffect(() => {
     if (!open) {
@@ -161,7 +197,7 @@ export function WorkspaceCommandPalette({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onInputKeyDown}
-          placeholder="Type a window title, model, or workspace…"
+          placeholder="Search windows, workspaces, or messages…"
           aria-label="Filter chat windows or workspaces"
           style={inputStyle}
         />
@@ -241,6 +277,61 @@ export function WorkspaceCommandPalette({
             })
           )}
         </ul>
+        {messageMatches.length > 0 ? (
+          <>
+            <div style={sectionLabelStyle}>Messages · {messageMatches.length}</div>
+            <ul role="list" style={{ ...listStyle, maxHeight: 240 }}>
+              {messageMatches.map((m, i) => (
+                <li key={`${m.windowId}-${m.messageId}-${i}`} style={{ listStyle: 'none' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const visible = visibleWindows.some((w) => w.id === m.windowId);
+                      if (!visible) onReopen(m.windowId);
+                      else onFocus(m.windowId);
+                      setOpen(false);
+                      setQuery('');
+                      if (typeof window !== 'undefined') {
+                        // Use hash to trigger ChatWindow's existing #msg-<id> scroll/flash effect
+                        const url = new URL(window.location.href);
+                        url.hash = `msg-${m.messageId}`;
+                        window.history.replaceState(null, '', url.toString());
+                        window.dispatchEvent(new HashChangeEvent('hashchange'));
+                      }
+                    }}
+                    style={{
+                      ...rowStyle,
+                      width: '100%',
+                      background: 'transparent',
+                      border: 'none',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      color: '#cfcfd6',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          fontSize: '0.78rem',
+                          color: '#e8e8ef',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {m.snippet}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: '#8a8a95', marginTop: 2 }}>
+                        {m.role} · {m.window.title}
+                      </div>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
         <div style={footerStyle}>
           <span>↑↓ navigate · Enter to switch · Esc to close</span>
         </div>
