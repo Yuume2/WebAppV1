@@ -278,6 +278,22 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('409 conflict fires BEFORE createUser (no orphan user row on duplicate-email path)', async () => {
+    // Order-of-operations pin: a duplicate-email probe must NOT trigger
+    // createUser. Otherwise a unique-constraint violation would surface as
+    // a 500 instead of a clean 409, AND we'd be wasting a row insert
+    // attempt + the password hash that came before it.
+    let createCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async () => mockUser(),
+      createUser:      async () => { createCalls++; return mockUser(); },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'dupe@example.com', password: 'password123' });
+    expect(res.status).toBe(409);
+    expect(createCalls).toBe(0);
+    await close();
+  });
+
   it('returns 409 for duplicate email', async () => {
     const { baseUrl, close: c } = await startServer(
       makeDeps({ findUserByEmail: async () => mockUser() }),
