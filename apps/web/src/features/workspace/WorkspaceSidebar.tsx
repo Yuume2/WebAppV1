@@ -87,7 +87,7 @@ export function WorkspaceSidebar({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
-        <SectionLabel>Open</SectionLabel>
+        <SectionLabel>Open · {visibleWindows.length}</SectionLabel>
         {visibleWindows.length === 0 ? (
           <EmptyHint>No windows open</EmptyHint>
         ) : (
@@ -106,7 +106,7 @@ export function WorkspaceSidebar({
 
         {closedWindows.length > 0 ? (
           <>
-            <SectionLabel>Closed</SectionLabel>
+            <SectionLabel>Closed · {closedWindows.length}</SectionLabel>
             {closedWindows.map((w) => (
               <WindowRow
                 key={w.id}
