@@ -55,12 +55,12 @@ describe('CORS headers', () => {
     expect(acao.length).toBeGreaterThan(0);
   });
 
-  it('Access-Control-Allow-Methods includes GET, POST, OPTIONS', async () => {
+  it('Access-Control-Allow-Methods includes GET, POST, PUT, PATCH, DELETE, OPTIONS', async () => {
     const res = await fetch(`${harness.baseUrl}${API_HEALTH_PATH}`);
     const acam = res.headers.get('access-control-allow-methods') ?? '';
-    expect(acam).toContain('GET');
-    expect(acam).toContain('POST');
-    expect(acam).toContain('OPTIONS');
+    for (const m of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
+      expect(acam).toContain(m);
+    }
   });
 
   it('Access-Control-Allow-Headers includes Content-Type', async () => {
