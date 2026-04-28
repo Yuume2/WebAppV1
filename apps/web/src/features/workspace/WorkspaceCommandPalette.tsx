@@ -197,7 +197,7 @@ export function WorkspaceCommandPalette({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onInputKeyDown}
-          placeholder="Type a window title, model, or workspace…"
+          placeholder="Search windows, workspaces, or messages…"
           aria-label="Filter chat windows or workspaces"
           style={inputStyle}
         />
