@@ -48,6 +48,19 @@ export function WorkspaceSidebar({
   onReset,
 }: WorkspaceSidebarProps) {
   const total = visibleWindows.length + closedWindows.length;
+  const [windowFilter, setWindowFilter] = useState('');
+  const filterEnabled = total >= 5;
+  const lowerFilter = windowFilter.trim().toLowerCase();
+  const matchesFilter = (w: ChatWindow): boolean => {
+    if (!lowerFilter) return true;
+    return (
+      w.title.toLowerCase().includes(lowerFilter) ||
+      w.model.toLowerCase().includes(lowerFilter) ||
+      w.provider.toLowerCase().includes(lowerFilter)
+    );
+  };
+  const filteredVisible = filterEnabled ? visibleWindows.filter(matchesFilter) : visibleWindows;
+  const filteredClosed = filterEnabled ? closedWindows.filter(matchesFilter) : closedWindows;
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
 
   return (
@@ -87,11 +100,25 @@ export function WorkspaceSidebar({
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
-        <SectionLabel>Open · {visibleWindows.length}</SectionLabel>
-        {visibleWindows.length === 0 ? (
-          <EmptyHint>No windows open</EmptyHint>
+        {filterEnabled ? (
+          <div style={{ padding: '0 0.05rem 0.5rem' }}>
+            <input
+              type="text"
+              value={windowFilter}
+              onChange={(e) => setWindowFilter(e.target.value)}
+              placeholder="Filter windows…"
+              aria-label="Filter chat windows"
+              style={filterInputStyle}
+            />
+          </div>
+        ) : null}
+        <SectionLabel>
+          Open · {filterEnabled && lowerFilter ? `${filteredVisible.length}/${visibleWindows.length}` : visibleWindows.length}
+        </SectionLabel>
+        {filteredVisible.length === 0 ? (
+          <EmptyHint>{lowerFilter ? 'No matches' : 'No windows open'}</EmptyHint>
         ) : (
-          visibleWindows.map((w) => (
+          filteredVisible.map((w) => (
             <WindowRow
               key={w.id}
               window={w}
@@ -104,10 +131,12 @@ export function WorkspaceSidebar({
           ))
         )}
 
-        {closedWindows.length > 0 ? (
+        {filteredClosed.length > 0 ? (
           <>
-            <SectionLabel>Closed · {closedWindows.length}</SectionLabel>
-            {closedWindows.map((w) => (
+            <SectionLabel>
+              Closed · {filterEnabled && lowerFilter ? `${filteredClosed.length}/${closedWindows.length}` : closedWindows.length}
+            </SectionLabel>
+            {filteredClosed.map((w) => (
               <WindowRow
                 key={w.id}
                 window={w}
@@ -738,3 +767,15 @@ function formatRelative(iso: string | null | undefined): string | null {
   const yr = Math.floor(day / 365);
   return `${yr}y`;
 }
+
+const filterInputStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#0f0f13',
+  border: '1px solid #2a2a30',
+  borderRadius: 6,
+  padding: '0.35rem 0.55rem',
+  color: '#f5f5f5',
+  fontSize: '0.78rem',
+  fontFamily: 'inherit',
+  outline: 'none',
+};
