@@ -506,6 +506,22 @@ export function ChatWindow({
             </span>
           )}
           <ProviderBadge provider={provider} model={model} />
+          {pending ? (
+            <span
+              role="status"
+              aria-live="polite"
+              style={{
+                marginTop: 4,
+                alignSelf: 'flex-start',
+                fontSize: '0.62rem',
+                color: '#9aa6ff',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+              }}
+            >
+              Generating…
+            </span>
+          ) : null}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <button
