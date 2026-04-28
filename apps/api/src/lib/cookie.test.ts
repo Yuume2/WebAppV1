@@ -78,6 +78,22 @@ describe('serializeSetCookie', () => {
     // raw "; " would terminate the cookie attribute list — the encoded form is safe.
     expect(cookie).toContain(encodeURIComponent('a; b=c'));
   });
+
+  it('does NOT emit a Domain attribute (host-only cookie semantics)', () => {
+    // Without Domain= the cookie is bound to the exact host that issued
+    // it — no leakage to subdomains. A future addition of Domain=
+    // (e.g. ".example.com") would broaden the attack surface to every
+    // subdomain. Pin the absence so that change has to update the test.
+    const cookie = serializeSetCookie('sid', 'v', true);
+    expect(cookie).not.toMatch(/\bDomain=/i);
+  });
+
+  it('escapes "=" inside cookie value via URL-encoding (no premature attribute split)', () => {
+    // A token-like value with an internal "=" must not be interpreted as
+    // an attribute boundary. encodeURIComponent maps "=" to "%3D".
+    const cookie = serializeSetCookie('sid', 'a=b', false);
+    expect(cookie.startsWith('sid=a%3Db;')).toBe(true);
+  });
 });
 
 describe('clearCookieHeader', () => {
