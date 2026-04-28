@@ -209,6 +209,12 @@ export function ChatWindow({
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'w' || e.key === 'W') && onClose) {
         e.preventDefault();
         onClose(id);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'Backspace') {
+        e.preventDefault();
+        setDraft('');
+        requestAnimationFrame(() => textareaRef.current?.focus());
       }
     };
     window.addEventListener('keydown', onKey);
