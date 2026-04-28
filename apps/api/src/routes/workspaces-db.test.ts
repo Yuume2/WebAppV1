@@ -226,6 +226,33 @@ describe('GET /v1/workspaces/:id — user isolation', () => {
     await close();
   });
 
+  it('cross-user 404 + non-existent 404 share the same code (no existence leak)', async () => {
+    // Mirror of the messages-db / chat-windows-db parity pins. Same
+    // threat model: an attacker who can probe workspace IDs must not
+    // be able to tell 'belongs to another user' apart from 'does not
+    // exist' via the response shape.
+    const a = await startServer(makeDeps({
+      resolveUser:   async () => USER_1,
+      findWorkspace: async () => null,
+    }));
+    const ra = await get(a.baseUrl, '/v1/workspaces/ghost-ws');
+    const ba = (await ra.json()) as ApiResponse<never>;
+    if (ba.ok) throw new Error('expected error');
+    await a.close();
+
+    const b = await startServer(makeDeps({
+      resolveUser:   async () => USER_1,
+      findWorkspace: async (_id, userId) => userId === USER_2.id ? mockWorkspace('proj-2') : null,
+    }));
+    const rb = await get(b.baseUrl, '/v1/workspaces/user2-ws');
+    const bb = (await rb.json()) as ApiResponse<never>;
+    if (bb.ok) throw new Error('expected error');
+    await b.close();
+
+    expect(ra.status).toBe(rb.status);
+    expect(ba.error.code).toBe(bb.error.code);
+  });
+
   it('populates windowIds from listWindowIds result', async () => {
     const ws = mockWorkspace('proj-1', { id: 'ws-with-windows' });
     const { baseUrl, close } = await startServer(makeDeps({

@@ -239,6 +239,33 @@ describe('GET /v1/chat-windows/:id — user isolation', () => {
     expect(res.status).toBe(404);
     await close();
   });
+
+  it('cross-user 404 + non-existent 404 share the same code (no existence leak)', async () => {
+    // Mirror of the messages parity pin: an attacker who can probe
+    // chat-window IDs must not be able to tell 'belongs to another user'
+    // apart from 'does not exist'. Pin both responses share status +
+    // error code with a side-by-side compare.
+    const a = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => null,
+    }));
+    const ra = await get(a.baseUrl, '/v1/chat-windows/ghost-cw');
+    const ba = (await ra.json()) as ApiResponse<never>;
+    if (ba.ok) throw new Error('expected error');
+    await a.close();
+
+    const b = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async (_id, userId) => userId === USER_2.id ? mockChatWindow('ws-2') : null,
+    }));
+    const rb = await get(b.baseUrl, '/v1/chat-windows/user2-cw');
+    const bb = (await rb.json()) as ApiResponse<never>;
+    if (bb.ok) throw new Error('expected error');
+    await b.close();
+
+    expect(ra.status).toBe(rb.status);
+    expect(ba.error.code).toBe(bb.error.code);
+  });
 });
 
 

@@ -219,6 +219,48 @@ describe('POST /v1/messages — standard path', () => {
     expect(res.status).toBe(400);
     await close();
   });
+
+  it('rejects content over 32_000 chars with invalid_body (schema cap)', async () => {
+    // Pin the upper-bound on content. Without this, a refactor that
+    // dropped max: 32_000 would let the controller forward arbitrarily-
+    // large prompts to the provider, blowing through the body-size
+    // limit (100KB) only when the body parser sees it — which would
+    // surface as 413 instead of the helpful 400 invalid_body.
+    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'cw-1', role: 'user', content: 'A'.repeat(32_001),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('invalid_body');
+    await close();
+  });
+
+  it('role=system message persists as-is, no provider call attempted', async () => {
+    // The 'system' role is allowed by the schema (MESSAGE_ROLES) and travels
+    // the default persist-as-is path — no AI generation, no findChatWindow
+    // for provider lookup. Pin it: useful for callers that want to inject a
+    // system prompt or system note into the chat history without triggering
+    // a billed provider call.
+    let generateCalled = false;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:   async () => USER_1,
+      createMessage: async (chatWindowId, _userId, role, content) =>
+        mockMessage(chatWindowId, { id: 'sys-msg', role, content }),
+      generate: async () => { generateCalled = true; throw new Error('should not be called'); },
+    }));
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'cw-1', role: 'system', content: 'Be terse.',
+    });
+    expect(res.status).toBe(201);
+    expect(generateCalled).toBe(false);
+    const body = (await res.json()) as ApiResponse<Message>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data.role).toBe('system');
+    expect(body.data.content).toBe('Be terse.');
+    await close();
+  });
 });
 
 // ── Create message — OpenAI generation path ───────────────────────────────────
@@ -341,6 +383,12 @@ describe('POST /v1/messages — openai generation path', () => {
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('provider_not_configured');
     expect(body.error.message).toContain('openai');
+    // 412 is a setup/contract error — must ride the standard pipeline
+    // headers so an oncall can correlate via X-Request-Id and so the
+    // response is never cached.
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
     await close();
   });
 
@@ -562,7 +610,39 @@ describe('GET /v1/messages/:id — user isolation', () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
     const res = await get(baseUrl, '/v1/messages/does-not-exist');
     expect(res.status).toBe(404);
+    // 404 must NOT be cached. A cached 404 would tell a legit caller that
+    // a message does not exist even after it has just been created.
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
+  });
+
+  it('cross-user 404 and non-existent 404 share the same error code (no existence leak)', async () => {
+    // Two paths return 404: 'message belongs to another user' and 'message
+    // does not exist'. The error code MUST be identical in both responses
+    // — otherwise an attacker can probe for the existence of any message
+    // ID by checking which 404 variant they receive. Pin the code parity.
+    const a = await startServer(makeDeps({
+      resolveUser:  async () => USER_1,
+      findMessage:  async () => null, // does-not-exist
+    }));
+    const ra = await get(a.baseUrl, '/v1/messages/ghost');
+    const ba = (await ra.json()) as ApiResponse<never>;
+    if (ba.ok) throw new Error('expected error');
+    await a.close();
+
+    const b = await startServer(makeDeps({
+      resolveUser:  async () => USER_1,
+      // Cross-user: repo returns null when looked up by USER_1 even though
+      // the row exists for USER_2.
+      findMessage:  async (_id, userId) => userId === USER_2.id ? mockMessage('cw-2') : null,
+    }));
+    const rb = await get(b.baseUrl, '/v1/messages/user2-msg');
+    const bb = (await rb.json()) as ApiResponse<never>;
+    if (bb.ok) throw new Error('expected error');
+    await b.close();
+
+    expect(ra.status).toBe(rb.status);
+    expect(ba.error.code).toBe(bb.error.code);
   });
 });
 
