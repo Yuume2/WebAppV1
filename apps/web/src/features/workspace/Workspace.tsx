@@ -90,6 +90,15 @@ export function Workspace({
     stream: true,
   });
 
+  const lastActivityByWindow: Record<string, string | undefined> = {};
+  const pendingByWindow: Record<string, boolean> = {};
+  for (const w of [...state.visibleWindows, ...state.closedWindows]) {
+    const list = chat.getMessages(w.id);
+    const last = list[list.length - 1];
+    lastActivityByWindow[w.id] = last?.createdAt;
+    pendingByWindow[w.id] = chat.isPending(w.id);
+  }
+
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <WorkspaceSidebar
@@ -100,6 +109,8 @@ export function Workspace({
         visibleWindows={state.visibleWindows}
         closedWindows={state.closedWindows}
         activeId={state.activeId}
+        lastActivityByWindow={lastActivityByWindow}
+        pendingByWindow={pendingByWindow}
         onFocus={state.focus}
         onClose={state.close}
         onReopen={state.reopen}
@@ -126,6 +137,9 @@ export function Workspace({
         onCreate={state.createWindow}
       />
       <WorkspaceCommandPalette
+        projectId={projectId}
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspace.id}
         visibleWindows={state.visibleWindows}
         closedWindows={state.closedWindows}
         activeId={state.activeId}
