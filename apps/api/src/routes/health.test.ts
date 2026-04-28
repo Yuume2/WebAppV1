@@ -20,6 +20,11 @@ describe('GET /health', () => {
     expect(res.headers.get('x-request-id')).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
+    // Health endpoints are the most common target for misrouted Googlebot
+    // hits — they're indexed without effort because they always 200 and
+    // return a small JSON body. Pin X-Robots-Tag explicitly so this stays
+    // out of search results regardless of any future caching/CDN tweak.
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
 
     const body = (await res.json()) as ApiResponse<HealthStatus>;
     expect(body.ok).toBe(true);
