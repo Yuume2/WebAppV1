@@ -216,7 +216,12 @@ export function WorkspaceCommandPalette({
         setOpen((v) => {
           const next = !v;
           if (next) {
-            requestAnimationFrame(() => inputRef.current?.focus());
+            const restored = readLastQuery(activeWorkspaceId);
+            if (restored) setQuery(restored);
+            requestAnimationFrame(() => {
+              inputRef.current?.focus();
+              inputRef.current?.select();
+            });
           } else {
             setQuery('');
           }
@@ -235,7 +240,12 @@ export function WorkspaceCommandPalette({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, query]);
+  }, [open, query, activeWorkspaceId]);
+
+  useEffect(() => {
+    if (!open) return;
+    writeLastQuery(activeWorkspaceId, query);
+  }, [open, query, activeWorkspaceId]);
 
   const choose = (it: PaletteWindow) => {
     if (it.open) onFocus(it.window.id);
@@ -759,6 +769,26 @@ function readRecents(workspaceId: string): string[] {
     return parsed.filter((x): x is string => typeof x === 'string').slice(0, 8);
   } catch {
     return [];
+  }
+}
+
+function readLastQuery(workspaceId: string): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const raw = window.sessionStorage.getItem(`wav.palette.lastQuery.${workspaceId}`);
+    return typeof raw === 'string' ? raw.slice(0, 200) : '';
+  } catch {
+    return '';
+  }
+}
+
+function writeLastQuery(workspaceId: string, q: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (q) window.sessionStorage.setItem(`wav.palette.lastQuery.${workspaceId}`, q.slice(0, 200));
+    else window.sessionStorage.removeItem(`wav.palette.lastQuery.${workspaceId}`);
+  } catch {
+    // ignore
   }
 }
 
