@@ -420,6 +420,28 @@ describe('POST /v1/auth/logout', () => {
     await close();
   });
 
+  it('is idempotent — calling logout twice with the same cookie is a 200 each time', async () => {
+    // The frontend may double-fire logout (button + tab-close handler), and
+    // a second call after the session is already gone must not error. The
+    // controller deletes the session by token-hash, which is naturally
+    // idempotent — pin it with a regression test so a future refactor that
+    // returns 401 on already-deleted sessions can't ship without failing CI.
+    const { baseUrl, close } = await startServer(makeDeps({
+      deleteSession: async () => { /* idempotent: succeed both times */ },
+    }));
+    const cookie = `${SESSION_COOKIE_NAME}=${'1'.repeat(64)}`;
+    const r1 = await post(baseUrl, '/v1/auth/logout', {}, { Cookie: cookie });
+    const r2 = await post(baseUrl, '/v1/auth/logout', {}, { Cookie: cookie });
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    // Both responses must clear the cookie too — second logout is not a
+    // no-op from the cookie POV; it should still emit Max-Age=0 so a stale
+    // browser cookie can't survive the second call.
+    expect(getSetCookie(r1)).toContain('Max-Age=0');
+    expect(getSetCookie(r2)).toContain('Max-Age=0');
+    await close();
+  });
+
   it('returns 401 on /me after logout', async () => {
     const KNOWN_TOKEN2 = 'd'.repeat(64);
     const KNOWN_HASH2  = hashSessionToken(KNOWN_TOKEN2);
