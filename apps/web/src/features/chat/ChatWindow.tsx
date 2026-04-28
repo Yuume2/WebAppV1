@@ -203,6 +203,7 @@ export function ChatWindow({
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {onDelete ? (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 if (typeof window === 'undefined') {
@@ -236,6 +237,7 @@ export function ChatWindow({
           ) : null}
           {onClose ? (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onClose(id);
