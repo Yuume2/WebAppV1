@@ -15,6 +15,7 @@ import { s } from '../lib/schema.js';
 import { requireUser } from '../lib/auth-helper.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import { captureException } from '../lib/sentry.js';
+import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
 import type { Db, AssistantMessageMetadata } from '../db/messages.repo.js';
 import * as messagesRepo from '../db/messages.repo.js';
@@ -362,6 +363,13 @@ export async function streamMessageDbController(
     // throw happens because we asked the upstream to stop. Don't ship an
     // 'error' SSE event (the client is gone anyway) and don't capture it.
     if (aborted) {
+      logger.info('stream cancelled by client disconnect', {
+        requestId: ctx.requestId,
+        provider: cw.provider,
+        model: cw.model,
+        partialBytes: assistantContent.length,
+        durationMs: Date.now() - startedAt,
+      });
       try { res.end(); } catch { /* socket already closed */ }
       return respondStreamed(499);
     }
