@@ -137,9 +137,13 @@ export function createPerplexityClient(apiKey: string): ProviderClient {
     async *createChatCompletionStream(
       messages: ChatMessage[],
       model: string,
+      opts?: { signal?: AbortSignal },
     ): AsyncIterable<ChatCompletionStreamChunk> {
       const connectController = new AbortController();
       const connectTimer = setTimeout(() => connectController.abort(), STREAM_CONNECT_TIMEOUT_MS);
+      const fetchSignal = opts?.signal
+        ? AbortSignal.any([connectController.signal, opts.signal])
+        : connectController.signal;
       let res: Response;
       try {
         res = await fetch(PERPLEXITY_CHAT_URL, {
@@ -150,7 +154,7 @@ export function createPerplexityClient(apiKey: string): ProviderClient {
             'Accept':        'text/event-stream',
           },
           body: JSON.stringify({ model, messages, stream: true }),
-          signal: connectController.signal,
+          signal: fetchSignal,
         });
       } catch (err) {
         throw new ProviderError(

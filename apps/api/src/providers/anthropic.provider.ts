@@ -145,11 +145,15 @@ export function createAnthropicClient(apiKey: string): ProviderClient {
     async *createChatCompletionStream(
       messages: ChatMessage[],
       model: string,
+      opts?: { signal?: AbortSignal },
     ): AsyncIterable<ChatCompletionStreamChunk> {
       const shape = toAnthropicShape(messages);
 
       const connectController = new AbortController();
       const connectTimer = setTimeout(() => connectController.abort(), STREAM_CONNECT_TIMEOUT_MS);
+      const fetchSignal = opts?.signal
+        ? AbortSignal.any([connectController.signal, opts.signal])
+        : connectController.signal;
       let res: Response;
       try {
         res = await fetch(ANTHROPIC_MESSAGES_URL, {
@@ -167,7 +171,7 @@ export function createAnthropicClient(apiKey: string): ProviderClient {
             messages: shape.messages,
             stream: true,
           }),
-          signal: connectController.signal,
+          signal: fetchSignal,
         });
       } catch (err) {
         throw new ProviderError(

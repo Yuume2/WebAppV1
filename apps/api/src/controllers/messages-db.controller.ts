@@ -84,7 +84,7 @@ export interface MessagesDeps {
   findChatWindow:    (chatWindowId: string, userId: string) => Promise<DbChatWindow | null>;
   getApiKey:         (userId: string, provider: AIProvider) => Promise<string | null>;
   generate:          (provider: AIProvider, apiKey: string, messages: ChatMessage[], model: string) => Promise<ChatCompletionResult>;
-  generateStream:    (provider: AIProvider, apiKey: string, messages: ChatMessage[], model: string) => AsyncIterable<ChatCompletionStreamChunk>;
+  generateStream:    (provider: AIProvider, apiKey: string, messages: ChatMessage[], model: string, opts?: { signal?: AbortSignal }) => AsyncIterable<ChatCompletionStreamChunk>;
   maxContextMessages: number;
   providerTimeoutMs?: number;
 }
@@ -99,7 +99,7 @@ export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps
     findChatWindow:    (chatWindowId, userId)              => chatWindowsRepo.findChatWindowById(db, chatWindowId, userId),
     getApiKey:         (userId, provider)                  => getDecryptedApiKey(db, userId, provider),
     generate:          (provider, apiKey, msgs, model)     => getProviderClient(provider, apiKey).createChatCompletion(msgs, model),
-    generateStream:    (provider, apiKey, msgs, model)     => getProviderClient(provider, apiKey).createChatCompletionStream(msgs, model),
+    generateStream:    (provider, apiKey, msgs, model, opts) => getProviderClient(provider, apiKey).createChatCompletionStream(msgs, model, opts),
     maxContextMessages: env.openaiMaxContextMessages,
   };
 }
@@ -313,10 +313,17 @@ export async function streamMessageDbController(
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let aborted = false;
 
-  ctx.req.on('close', () => { aborted = true; });
+  // Cancel the upstream provider call when the downstream client drops the
+  // connection — stops billing for tokens nobody will read. The for-await
+  // loop will throw on read; we catch the abort below and return cleanly.
+  const upstreamAbort = new AbortController();
+  ctx.req.on('close', () => {
+    aborted = true;
+    upstreamAbort.abort();
+  });
 
   try {
-    for await (const chunk of deps.generateStream(cw.provider, apiKey, contextMessages, cw.model)) {
+    for await (const chunk of deps.generateStream(cw.provider, apiKey, contextMessages, cw.model, { signal: upstreamAbort.signal })) {
       if (aborted) break;
       if (chunk.type === 'delta') {
         assistantContent += chunk.content;
@@ -327,6 +334,13 @@ export async function streamMessageDbController(
       }
     }
   } catch (err) {
+    // Aborted-by-us (client disconnected) is not a real error — the for-await
+    // throw happens because we asked the upstream to stop. Don't ship an
+    // 'error' SSE event (the client is gone anyway) and don't capture it.
+    if (aborted) {
+      try { res.end(); } catch { /* socket already closed */ }
+      return respondStreamed(499);
+    }
     captureException(err, { provider: cw.provider, model: cw.model, route: '/v1/messages/stream' });
     const detail = err instanceof Error ? err.message : 'Unknown provider error';
     sseWrite(res, { error: detail });
