@@ -113,6 +113,12 @@ describe('POST /v1/auth/signup', () => {
     const maxAgeMatch = cookie?.match(/Max-Age=(\d+)/);
     expect(maxAgeMatch).not.toBeNull();
     expect(Number(maxAgeMatch?.[1])).toBeGreaterThan(0);
+    // CRITICAL: a successful signup ships a Set-Cookie with the session
+    // token. If this response gets cached by a CDN, every cache HIT below
+    // hands the same session cookie to a different user. Cache-Control:
+    // no-store is the only thing keeping that catastrophe from being one
+    // misconfigured CDN away.
+    expect(res.headers.get('cache-control')).toBe('no-store');
   });
 
   it('normalises email to lowercase', async () => {
@@ -177,6 +183,10 @@ describe('POST /v1/auth/login', () => {
     const cookie = getSetCookie(res);
     expect(cookie).toBeTruthy();
     expect(cookie).toContain(`${SESSION_COOKIE_NAME}=`);
+    // Same caching catastrophe as signup: a 200 with Set-Cookie that hits a
+    // shared cache would broadcast one user's session to everyone. Pin
+    // Cache-Control: no-store on the success path explicitly.
+    expect(res.headers.get('cache-control')).toBe('no-store');
 
     await close();
   });
