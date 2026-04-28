@@ -649,6 +649,24 @@ describe('rate limiting — login', () => {
     await close();
   });
 
+  it('rejects whitespace-only email with 400 invalid_body (schema trims and enforces min:1)', async () => {
+    // The login schema trims the email field — pin that whitespace-only
+    // input rejects with invalid_body, not 401, and never reaches the
+    // user repo. Otherwise an attacker could probe whether the system
+    // accepts 'empty' emails as a backdoor (it won't, but pin it).
+    let lookupCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async () => { lookupCalls++; return null; },
+    }));
+    const res = await post(baseUrl, '/v1/auth/login', { email: '   ', password: 'anything' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('invalid_body');
+    expect(lookupCalls).toBe(0);
+    await close();
+  });
+
   it('rate-limit gate fires BEFORE the user lookup (no enumeration via timing)', async () => {
     // Pin the order of operations: when the bucket is full, login must
     // short-circuit BEFORE calling findUserByEmail. Otherwise a probe
