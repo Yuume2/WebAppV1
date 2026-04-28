@@ -1,5 +1,6 @@
 import { healthController } from '../controllers/health.controller.js';
 import { versionController } from '../controllers/version.controller.js';
+import { healthDeepController, makeHealthDeepDeps } from '../controllers/health-deep.controller.js';
 import {
   createChatWindowController,
   deleteChatWindowController,
@@ -148,10 +149,13 @@ const stateHandler = (db && authDeps)
   ? (ctx: Parameters<typeof stateDbController>[0]) => stateDbController(ctx, makeStateDeps(db, authDeps))
   : stateController;
 
+const healthDeepDeps = makeHealthDeepDeps();
+
 export const businessRoutes: RouteDefinition[] = [
-  { method: 'GET', path: API_HEALTH_PATH, handler: healthController },
-  { method: 'GET', path: '/v1/health',    handler: healthController },
-  { method: 'GET', path: '/v1/version',   handler: versionController },
+  { method: 'GET', path: API_HEALTH_PATH,     handler: healthController },
+  { method: 'GET', path: '/v1/health',        handler: healthController },
+  { method: 'GET', path: '/v1/health/deep',   handler: (ctx) => healthDeepController(ctx, healthDeepDeps) },
+  { method: 'GET', path: '/v1/version',       handler: versionController },
 
   ...projectRoutes,
 
