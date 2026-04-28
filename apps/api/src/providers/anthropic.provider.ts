@@ -19,8 +19,9 @@ const DEFAULT_MAX_TOKENS = 1024;
 
 export type AnthropicVerifyResult = 'ok' | 'unauthorized' | 'provider_error';
 
-const VERIFY_TIMEOUT_MS  = 10_000;
-const RUNTIME_TIMEOUT_MS = 60_000;
+const VERIFY_TIMEOUT_MS         = 10_000;
+const RUNTIME_TIMEOUT_MS        = 60_000;
+const STREAM_CONNECT_TIMEOUT_MS = 30_000;
 
 export async function verifyAnthropicKey(apiKey: string): Promise<AnthropicVerifyResult> {
   let res: Response;
@@ -147,6 +148,8 @@ export function createAnthropicClient(apiKey: string): ProviderClient {
     ): AsyncIterable<ChatCompletionStreamChunk> {
       const shape = toAnthropicShape(messages);
 
+      const connectController = new AbortController();
+      const connectTimer = setTimeout(() => connectController.abort(), STREAM_CONNECT_TIMEOUT_MS);
       let res: Response;
       try {
         res = await fetch(ANTHROPIC_MESSAGES_URL, {
@@ -164,6 +167,7 @@ export function createAnthropicClient(apiKey: string): ProviderClient {
             messages: shape.messages,
             stream: true,
           }),
+          signal: connectController.signal,
         });
       } catch (err) {
         throw new ProviderError(
@@ -171,6 +175,8 @@ export function createAnthropicClient(apiKey: string): ProviderClient {
           'api_error',
           'anthropic',
         );
+      } finally {
+        clearTimeout(connectTimer);
       }
 
       if (!res.ok || !res.body) {

@@ -215,5 +215,17 @@ describe('createOpenAIClient', () => {
       const it = createOpenAIClient(API_KEY).createChatCompletionStream(MESSAGES, MODEL)[Symbol.asyncIterator]();
       await expect(it.next()).rejects.toBeInstanceOf(ProviderError);
     });
+
+    it('passes a connect-only AbortSignal to fetch (cleared after headers arrive)', async () => {
+      vi.mocked(fetch).mockResolvedValue(sseStream([
+        JSON.stringify({ model: MODEL, choices: [{ delta: {} }], usage: { prompt_tokens: 1, completion_tokens: 0, total_tokens: 1 } }),
+      ]));
+      const chunks = [];
+      for await (const c of createOpenAIClient(API_KEY).createChatCompletionStream(MESSAGES, MODEL)) {
+        chunks.push(c);
+      }
+      const init = vi.mocked(fetch).mock.calls[0]![1] as RequestInit;
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
   });
 });

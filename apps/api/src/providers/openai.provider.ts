@@ -61,7 +61,10 @@ const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
 /** Hard cap on a single completion request — prevents an unresponsive upstream
  *  from holding our request handler hostage. Streaming intentionally has no
  *  total cap (only the connect needs guarding); a long stream is legitimate. */
-const RUNTIME_TIMEOUT_MS = 60_000;
+const RUNTIME_TIMEOUT_MS         = 60_000;
+/** Connect-only cap on a streaming request — fires only if headers don't arrive
+ *  in time. Cleared once fetch resolves so the stream itself isn't cut. */
+const STREAM_CONNECT_TIMEOUT_MS  = 30_000;
 
 export function createOpenAIClient(apiKey: string): ProviderClient {
   return {
@@ -133,6 +136,11 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
       messages: ChatMessage[],
       model: string,
     ): AsyncIterable<ChatCompletionStreamChunk> {
+      // Connect-only timeout: aborts the fetch if response headers haven't
+      // arrived after STREAM_CONNECT_TIMEOUT_MS. Cleared once headers land
+      // so a long legitimate stream is never cut.
+      const connectController = new AbortController();
+      const connectTimer = setTimeout(() => connectController.abort(), STREAM_CONNECT_TIMEOUT_MS);
       let res: Response;
       try {
         res = await fetch(OPENAI_CHAT_URL, {
@@ -148,6 +156,7 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
             stream: true,
             stream_options: { include_usage: true },
           }),
+          signal: connectController.signal,
         });
       } catch (err) {
         throw new ProviderError(
@@ -155,6 +164,8 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
           'api_error',
           'openai',
         );
+      } finally {
+        clearTimeout(connectTimer);
       }
 
       if (!res.ok || !res.body) {
