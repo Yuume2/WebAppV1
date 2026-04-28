@@ -610,6 +610,9 @@ describe('GET /v1/messages/:id — user isolation', () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
     const res = await get(baseUrl, '/v1/messages/does-not-exist');
     expect(res.status).toBe(404);
+    // 404 must NOT be cached. A cached 404 would tell a legit caller that
+    // a message does not exist even after it has just been created.
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 
