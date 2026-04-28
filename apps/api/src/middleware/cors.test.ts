@@ -140,6 +140,32 @@ describe('CORS with explicit origin — credentialed auth', () => {
   });
 });
 
+describe('CORS with comma-separated allowlist (multi-origin)', () => {
+  const APP_ORIGIN     = 'https://app.example.com';
+  const STAGING_ORIGIN = 'https://staging.example.com';
+  const ALLOW          = `${APP_ORIGIN},${STAGING_ORIGIN}`;
+  let s: { baseUrl: string; close: () => Promise<void> };
+
+  beforeAll(async () => { s = await startServerWithOrigin(ALLOW); });
+  afterAll(async () => { await s.close(); });
+
+  it('echoes APP_ORIGIN when the request Origin matches it', async () => {
+    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`, { headers: { Origin: APP_ORIGIN } });
+    expect(res.headers.get('access-control-allow-origin')).toBe(APP_ORIGIN);
+    expect(res.headers.get('access-control-allow-credentials')).toBe('true');
+  });
+
+  it('echoes STAGING_ORIGIN when the request Origin matches it', async () => {
+    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`, { headers: { Origin: STAGING_ORIGIN } });
+    expect(res.headers.get('access-control-allow-origin')).toBe(STAGING_ORIGIN);
+  });
+
+  it('falls back to the first allowed origin when the request Origin is unknown', async () => {
+    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`, { headers: { Origin: 'https://attacker.example.com' } });
+    expect(res.headers.get('access-control-allow-origin')).toBe(APP_ORIGIN);
+  });
+});
+
 describe('CORS with wildcard — non-credentialed default', () => {
   let harness: Harness;
 

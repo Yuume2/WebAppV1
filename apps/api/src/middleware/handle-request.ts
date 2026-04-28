@@ -12,16 +12,32 @@ import type { Router } from '../lib/router.js';
 import { captureException } from '../lib/sentry.js';
 import { checkCsrf } from '../lib/csrf.js';
 
-function buildCorsHeaders(origin: string): Record<string, string> {
-  if (origin === '*') {
+function parseAllowedOrigins(corsOrigin: string): string[] {
+  return corsOrigin
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+function buildCorsHeaders(corsOrigin: string, requestOrigin: string | null): Record<string, string> {
+  if (corsOrigin === '*') {
     return {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     };
   }
+  const allowed = parseAllowedOrigins(corsOrigin);
+  // ACAO must echo the actual request Origin when credentials are involved.
+  // For a multi-origin allowlist we pick the matching entry; for a single-
+  // origin config we keep the historical behaviour (always echo the configured
+  // value, even when no Origin header is on the response request).
+  const echoed =
+    requestOrigin && allowed.includes(requestOrigin)
+      ? requestOrigin
+      : (allowed[0] ?? corsOrigin);
   return {
-    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Origin': echoed,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Credentials': 'true',
@@ -42,7 +58,8 @@ export async function handleRequest(
   const url = new URL(req.url ?? '/', `http://${host}`);
   const path = url.pathname;
 
-  for (const [k, v] of Object.entries(buildCorsHeaders(corsOrigin))) {
+  const reqOrigin = typeof req.headers.origin === 'string' ? req.headers.origin : null;
+  for (const [k, v] of Object.entries(buildCorsHeaders(corsOrigin, reqOrigin))) {
     res.setHeader(k, v);
   }
 
