@@ -7,16 +7,40 @@ interface Shortcut {
   description: string;
 }
 
-const SHORTCUTS: Shortcut[] = [
-  { keys: ['?'], description: 'Show this help' },
-  { keys: ['Esc'], description: 'Close menus, modals, search bar, this help' },
-  { keys: ['⌘', 'K'], description: 'Open command palette — switch chat window by title (Ctrl+K on Linux/Win)' },
-  { keys: ['⌘', 'F'], description: 'Find inside the active chat window (Ctrl+F on Linux/Win)' },
-  { keys: ['⌘', 'J'], description: 'Focus the composer of the active chat window (Ctrl+J on Linux/Win)' },
-  { keys: ['⌘', 'E'], description: 'Rename the active chat window (Ctrl+E on Linux/Win)' },
-  { keys: ['Enter'], description: 'In Find: jump to next match' },
-  { keys: ['Shift', 'Enter'], description: 'In Find: jump to previous match  ·  In composer: newline' },
-  { keys: ['Enter'], description: 'In composer: send message' },
+interface ShortcutGroup {
+  label: string;
+  items: Shortcut[];
+}
+
+const GROUPS: ShortcutGroup[] = [
+  {
+    label: 'Global',
+    items: [
+      { keys: ['?'], description: 'Show this help' },
+      { keys: ['⌘', '/'], description: 'Show this help (also works while typing; Ctrl+/ on Linux/Win)' },
+      { keys: ['Esc'], description: 'Close menus, modals, search bar, this help' },
+      { keys: ['⌘', 'K'], description: 'Open command palette — switch chat window by title (Ctrl+K on Linux/Win)' },
+    ],
+  },
+  {
+    label: 'Active chat window',
+    items: [
+      { keys: ['⌘', 'F'], description: 'Find inside the active chat window (Ctrl+F on Linux/Win)' },
+      { keys: ['⌘', 'J'], description: 'Focus the composer (Ctrl+J on Linux/Win)' },
+      { keys: ['⌘', 'E'], description: 'Rename the active chat window (Ctrl+E on Linux/Win)' },
+      { keys: ['⌘', 'Shift', 'W'], description: 'Close the active chat window (hides locally; Ctrl+Shift+W on Linux/Win)' },
+      { keys: ['⌘', 'Shift', '⌫'], description: 'Clear the composer draft (Ctrl+Shift+Backspace)' },
+      { keys: ['G'], description: 'Jump to the latest message (when not typing)' },
+      { keys: ['g', 'g'], description: 'Jump to the top of the active chat (when not typing)' },
+    ],
+  },
+  {
+    label: 'Composer & search',
+    items: [
+      { keys: ['Enter'], description: 'In composer: send message  ·  In Find: jump to next match' },
+      { keys: ['Shift', 'Enter'], description: 'In composer: newline  ·  In Find: jump to previous match' },
+    ],
+  },
 ];
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -34,6 +58,11 @@ export function KeyboardShortcutsOverlay() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (isTypingTarget(e.target)) return;
+        e.preventDefault();
+        setOpen((v) => !v);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
         e.preventDefault();
         setOpen((v) => !v);
         return;
@@ -76,18 +105,25 @@ export function KeyboardShortcutsOverlay() {
             ×
           </button>
         </div>
-        <ul style={listStyle}>
-          {SHORTCUTS.map((s, i) => (
-            <li key={i} style={rowStyle}>
-              <span style={keysCellStyle}>
-                {s.keys.map((k, j) => (
-                  <kbd key={j} style={kbdStyle}>{k}</kbd>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {GROUPS.map((g) => (
+            <div key={g.label}>
+              <div style={groupLabelStyle}>{g.label}</div>
+              <ul style={listStyle}>
+                {g.items.map((s, i) => (
+                  <li key={i} style={rowStyle}>
+                    <span style={keysCellStyle}>
+                      {s.keys.map((k, j) => (
+                        <kbd key={j} style={kbdStyle}>{k}</kbd>
+                      ))}
+                    </span>
+                    <span style={descStyle}>{s.description}</span>
+                  </li>
                 ))}
-              </span>
-              <span style={descStyle}>{s.description}</span>
-            </li>
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
         <div style={footnoteStyle}>
           Press <kbd style={kbdStyle}>?</kbd> to toggle this list.
         </div>
@@ -180,4 +216,13 @@ const footnoteStyle: React.CSSProperties = {
   marginTop: 12,
   fontSize: '0.72rem',
   color: '#8a8a95',
+};
+
+
+const groupLabelStyle: React.CSSProperties = {
+  fontSize: '0.65rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  color: '#6a6a75',
+  marginBottom: 6,
 };

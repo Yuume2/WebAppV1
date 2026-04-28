@@ -87,8 +87,10 @@ export function ChatWindow({
 
   const scrollStorageKey = `wav.chat.scroll.${id}`;
   const restoredScrollRef = useRef(false);
+  const lastGAtRef = useRef<number>(0);
   const scrollSaveTimerRef = useRef<number | null>(null);
   const [scrolledAway, setScrolledAway] = useState(false);
+  const [exportLabel, setExportLabel] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   const updateStickiness = () => {
     const el = scrollRef.current;
@@ -114,6 +116,39 @@ export function ChatWindow({
     el.scrollTop = el.scrollHeight;
     stickyRef.current = true;
     setScrolledAway(false);
+  };
+
+  const exportConversation = async () => {
+    if (typeof window === 'undefined') return;
+    const md = messages
+      .filter((m) => (m.status ?? 'ok') === 'ok' && m.content.trim().length > 0)
+      .map((m) => {
+        const role = m.role === 'user' ? 'User' : m.role === 'assistant' ? 'Assistant' : m.role;
+        const stamp = m.createdAt ?? '';
+        const head = stamp ? `**${role}** · ${stamp}` : `**${role}**`;
+        return `${head}\n\n${m.content}`;
+      })
+      .join('\n\n---\n\n');
+    const header = `# ${title}\n\n_${provider} · ${model}_\n\n`;
+    const text = header + (md || '_(empty)_') + '\n';
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else if (typeof document !== 'undefined') {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setExportLabel('copied');
+    } catch {
+      setExportLabel('failed');
+    }
+    setTimeout(() => setExportLabel('idle'), 1800);
   };
 
   useLayoutEffect(() => {
@@ -204,11 +239,49 @@ export function ChatWindow({
         e.preventDefault();
         setTitleDraft(title);
         setEditing(true);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'w' || e.key === 'W') && onClose) {
+        e.preventDefault();
+        onClose(id);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'Backspace') {
+        e.preventDefault();
+        setDraft('');
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
+      }
+      // Vim-style: G jumps to bottom; g g jumps to top. Only when not typing.
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        const target = e.target;
+        const typing = target instanceof HTMLElement
+          && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+        if (typing) return;
+        if (e.key === 'G' && e.shiftKey) {
+          e.preventDefault();
+          scrollToBottom();
+          return;
+        }
+        if (e.key === 'g' && !e.shiftKey) {
+          e.preventDefault();
+          if (lastGAtRef.current && Date.now() - lastGAtRef.current < 600) {
+            const el = scrollRef.current;
+            if (el) {
+              el.scrollTop = 0;
+              stickyRef.current = false;
+              setScrolledAway(true);
+            }
+            lastGAtRef.current = 0;
+          } else {
+            lastGAtRef.current = Date.now();
+          }
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, onRename, title]);
+  }, [active, onRename, onClose, title, id]);
 
   const commitRename = () => {
     const trimmed = titleDraft.trim();
@@ -317,6 +390,31 @@ export function ChatWindow({
           <ProviderBadge provider={provider} model={model} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void exportConversation();
+            }}
+            aria-label="Copy conversation as Markdown"
+            title="Copy conversation as Markdown"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: exportLabel === 'copied' ? '#9aa6ff' : exportLabel === 'failed' ? '#ff8b8b' : '#8a8a95',
+              cursor: 'pointer',
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              padding: '0.25rem 0.5rem',
+              borderRadius: 6,
+              lineHeight: 1,
+              fontFamily: 'inherit',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            {exportLabel === 'copied' ? 'Copied' : exportLabel === 'failed' ? 'Failed' : 'Export'}
+          </button>
           <button
             type="button"
             onClick={(e) => {
