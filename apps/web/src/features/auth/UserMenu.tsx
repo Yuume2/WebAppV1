@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { useToast } from '@/components/ToastHost';
 import { useSession } from '@/features/auth/SessionContext';
@@ -54,9 +55,14 @@ export function UserMenu() {
               <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{display}</div>
               <div style={{ fontSize: '0.75rem', color: '#8a8a95' }}>{user.email}</div>
             </div>
-            <a href="/settings/providers" role="menuitem" style={menuItemStyle}>
+            <Link
+              href="/settings/providers"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              style={menuItemStyle}
+            >
               Provider settings
-            </a>
+            </Link>
             <button
               type="button"
               role="menuitem"
