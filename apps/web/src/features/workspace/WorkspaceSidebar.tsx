@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import type { AIProvider, ChatWindow, Workspace } from '@webapp/types';
 import type { WindowPreset } from '@/lib/data';
 import { Button } from '@/components/Button';
@@ -311,6 +311,15 @@ function WorkspaceSwitcher({
   const isLocal =
     activeWorkspaceId.startsWith('local-') || activeWorkspaceId.startsWith('ws-');
   const single = workspaces.length <= 1;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
 
   const commit = () => {
     const trimmed = draft.trim();
