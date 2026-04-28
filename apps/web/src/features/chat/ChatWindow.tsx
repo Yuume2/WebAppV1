@@ -63,8 +63,12 @@ export function ChatWindow({
   const [draft, setDraft] = useState<string>(() => readDraft(draftStorageKey));
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(title);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const searchStorageKey = `wav.chat.search.${id}`;
+  const [searchOpen, setSearchOpen] = useState<boolean>(() =>
+    readSearchQuery(searchStorageKey).length > 0,
+  );
+  const [searchQuery, setSearchQuery] = useState<string>(() => readSearchQuery(searchStorageKey));
+  const [searchIndex, setSearchIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -75,6 +79,8 @@ export function ChatWindow({
     ? messages.filter((m) => m.content.toLowerCase().includes(lowerQuery))
     : messages;
   const matchCount = lowerQuery ? filteredMessages.length : 0;
+  const safeIndex = matchCount > 0 ? Math.min(searchIndex, matchCount - 1) : 0;
+  const activeMatchId = matchCount > 0 ? filteredMessages[safeIndex]?.id ?? null : null;
   const messagesSignature = messages
     .map((m) => `${m.id}:${m.content.length}:${m.status ?? 'ok'}`)
     .join('|');
@@ -105,15 +111,56 @@ export function ChatWindow({
   }, [draft, draftStorageKey]);
 
   useEffect(() => {
-    if (!lowerQuery) return;
-    const first = filteredMessages[0];
-    if (!first) return;
-    const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(first.id)}`);
+    if (!lowerQuery || !activeMatchId) return;
+    const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(activeMatchId)}`);
     if (el && 'scrollIntoView' in el) {
       (el as HTMLElement).scrollIntoView({ block: 'start', behavior: 'auto' });
     }
     stickyRef.current = false;
-  }, [lowerQuery, filteredMessages]);
+  }, [lowerQuery, activeMatchId]);
+
+  useEffect(() => {
+    setSearchIndex(0);
+  }, [lowerQuery]);
+
+  useEffect(() => {
+    writeSearchQuery(searchStorageKey, searchQuery);
+  }, [searchStorageKey, searchQuery]);
+
+  const [flashedMsgId, setFlashedMsgId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash;
+    if (!hash || !hash.startsWith('#msg-')) return;
+    const targetId = hash.slice(5);
+    const exists = messages.some((m) => m.id === targetId);
+    if (!exists) return;
+    const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(targetId)}`);
+    if (el && 'scrollIntoView' in el) {
+      (el as HTMLElement).scrollIntoView({ block: 'start', behavior: 'auto' });
+    }
+    stickyRef.current = false;
+    setFlashedMsgId(targetId);
+    const t = setTimeout(() => setFlashedMsgId(null), 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messagesSignature]);
+
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        setSearchOpen(true);
+        requestAnimationFrame(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+        });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [active]);
 
   const commitRename = () => {
     const trimmed = titleDraft.trim();
@@ -337,6 +384,14 @@ export function ChatWindow({
                   e.preventDefault();
                   setSearchQuery('');
                   setSearchOpen(false);
+                  return;
+                }
+                if (e.key === 'Enter' && matchCount > 0) {
+                  e.preventDefault();
+                  setSearchIndex((i) => {
+                    const n = matchCount;
+                    return e.shiftKey ? (i - 1 + n) % n : (i + 1) % n;
+                  });
                 }
               }}
               onClick={(e) => e.stopPropagation()}
@@ -384,9 +439,39 @@ export function ChatWindow({
             ) : null}
           </div>
           {trimmedQuery ? (
-            <span style={{ fontSize: '0.7rem', color: '#8a8a95' }} aria-live="polite">
-              {matchCount} {matchCount === 1 ? 'match' : 'matches'}
-            </span>
+            <>
+              <span style={{ fontSize: '0.7rem', color: '#8a8a95' }} aria-live="polite">
+                {matchCount > 0
+                  ? `${safeIndex + 1} of ${matchCount}`
+                  : '0 matches'}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (matchCount > 0) setSearchIndex((i) => (i - 1 + matchCount) % matchCount);
+                }}
+                disabled={matchCount === 0}
+                aria-label="Previous match"
+                title="Previous match (Shift+Enter)"
+                style={searchNavButtonStyle}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (matchCount > 0) setSearchIndex((i) => (i + 1) % matchCount);
+                }}
+                disabled={matchCount === 0}
+                aria-label="Next match"
+                title="Next match (Enter)"
+                style={searchNavButtonStyle}
+              >
+                ↓
+              </button>
+            </>
           ) : null}
           <button
             type="button"
@@ -461,6 +546,8 @@ export function ChatWindow({
               key={m.id}
               message={m}
               highlight={lowerQuery || undefined}
+              isActiveMatch={activeMatchId === m.id}
+              isFlashing={flashedMsgId === m.id}
               onRetry={
                 onRetry && m.clientTempId ? () => onRetry(id, m.clientTempId!) : undefined
               }
@@ -656,11 +743,15 @@ function MessageBubble({
   onRetry,
   onRegenerate,
   highlight,
+  isActiveMatch,
+  isFlashing,
 }: {
   message: MockMessage;
   onRetry?: () => void;
   onRegenerate?: () => void;
   highlight?: string;
+  isActiveMatch?: boolean;
+  isFlashing?: boolean;
 }) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -696,7 +787,13 @@ function MessageBubble({
         alignSelf: isUser ? 'flex-end' : 'flex-start',
         maxWidth: '85%',
         background: isUser ? '#2b2b36' : '#1b1b23',
-        border: `1px solid ${borderColor}`,
+        border: `1px solid ${isActiveMatch || isFlashing ? '#4f6bff' : borderColor}`,
+        boxShadow:
+          isFlashing
+            ? '0 0 0 3px rgba(79,107,255,0.45)'
+            : isActiveMatch
+              ? '0 0 0 1px rgba(79,107,255,0.45)'
+              : 'none',
         borderRadius: 10,
         padding: '0.55rem 0.75rem',
         fontSize: '0.85rem',
@@ -705,6 +802,7 @@ function MessageBubble({
         whiteSpace: 'pre-wrap',
         opacity,
         scrollMarginTop: 16,
+        transition: 'border-color 120ms ease, box-shadow 120ms ease',
       }}
     >
       <div
@@ -788,6 +886,7 @@ function MessageBubble({
         </div>
       )}
       <MessageActions
+        messageId={message.id}
         content={message.content}
         absoluteStamp={absoluteStamp}
         relativeStamp={relativeStamp}
@@ -800,6 +899,7 @@ function MessageBubble({
 }
 
 function MessageActions({
+  messageId,
   content,
   absoluteStamp,
   relativeStamp,
@@ -807,6 +907,7 @@ function MessageActions({
   onRegenerate,
   align,
 }: {
+  messageId: string;
   content: string;
   absoluteStamp: string | null;
   relativeStamp: string | null;
@@ -815,26 +916,45 @@ function MessageActions({
   align: 'start' | 'end';
 }) {
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const writeToClipboard = async (value: string): Promise<void> => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    if (typeof document !== 'undefined') {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+  };
   const onCopy = async (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     if (!canCopy) return;
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(content);
-      } else if (typeof document !== 'undefined') {
-        const ta = document.createElement('textarea');
-        ta.value = content;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
+      await writeToClipboard(content);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       // ignore — feedback simply won't show
+    }
+  };
+  const onCopyLink = async (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (typeof window === 'undefined') return;
+    try {
+      const base = `${window.location.origin}${window.location.pathname}${window.location.search}`;
+      const link = `${base}#msg-${messageId}`;
+      await writeToClipboard(link);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1500);
+    } catch {
+      // ignore
     }
   };
   return (
@@ -863,6 +983,15 @@ function MessageActions({
           {copied ? 'Copied' : 'Copy'}
         </button>
       ) : null}
+      <button
+        type="button"
+        onClick={onCopyLink}
+        aria-label="Copy link to this message"
+        title="Copy link to this message"
+        style={messageActionButton}
+      >
+        {linkCopied ? 'Link copied' : 'Copy link'}
+      </button>
       {onRegenerate ? (
         <button
           type="button"
@@ -880,6 +1009,18 @@ function MessageActions({
     </div>
   );
 }
+
+const searchNavButtonStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid #2a2a30',
+  color: '#cfcfd6',
+  borderRadius: 6,
+  padding: '2px 6px',
+  fontSize: '0.7rem',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  minWidth: 26,
+};
 
 const messageActionButton: React.CSSProperties = {
   background: 'transparent',
@@ -980,4 +1121,23 @@ function cssEscapeId(id: string): string {
     return CSS.escape(id);
   }
   return id.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
+}
+
+function readSearchQuery(key: string): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.sessionStorage.getItem(key) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeSearchQuery(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value) window.sessionStorage.setItem(key, value);
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    // sessionStorage unavailable / quota; ignore
+  }
 }
