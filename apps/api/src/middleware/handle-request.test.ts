@@ -38,6 +38,20 @@ describe('dispatch — error envelopes', () => {
     if (body.ok) throw new Error('expected error envelope');
     expect(body.error.code).toBe('method_not_allowed');
   });
+
+  it('emits defensive security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy) on every response', async () => {
+    const res = await fetch(`${harness.baseUrl}/health`);
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+  });
+
+  it('emits security headers even on a 404 envelope', async () => {
+    const res = await fetch(`${harness.baseUrl}/nope`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
 });
 
 // ── CSRF protection ───────────────────────────────────────────────────────────

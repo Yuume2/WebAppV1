@@ -63,6 +63,12 @@ export async function handleRequest(
     res.setHeader(k, v);
   }
 
+  // Defensive security headers — cheap, no behavioural change. Opt-out is per-route
+  // via res.removeHeader if a future use case ever needs framing or sniffing.
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+
   if (rawMethod === 'OPTIONS') {
     res.writeHead(204);
     res.end();
