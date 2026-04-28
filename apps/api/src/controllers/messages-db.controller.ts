@@ -13,6 +13,7 @@ import {
 } from '../lib/http.js';
 import { s } from '../lib/schema.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
+import { captureException } from '../lib/sentry.js';
 import { env } from '../config/env.js';
 import type { Db, AssistantMessageMetadata } from '../db/messages.repo.js';
 import * as messagesRepo from '../db/messages.repo.js';
@@ -195,6 +196,7 @@ export async function createMessageDbController(
           deps.providerTimeoutMs ?? PROVIDER_TIMEOUT_MS,
         );
       } catch (err) {
+        captureException(err, { provider: cw.provider, model: cw.model, route: '/v1/messages' });
         if (err instanceof Error && err.message === PROVIDER_TIMEOUT_MESSAGE) {
           return respondError('provider_error', 'Provider call timed out after 30s', 502);
         }
@@ -325,6 +327,7 @@ export async function streamMessageDbController(
       }
     }
   } catch (err) {
+    captureException(err, { provider: cw.provider, model: cw.model, route: '/v1/messages/stream' });
     const detail = err instanceof Error ? err.message : 'Unknown provider error';
     sseWrite(res, { error: detail });
     res.write('data: [DONE]\n\n');
