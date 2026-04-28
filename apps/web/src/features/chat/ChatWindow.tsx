@@ -1,6 +1,13 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react';
 import type { AIProvider } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
 
@@ -51,7 +58,8 @@ export function ChatWindow({
   onRegenerate,
   onCancel,
 }: ChatWindowProps) {
-  const [draft, setDraft] = useState('');
+  const draftStorageKey = `wav.chat.draft.${id}`;
+  const [draft, setDraft] = useState<string>(() => readDraft(draftStorageKey));
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(title);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -81,6 +89,10 @@ export function ChatWindow({
     const next = Math.min(ta.scrollHeight, 160);
     ta.style.height = `${Math.max(36, next)}px`;
   }, [draft]);
+
+  useEffect(() => {
+    writeDraft(draftStorageKey, draft);
+  }, [draft, draftStorageKey]);
 
   const commitRename = () => {
     const trimmed = titleDraft.trim();
@@ -721,4 +733,23 @@ function formatLatency(ms: number): string {
   if (s < 60) return `${s.toFixed(s >= 10 ? 0 : 1)}s`;
   const m = Math.floor(s / 60);
   return `${m}m ${Math.round(s - m * 60)}s`;
+}
+
+function readDraft(key: string): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.localStorage.getItem(key) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeDraft(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value) window.localStorage.setItem(key, value);
+    else window.localStorage.removeItem(key);
+  } catch {
+    // localStorage unavailable / quota exceeded; ignore
+  }
 }
