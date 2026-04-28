@@ -120,6 +120,25 @@ export function ChatWindow({
     setSearchIndex(0);
   }, [lowerQuery]);
 
+  const [flashedMsgId, setFlashedMsgId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash;
+    if (!hash || !hash.startsWith('#msg-')) return;
+    const targetId = hash.slice(5);
+    const exists = messages.some((m) => m.id === targetId);
+    if (!exists) return;
+    const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(targetId)}`);
+    if (el && 'scrollIntoView' in el) {
+      (el as HTMLElement).scrollIntoView({ block: 'start', behavior: 'auto' });
+    }
+    stickyRef.current = false;
+    setFlashedMsgId(targetId);
+    const t = setTimeout(() => setFlashedMsgId(null), 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messagesSignature]);
+
   useEffect(() => {
     if (!active) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -521,6 +540,7 @@ export function ChatWindow({
               message={m}
               highlight={lowerQuery || undefined}
               isActiveMatch={activeMatchId === m.id}
+              isFlashing={flashedMsgId === m.id}
               onRetry={
                 onRetry && m.clientTempId ? () => onRetry(id, m.clientTempId!) : undefined
               }
@@ -717,12 +737,14 @@ function MessageBubble({
   onRegenerate,
   highlight,
   isActiveMatch,
+  isFlashing,
 }: {
   message: MockMessage;
   onRetry?: () => void;
   onRegenerate?: () => void;
   highlight?: string;
   isActiveMatch?: boolean;
+  isFlashing?: boolean;
 }) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -758,8 +780,13 @@ function MessageBubble({
         alignSelf: isUser ? 'flex-end' : 'flex-start',
         maxWidth: '85%',
         background: isUser ? '#2b2b36' : '#1b1b23',
-        border: `1px solid ${isActiveMatch ? '#4f6bff' : borderColor}`,
-        boxShadow: isActiveMatch ? '0 0 0 1px rgba(79,107,255,0.45)' : 'none',
+        border: `1px solid ${isActiveMatch || isFlashing ? '#4f6bff' : borderColor}`,
+        boxShadow:
+          isFlashing
+            ? '0 0 0 3px rgba(79,107,255,0.45)'
+            : isActiveMatch
+              ? '0 0 0 1px rgba(79,107,255,0.45)'
+              : 'none',
         borderRadius: 10,
         padding: '0.55rem 0.75rem',
         fontSize: '0.85rem',
