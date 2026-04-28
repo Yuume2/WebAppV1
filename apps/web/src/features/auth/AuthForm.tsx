@@ -140,6 +140,9 @@ export function AuthForm({ mode }: AuthFormProps) {
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               style={inputStyle}
             />
+            {mode === 'register' ? (
+              <span style={hintStyle}>At least 8 characters.</span>
+            ) : null}
           </Field>
 
           {error ? (
@@ -191,4 +194,9 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.9rem',
   fontFamily: 'inherit',
   outline: 'none',
+};
+
+const hintStyle: React.CSSProperties = {
+  fontSize: '0.72rem',
+  color: '#8a8a95',
 };
