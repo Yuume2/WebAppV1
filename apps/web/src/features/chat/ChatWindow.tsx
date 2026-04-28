@@ -309,6 +309,44 @@ export function ChatWindow({
 
   const canSend = !pending && draft.trim().length > 0;
 
+  const onQuoteMessage = (content: string) => {
+    if (!content) return;
+    const quoted = content
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n');
+    setDraft((prev) => {
+      const trimmed = prev.replace(/\s+$/, '');
+      const sep = trimmed.length === 0 ? '' : trimmed.endsWith('\n') ? '\n' : '\n\n';
+      return `${trimmed}${sep}${quoted}\n\n`;
+    });
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+    });
+  };
+
+  const starredStorageKey = `wav.chat.starred.${id}`;
+  const [starredIds, setStarredIds] = useState<Set<string>>(() => readStarred(starredStorageKey));
+  useEffect(() => {
+    writeStarred(starredStorageKey, starredIds);
+  }, [starredStorageKey, starredIds]);
+  const toggleStar = (msgId: string) => {
+    setStarredIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msgId)) next.delete(msgId);
+      else next.add(msgId);
+      return next;
+    });
+  };
+
+  const [showOnlyStarred, setShowOnlyStarred] = useState(false);
+  const displayedMessages = showOnlyStarred
+    ? filteredMessages.filter((m) => starredIds.has(m.id))
+    : filteredMessages;
+
   return (
     <div
       onClick={() => onFocus?.(id)}
@@ -448,6 +486,37 @@ export function ChatWindow({
             }}
           >
             Find
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowOnlyStarred((prev) => !prev);
+            }}
+            aria-label={showOnlyStarred ? 'Show all messages' : 'Show only starred messages'}
+            aria-pressed={showOnlyStarred}
+            title={
+              showOnlyStarred
+                ? 'Showing only starred — click to clear'
+                : `Show only starred (${starredIds.size})`
+            }
+            disabled={!showOnlyStarred && starredIds.size === 0}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: showOnlyStarred ? '#f0c14b' : starredIds.size === 0 ? '#4a4a52' : '#8a8a95',
+              cursor: !showOnlyStarred && starredIds.size === 0 ? 'not-allowed' : 'pointer',
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              padding: '0.25rem 0.5rem',
+              borderRadius: 6,
+              lineHeight: 1,
+              fontFamily: 'inherit',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            {showOnlyStarred ? '★ Starred' : `☆ Starred${starredIds.size > 0 ? ` (${starredIds.size})` : ''}`}
           </button>
           {onDelete ? (
             <button
@@ -691,8 +760,19 @@ export function ChatWindow({
           >
             No messages match &ldquo;{trimmedQuery}&rdquo;.
           </div>
+        ) : showOnlyStarred && displayedMessages.length === 0 ? (
+          <div
+            style={{
+              margin: 'auto',
+              textAlign: 'center',
+              color: '#8a8a95',
+              fontSize: '0.85rem',
+            }}
+          >
+            No starred messages yet — use the ☆ on a message bubble to pin it here.
+          </div>
         ) : (
-          filteredMessages.map((m) => (
+          displayedMessages.map((m) => (
             <MessageBubble
               key={m.id}
               message={m}
@@ -707,6 +787,9 @@ export function ChatWindow({
                   ? () => onRegenerate(id, m.id)
                   : undefined
               }
+              onQuote={onQuoteMessage}
+              isStarred={starredIds.has(m.id)}
+              onToggleStar={() => toggleStar(m.id)}
             />
           ))
         )}
@@ -944,16 +1027,22 @@ function MessageBubble({
   message,
   onRetry,
   onRegenerate,
+  onQuote,
   highlight,
   isActiveMatch,
   isFlashing,
+  isStarred,
+  onToggleStar,
 }: {
   message: MockMessage;
   onRetry?: () => void;
   onRegenerate?: () => void;
+  onQuote?: (content: string) => void;
   highlight?: string;
   isActiveMatch?: boolean;
   isFlashing?: boolean;
+  isStarred?: boolean;
+  onToggleStar?: () => void;
 }) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -1094,7 +1183,10 @@ function MessageBubble({
         relativeStamp={relativeStamp}
         canCopy={canCopy}
         onRegenerate={isAssistant && !isStreaming && !isPending ? onRegenerate : undefined}
+        onQuote={canCopy && onQuote ? () => onQuote(message.content) : undefined}
         align={isUser ? 'end' : 'start'}
+        isStarred={isStarred}
+        onToggleStar={onToggleStar}
       />
     </div>
   );
@@ -1107,7 +1199,10 @@ function MessageActions({
   relativeStamp,
   canCopy,
   onRegenerate,
+  onQuote,
   align,
+  isStarred,
+  onToggleStar,
 }: {
   messageId: string;
   content: string;
@@ -1115,7 +1210,10 @@ function MessageActions({
   relativeStamp: string | null;
   canCopy: boolean;
   onRegenerate?: () => void;
+  onQuote?: () => void;
   align: 'start' | 'end';
+  isStarred?: boolean;
+  onToggleStar?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -1194,6 +1292,39 @@ function MessageActions({
       >
         {linkCopied ? 'Link copied' : 'Copy link'}
       </button>
+      {onQuote ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onQuote();
+          }}
+          aria-label="Quote this message in composer"
+          title="Quote in composer"
+          style={messageActionButton}
+        >
+          Quote
+        </button>
+      ) : null}
+      {onToggleStar ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleStar();
+          }}
+          aria-label={isStarred ? 'Unstar this message' : 'Star this message'}
+          title={isStarred ? 'Unstar' : 'Star'}
+          aria-pressed={isStarred ? true : false}
+          style={{
+            ...messageActionButton,
+            color: isStarred ? '#f0c14b' : '#9a9aa3',
+            borderColor: isStarred ? '#5a4a1f' : messageActionButton.border?.toString().includes('1px') ? '#2a2a30' : '#2a2a30',
+          }}
+        >
+          {isStarred ? '★' : '☆'}
+        </button>
+      ) : null}
       {onRegenerate ? (
         <button
           type="button"
@@ -1281,6 +1412,29 @@ function writeDraft(key: string, value: string): void {
   try {
     if (value) window.localStorage.setItem(key, value);
     else window.localStorage.removeItem(key);
+  } catch {
+    // localStorage unavailable / quota exceeded; ignore
+  }
+}
+
+function readStarred(key: string): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((v): v is string => typeof v === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeStarred(key: string, value: Set<string>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value.size === 0) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, JSON.stringify(Array.from(value)));
   } catch {
     // localStorage unavailable / quota exceeded; ignore
   }
