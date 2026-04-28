@@ -20,7 +20,8 @@ const VERIFY_MODEL = 'sonar';
 
 export type PerplexityVerifyResult = 'ok' | 'unauthorized' | 'provider_error';
 
-const VERIFY_TIMEOUT_MS = 10_000;
+const VERIFY_TIMEOUT_MS  = 10_000;
+const RUNTIME_TIMEOUT_MS = 60_000;
 
 export async function verifyPerplexityKey(apiKey: string): Promise<PerplexityVerifyResult> {
   let res: Response;
@@ -90,6 +91,7 @@ export function createPerplexityClient(apiKey: string): ProviderClient {
             'Authorization': `Bearer ${apiKey}`,
           },
           body: JSON.stringify({ model, messages, stream: false }),
+          signal: AbortSignal.timeout(RUNTIME_TIMEOUT_MS),
         });
       } catch (err) {
         throw new ProviderError(

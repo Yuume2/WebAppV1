@@ -105,6 +105,13 @@ describe('createOpenAIClient', () => {
       const result = await client.createChatCompletion(MESSAGES, MODEL);
       expect(result.model).toBe('gpt-4o-2024-11-20');
     });
+
+    it('passes an AbortSignal so a completion call cannot hang forever', async () => {
+      vi.mocked(fetch).mockResolvedValue(makeOkResponse(openAIBody('ok')));
+      await createOpenAIClient(API_KEY).createChatCompletion(MESSAGES, MODEL);
+      const init = vi.mocked(fetch).mock.calls[0]![1] as RequestInit;
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
   });
 
   describe('createChatCompletion — API errors', () => {
