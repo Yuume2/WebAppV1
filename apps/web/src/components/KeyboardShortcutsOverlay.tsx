@@ -16,6 +16,8 @@ const SHORTCUTS: Shortcut[] = [
   { keys: ['⌘', 'E'], description: 'Rename the active chat window (Ctrl+E on Linux/Win)' },
   { keys: ['⌘', 'Shift', 'W'], description: 'Close the active chat window (hides locally; Ctrl+Shift+W on Linux/Win)' },
   { keys: ['⌘', 'Shift', '⌫'], description: 'Clear the composer draft of the active chat window (Ctrl+Shift+Backspace)' },
+  { keys: ['G'], description: 'Jump to the latest message in the active chat (when not typing)' },
+  { keys: ['g', 'g'], description: 'Jump to the top of the active chat (when not typing)' },
   { keys: ['Enter'], description: 'In Find: jump to next match' },
   { keys: ['Shift', 'Enter'], description: 'In Find: jump to previous match  ·  In composer: newline' },
   { keys: ['Enter'], description: 'In composer: send message' },

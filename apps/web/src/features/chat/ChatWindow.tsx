@@ -87,6 +87,7 @@ export function ChatWindow({
 
   const scrollStorageKey = `wav.chat.scroll.${id}`;
   const restoredScrollRef = useRef(false);
+  const lastGAtRef = useRef<number>(0);
   const scrollSaveTimerRef = useRef<number | null>(null);
   const [scrolledAway, setScrolledAway] = useState(false);
 
@@ -215,6 +216,33 @@ export function ChatWindow({
         e.preventDefault();
         setDraft('');
         requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
+      }
+      // Vim-style: G jumps to bottom; g g jumps to top. Only when not typing.
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        const target = e.target;
+        const typing = target instanceof HTMLElement
+          && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+        if (typing) return;
+        if (e.key === 'G' && e.shiftKey) {
+          e.preventDefault();
+          scrollToBottom();
+          return;
+        }
+        if (e.key === 'g' && !e.shiftKey) {
+          e.preventDefault();
+          if (lastGAtRef.current && Date.now() - lastGAtRef.current < 600) {
+            const el = scrollRef.current;
+            if (el) {
+              el.scrollTop = 0;
+              stickyRef.current = false;
+              setScrolledAway(true);
+            }
+            lastGAtRef.current = 0;
+          } else {
+            lastGAtRef.current = Date.now();
+          }
+        }
       }
     };
     window.addEventListener('keydown', onKey);
