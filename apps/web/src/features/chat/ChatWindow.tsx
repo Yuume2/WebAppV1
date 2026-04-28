@@ -11,6 +11,7 @@ import {
 } from 'react';
 import type { AIProvider } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
+import { useToast } from '@/components/ToastHost';
 
 interface ChatWindowProps {
   id: string;
@@ -91,6 +92,7 @@ export function ChatWindow({
   const scrollSaveTimerRef = useRef<number | null>(null);
   const [scrolledAway, setScrolledAway] = useState(false);
   const [exportLabel, setExportLabel] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const toast = useToast();
 
   const updateStickiness = () => {
     const el = scrollRef.current;
@@ -145,8 +147,10 @@ export function ChatWindow({
         document.body.removeChild(ta);
       }
       setExportLabel('copied');
+      toast.push('success', `${title} — conversation copied as Markdown`);
     } catch {
       setExportLabel('failed');
+      toast.push('error', `${title} — could not copy conversation`);
     }
     setTimeout(() => setExportLabel('idle'), 1800);
   };
