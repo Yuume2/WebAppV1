@@ -88,12 +88,15 @@ export function ChatWindow({
   const scrollStorageKey = `wav.chat.scroll.${id}`;
   const restoredScrollRef = useRef(false);
   const scrollSaveTimerRef = useRef<number | null>(null);
+  const [scrolledAway, setScrolledAway] = useState(false);
 
   const updateStickiness = () => {
     const el = scrollRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
-    stickyRef.current = distanceFromBottom < 64;
+    const sticky = distanceFromBottom < 64;
+    stickyRef.current = sticky;
+    setScrolledAway(!sticky);
     if (restoredScrollRef.current) {
       if (scrollSaveTimerRef.current != null) {
         window.clearTimeout(scrollSaveTimerRef.current);
@@ -103,6 +106,14 @@ export function ChatWindow({
         writeScrollTop(scrollStorageKey, top);
       }, 200);
     }
+  };
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    stickyRef.current = true;
+    setScrolledAway(false);
   };
 
   useLayoutEffect(() => {
@@ -596,6 +607,43 @@ export function ChatWindow({
           ))
         )}
       </div>
+
+      {scrolledAway && !lowerQuery && messages.length > 0 ? (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '0.25rem 0',
+            background: 'transparent',
+            pointerEvents: 'none',
+            marginTop: -28,
+          }}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              scrollToBottom();
+            }}
+            aria-label="Scroll to latest message"
+            title="Scroll to latest message"
+            style={{
+              pointerEvents: 'auto',
+              background: '#1b1b23',
+              border: '1px solid #2a2a30',
+              color: '#e8e8ef',
+              borderRadius: 999,
+              padding: '0.3rem 0.7rem',
+              fontSize: '0.72rem',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            }}
+          >
+            ↓ Latest
+          </button>
+        </div>
+      ) : null}
 
       <form
         onSubmit={(e) => {
