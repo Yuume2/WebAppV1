@@ -117,4 +117,15 @@ describe('checkCsrf', () => {
     );
     expect(r.ok).toBe(false);
   });
+
+  it('handles the array-form Origin header (duplicate Origin headers, takes the first)', () => {
+    // Node exposes duplicate headers as string[]. The implementation falls
+    // back to the first array entry — pin that semantic so a refactor that
+    // returns null for arrays (and thus skips Origin checking entirely)
+    // can't ship.
+    const req = {
+      headers: { origin: ['https://app.example.com', 'https://other.example.com'] },
+    } as unknown as IncomingMessage;
+    expect(checkCsrf(req, 'POST', 'https://app.example.com').ok).toBe(true);
+  });
 });
