@@ -852,6 +852,7 @@ function MessageBubble({
         </div>
       )}
       <MessageActions
+        messageId={message.id}
         content={message.content}
         absoluteStamp={absoluteStamp}
         relativeStamp={relativeStamp}
@@ -864,6 +865,7 @@ function MessageBubble({
 }
 
 function MessageActions({
+  messageId,
   content,
   absoluteStamp,
   relativeStamp,
@@ -871,6 +873,7 @@ function MessageActions({
   onRegenerate,
   align,
 }: {
+  messageId: string;
   content: string;
   absoluteStamp: string | null;
   relativeStamp: string | null;
@@ -879,26 +882,45 @@ function MessageActions({
   align: 'start' | 'end';
 }) {
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const writeToClipboard = async (value: string): Promise<void> => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+    if (typeof document !== 'undefined') {
+      const ta = document.createElement('textarea');
+      ta.value = value;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+  };
   const onCopy = async (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     if (!canCopy) return;
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(content);
-      } else if (typeof document !== 'undefined') {
-        const ta = document.createElement('textarea');
-        ta.value = content;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
+      await writeToClipboard(content);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       // ignore — feedback simply won't show
+    }
+  };
+  const onCopyLink = async (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (typeof window === 'undefined') return;
+    try {
+      const base = `${window.location.origin}${window.location.pathname}${window.location.search}`;
+      const link = `${base}#msg-${messageId}`;
+      await writeToClipboard(link);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1500);
+    } catch {
+      // ignore
     }
   };
   return (
@@ -927,6 +949,15 @@ function MessageActions({
           {copied ? 'Copied' : 'Copy'}
         </button>
       ) : null}
+      <button
+        type="button"
+        onClick={onCopyLink}
+        aria-label="Copy link to this message"
+        title="Copy link to this message"
+        style={messageActionButton}
+      >
+        {linkCopied ? 'Link copied' : 'Copy link'}
+      </button>
       {onRegenerate ? (
         <button
           type="button"
