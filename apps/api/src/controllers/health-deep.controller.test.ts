@@ -6,8 +6,8 @@ import { Router } from '../lib/router.js';
 import { createApiServer } from '../lib/server.js';
 import { healthDeepController, type DbStatus, type HealthDeepDeps } from './health-deep.controller.js';
 
-function makeDeps(status: DbStatus): HealthDeepDeps {
-  return { pingDb: async () => status };
+function makeDeps(status: DbStatus, latencyMs: number | null = status === 'disabled' ? null : 7): HealthDeepDeps {
+  return { pingDb: async () => ({ status, latencyMs }) };
 }
 
 async function startServer(deps: HealthDeepDeps): Promise<{ baseUrl: string; close: () => Promise<void> }> {
@@ -23,35 +23,39 @@ async function startServer(deps: HealthDeepDeps): Promise<{ baseUrl: string; clo
 }
 
 describe('GET /v1/health/deep', () => {
-  it('returns 200 with db=ok when ping succeeds', async () => {
-    const { baseUrl, close } = await startServer(makeDeps('ok'));
+  it('returns 200 with db=ok and dbLatencyMs when ping succeeds', async () => {
+    const { baseUrl, close } = await startServer(makeDeps('ok', 12));
     const res = await fetch(`${baseUrl}/v1/health/deep`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as ApiResponse<{ db: DbStatus; service: string }>;
+    const body = (await res.json()) as ApiResponse<{ db: DbStatus; dbLatencyMs: number | null; service: string }>;
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.db).toBe('ok');
+    expect(body.data.dbLatencyMs).toBe(12);
     expect(body.data.service).toBe('webapp-api');
     await close();
   });
 
-  it('returns 200 with db=disabled when no DATABASE_URL', async () => {
+  it('returns 200 with db=disabled and dbLatencyMs=null when no DATABASE_URL', async () => {
     const { baseUrl, close } = await startServer(makeDeps('disabled'));
     const res = await fetch(`${baseUrl}/v1/health/deep`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as ApiResponse<{ db: DbStatus }>;
+    const body = (await res.json()) as ApiResponse<{ db: DbStatus; dbLatencyMs: number | null }>;
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.db).toBe('disabled');
+    expect(body.data.dbLatencyMs).toBeNull();
     await close();
   });
 
-  it('returns 503 with db=down when ping fails', async () => {
-    const { baseUrl, close } = await startServer(makeDeps('down'));
+  it('returns 503 with db=down + dbLatencyMs when ping fails', async () => {
+    const { baseUrl, close } = await startServer(makeDeps('down', 4_999));
     const res = await fetch(`${baseUrl}/v1/health/deep`);
     expect(res.status).toBe(503);
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('internal_error');
-    expect((body.error.details as { db: DbStatus }).db).toBe('down');
+    const details = body.error.details as { db: DbStatus; dbLatencyMs: number | null };
+    expect(details.db).toBe('down');
+    expect(details.dbLatencyMs).toBe(4_999);
     await close();
   });
 });
