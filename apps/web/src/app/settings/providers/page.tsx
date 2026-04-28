@@ -29,6 +29,11 @@ type SaveResult =
   | { status: 'ok'; provider: AIProvider }
   | { status: 'failed'; provider: AIProvider; code: string; message: string };
 
+type RowTestState =
+  | { status: 'testing' }
+  | { status: 'ok'; at: number }
+  | { status: 'failed'; code: string; message: string; at: number };
+
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -45,7 +50,7 @@ export default function ProviderSettingsPage() {
   const [pendingDelete, setPendingDelete] = useState<ProviderConnection | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testStateById, setTestStateById] = useState<Record<string, RowTestState>>({});
   const [formProvider, setFormProvider] = useState<AIProvider>('openai');
   const [formApiKey, setFormApiKey] = useState('');
   const [saving, setSaving] = useState(false);
@@ -78,6 +83,27 @@ export default function ProviderSettingsPage() {
     }, 6000);
     return () => clearTimeout(t);
   }, [saveResult]);
+
+  useEffect(() => {
+    const okEntries = Object.entries(testStateById).filter(
+      ([, v]) => v.status === 'ok',
+    );
+    if (okEntries.length === 0) return;
+    const oldest = Math.min(...okEntries.map(([, v]) => (v.status === 'ok' ? v.at : Date.now())));
+    const wait = Math.max(0, 6000 - (Date.now() - oldest));
+    const t = setTimeout(() => {
+      setTestStateById((prev) => {
+        const next: Record<string, RowTestState> = {};
+        const cutoff = Date.now() - 6000;
+        for (const [id, val] of Object.entries(prev)) {
+          if (val.status === 'ok' && val.at <= cutoff) continue;
+          next[id] = val;
+        }
+        return next;
+      });
+    }, wait);
+    return () => clearTimeout(t);
+  }, [testStateById]);
 
   const onSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -138,23 +164,39 @@ export default function ProviderSettingsPage() {
 
   const onTest = useCallback(
     async (connection: ProviderConnection) => {
-      setTestingId(connection.id);
+      const current = testStateById[connection.id];
+      if (current && current.status === 'testing') return;
+      setTestStateById((prev) => ({ ...prev, [connection.id]: { status: 'testing' } }));
       try {
         const result: TestConnectionResult = await testProviderConnection(connection.id);
         if (result.ok) {
-          toast.push('success', `${connection.provider}: connection OK`);
+          setTestStateById((prev) => ({
+            ...prev,
+            [connection.id]: { status: 'ok', at: Date.now() },
+          }));
         } else {
           const code = result.code ?? 'unknown';
           const message = result.message ?? 'Test failed';
-          toast.push('error', `${connection.provider}: ${code} — ${message}`);
+          setTestStateById((prev) => ({
+            ...prev,
+            [connection.id]: { status: 'failed', code, message, at: Date.now() },
+          }));
         }
       } catch (err) {
+        const e = err as ApiCallError | undefined;
+        setTestStateById((prev) => ({
+          ...prev,
+          [connection.id]: {
+            status: 'failed',
+            code: e?.code ?? 'test_error',
+            message: e?.message ?? 'Test failed',
+            at: Date.now(),
+          },
+        }));
         toast.pushError(err, connection.provider);
-      } finally {
-        setTestingId(null);
       }
     },
-    [toast],
+    [testStateById, toast],
   );
 
   const onConfirmDelete = useCallback(async () => {
@@ -260,27 +302,41 @@ export default function ProviderSettingsPage() {
           <tbody>
             {[...state.items]
               .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
-              .map((c) => (
-                <tr key={c.id}>
-                  <td style={tdStyle}>{c.provider}</td>
-                  <td style={tdStyle} title={c.createdAt}>{formatDate(c.createdAt)}</td>
-                  <td style={tdStyle} title={c.updatedAt}>{formatDate(c.updatedAt)}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: '0.5rem' }}>
-                      <Button
-                        variant="ghost"
-                        onClick={() => void onTest(c)}
-                        disabled={testingId === c.id}
+              .map((c) => {
+                const ts = testStateById[c.id];
+                const testing = ts?.status === 'testing';
+                const buttonLabel = testing ? 'Testing…' : ts ? 'Re-test' : 'Test';
+                return (
+                  <tr key={c.id}>
+                    <td style={tdStyle}>{c.provider}</td>
+                    <td style={tdStyle} title={c.createdAt}>{formatDate(c.createdAt)}</td>
+                    <td style={tdStyle} title={c.updatedAt}>{formatDate(c.updatedAt)}</td>
+                    <td style={{ ...tdStyle, textAlign: 'right' }}>
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          gap: '0.5rem',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          justifyContent: 'flex-end',
+                        }}
                       >
-                        {testingId === c.id ? 'Testing…' : 'Test'}
-                      </Button>
-                      <Button variant="ghost" onClick={() => setPendingDelete(c)}>
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <RowTestPill state={ts} />
+                        <Button
+                          variant="ghost"
+                          onClick={() => void onTest(c)}
+                          disabled={testing}
+                        >
+                          {buttonLabel}
+                        </Button>
+                        <Button variant="ghost" onClick={() => setPendingDelete(c)}>
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
       )}
@@ -356,6 +412,29 @@ function SaveResultBanner({ result }: { result: SaveResult }) {
     <div role="alert" style={errorBoxStyle}>
       <strong>{result.provider}</strong> — {result.code} · {result.message}
     </div>
+  );
+}
+
+function RowTestPill({ state }: { state: RowTestState | undefined }) {
+  if (!state) return null;
+  if (state.status === 'testing') {
+    return (
+      <span style={pillNeutralStyle} aria-live="polite">
+        <Spinner /> Testing…
+      </span>
+    );
+  }
+  if (state.status === 'ok') {
+    return (
+      <span style={pillSuccessStyle} role="status" aria-live="polite">
+        ✓ OK
+      </span>
+    );
+  }
+  return (
+    <span style={pillErrorStyle} role="alert" title={`${state.code} — ${state.message}`}>
+      ✕ {state.code}
+    </span>
   );
 }
 
@@ -458,6 +537,40 @@ const successBannerStyle: React.CSSProperties = {
   borderRadius: 6,
   padding: '0.55rem 0.7rem',
   fontSize: '0.85rem',
+};
+
+const pillBaseStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  fontSize: '0.7rem',
+  padding: '2px 8px',
+  borderRadius: 999,
+  fontFamily: 'inherit',
+  letterSpacing: '0.02em',
+};
+
+const pillNeutralStyle: React.CSSProperties = {
+  ...pillBaseStyle,
+  background: '#1b1b23',
+  border: '1px solid #2a2a30',
+  color: '#cfcfd6',
+};
+
+const pillSuccessStyle: React.CSSProperties = {
+  ...pillBaseStyle,
+  background: '#13321d',
+  border: '1px solid #2a6a43',
+  color: '#c9f4d6',
+  fontWeight: 600,
+};
+
+const pillErrorStyle: React.CSSProperties = {
+  ...pillBaseStyle,
+  background: '#3a1d1d',
+  border: '1px solid #6b2a2a',
+  color: '#ffd3d3',
+  fontWeight: 600,
 };
 
 const pageStyle: React.CSSProperties = {
