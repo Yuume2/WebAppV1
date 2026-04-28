@@ -202,6 +202,34 @@ describe('POST /v1/auth/login', () => {
     expect(body.error.code).toBe('unauthenticated');
     await close();
   });
+
+  it('returns the same code AND the same message string for unknown email vs wrong password', async () => {
+    // The whole point of the unified 'Invalid email or password' string is to
+    // be impossible to distinguish from the caller's POV. If a future
+    // refactor adds a more helpful 'No account with that email' branch, this
+    // test will fail — forcing a re-look at the enumeration trade-off.
+
+    // Path A: email unknown.
+    const a = await startServer(makeDeps({ findUserByEmail: async () => null }));
+    const ra = await post(a.baseUrl, '/v1/auth/login', { email: 'ghost@example.com', password: 'anything' });
+    expect(ra.status).toBe(401);
+    const ba = (await ra.json()) as ApiResponse<never>;
+    if (ba.ok) throw new Error('expected error');
+    await a.close();
+
+    // Path B: email known, wrong password.
+    const b = await startServer(makeDeps({
+      findUserByEmail: async () => mockUser({ passwordHash: realHash }),
+    }));
+    const rb = await post(b.baseUrl, '/v1/auth/login', { email: 'test@example.com', password: 'wrongpassword' });
+    expect(rb.status).toBe(401);
+    const bb = (await rb.json()) as ApiResponse<never>;
+    if (bb.ok) throw new Error('expected error');
+    await b.close();
+
+    expect(ba.error.code).toBe(bb.error.code);
+    expect(ba.error.message).toBe(bb.error.message);
+  });
 });
 
 // ── Me ────────────────────────────────────────────────────────────────────────
