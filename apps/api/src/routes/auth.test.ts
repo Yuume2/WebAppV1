@@ -138,6 +138,30 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('signup Set-Cookie token hashes to the value persisted via createSession', async () => {
+    // The cookie carries the RAW token; the DB stores the SHA-256 hash.
+    // The cookie value the client receives MUST hash to the value the
+    // controller passed to createSession — otherwise the next /me request
+    // looks up a hash that doesn't exist and the user is instantly 401.
+    // Pin the loop with a real hash comparison.
+    let storedHash: string | null = null;
+    const { baseUrl, close } = await startServer(makeDeps({
+      createSession: async (h, userId, expiresAt) => {
+        storedHash = h;
+        return { id: h, userId, expiresAt, createdAt: new Date() };
+      },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'roundtrip@example.com', password: 'password123' });
+    expect(res.status).toBe(201);
+    const cookie = getSetCookie(res);
+    const m = cookie?.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
+    expect(m).not.toBeNull();
+    const token = m![1]!;
+    expect(storedHash).not.toBeNull();
+    expect(storedHash).toBe(hashSessionToken(token));
+    await close();
+  });
+
   it('signup Set-Cookie carries a 64-char hex token (matches generateSessionToken contract)', async () => {
     // generateSessionToken returns 32 random bytes hex-encoded = 64 chars.
     // Pin the wire shape: a refactor that swapped to base64url or shortened
