@@ -162,7 +162,21 @@ export function WorkspaceSidebar({
         }}
       >
         <NewWindowComposer onCreate={onCreate} />
-        <Button variant="ghost" onClick={onReset} style={{ flex: 1, fontSize: '0.78rem' }}>
+        <Button
+          variant="ghost"
+          title="Reset workspace view (close/reopen state)"
+          onClick={() => {
+            if (typeof window === 'undefined') {
+              onReset();
+              return;
+            }
+            const ok = window.confirm(
+              'Reset the workspace view? This reopens every closed window and discards local close/reopen state. Server data is unchanged.',
+            );
+            if (ok) onReset();
+          }}
+          style={{ flex: 1, fontSize: '0.78rem' }}
+        >
           Reset
         </Button>
       </div>
