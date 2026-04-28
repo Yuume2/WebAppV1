@@ -1,12 +1,39 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 // Local AI smoke test for @webapp/api.
-// Walks the full chat flow: signup → project → workspace → openai key →
+// Walks the full chat flow: signup → project → workspace → provider key →
 // chat-window → POST message → expect assistant reply.
-// Spends real OpenAI tokens. Not wired into CI on purpose.
+// Spends real provider tokens. Not wired into CI on purpose.
+//
+// Usage:
+//   pnpm api:smoke:ai
+//   pnpm api:smoke:ai -- --provider=anthropic
+//   pnpm api:smoke:ai -- --provider=perplexity --model=sonar
+//
+// Reads OPENAI_API_KEY / ANTHROPIC_API_KEY / PERPLEXITY_API_KEY from env;
+// never prints the key.
 
 const BASE_URL = process.env.SMOKE_API_BASE_URL ?? 'http://localhost:4000';
-const MODEL    = process.env.SMOKE_MODEL ?? 'gpt-4o-mini';
+
+const PROVIDER_DEFAULTS = {
+  openai:     { envVar: 'OPENAI_API_KEY',     defaultModel: 'gpt-4o-mini' },
+  anthropic:  { envVar: 'ANTHROPIC_API_KEY',  defaultModel: 'claude-3-5-haiku-latest' },
+  perplexity: { envVar: 'PERPLEXITY_API_KEY', defaultModel: 'sonar' },
+};
+
+function parseFlag(name, fallback) {
+  const prefix = `--${name}=`;
+  const arg = process.argv.find((a) => a.startsWith(prefix));
+  return arg ? arg.slice(prefix.length) : fallback;
+}
+
+const PROVIDER = parseFlag('provider', 'openai');
+if (!Object.prototype.hasOwnProperty.call(PROVIDER_DEFAULTS, PROVIDER)) {
+  console.error(`✗ unknown --provider='${PROVIDER}' (expected: openai | anthropic | perplexity)`);
+  process.exit(1);
+}
+const { envVar, defaultModel } = PROVIDER_DEFAULTS[PROVIDER];
+const MODEL = parseFlag('model', process.env.SMOKE_MODEL ?? defaultModel);
 
 function fail(msg, extra) {
   console.error(`✗ ${msg}`);
@@ -14,14 +41,12 @@ function fail(msg, extra) {
   process.exit(1);
 }
 
-function pass(msg) {
-  console.log(`✓ ${msg}`);
-}
+function pass(msg) { console.log(`✓ ${msg}`); }
 
-if (!process.env.OPENAI_API_KEY) {
-  fail('OPENAI_API_KEY required (set it in apps/api/.env or in your shell)');
+const PROVIDER_API_KEY = process.env[envVar];
+if (!PROVIDER_API_KEY) {
+  fail(`${envVar} required (set it in apps/api/.env or in your shell)`);
 }
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // ── Cookie jar ────────────────────────────────────────────────────────────────
 
@@ -79,7 +104,7 @@ const ts    = Date.now();
 const EMAIL = `smoke-${ts}@example.test`;
 const PASS  = `smoke-pass-${ts}-${Math.random().toString(36).slice(2)}`;
 
-console.log(`▶ smoke-ai against ${BASE_URL} as ${EMAIL}`);
+console.log(`▶ smoke-ai against ${BASE_URL} (provider=${PROVIDER}, model=${MODEL}) as ${EMAIL}`);
 
 // 1. Health
 {
@@ -105,10 +130,10 @@ const workspace = await expectOk(
 );
 if (!workspace?.id) fail('workspace missing id');
 
-// 5. OpenAI connection (apiKey from env, never printed)
+// 5. Provider connection (apiKey from env, never printed)
 await expectOk(
-  'upsert openai connection',
-  req('PUT', '/v1/provider-connections/openai', { apiKey: OPENAI_API_KEY }),
+  `upsert ${PROVIDER} connection`,
+  req('PUT', `/v1/provider-connections/${PROVIDER}`, { apiKey: PROVIDER_API_KEY }),
 );
 
 // 6. Chat window
@@ -117,7 +142,7 @@ const cw = await expectOk(
   req('POST', '/v1/chat-windows', {
     workspaceId: workspace.id,
     title:       'Smoke Chat',
-    provider:    'openai',
+    provider:    PROVIDER,
     model:       MODEL,
   }),
 );
@@ -139,7 +164,7 @@ if (am.role !== 'assistant')   fail(`assistant role wrong: ${am.role}`);
 if (typeof am.content !== 'string' || am.content.length === 0) {
   fail('assistant content empty');
 }
-if (am.provider !== 'openai')  fail(`assistant provider wrong: ${am.provider}`);
+if (am.provider !== PROVIDER)  fail(`assistant provider wrong: ${am.provider}`);
 
 pass(`assistant reply (${am.content.length} chars, ${am.promptTokens ?? '?'} prompt + ${am.completionTokens ?? '?'} completion tokens, ${am.latencyMs ?? '?'}ms)`);
 

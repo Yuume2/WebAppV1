@@ -6,7 +6,26 @@
 // and a [DONE] sentinel. Spends real OpenAI tokens. Not wired into CI.
 
 const BASE_URL = process.env.SMOKE_API_BASE_URL ?? 'http://localhost:4000';
-const MODEL    = process.env.SMOKE_MODEL ?? 'gpt-4o-mini';
+
+const PROVIDER_DEFAULTS = {
+  openai:     { envVar: 'OPENAI_API_KEY',     defaultModel: 'gpt-4o-mini' },
+  anthropic:  { envVar: 'ANTHROPIC_API_KEY',  defaultModel: 'claude-3-5-haiku-latest' },
+  perplexity: { envVar: 'PERPLEXITY_API_KEY', defaultModel: 'sonar' },
+};
+
+function parseFlag(name, fallback) {
+  const prefix = `--${name}=`;
+  const arg = process.argv.find((a) => a.startsWith(prefix));
+  return arg ? arg.slice(prefix.length) : fallback;
+}
+
+const PROVIDER = parseFlag('provider', 'openai');
+if (!Object.prototype.hasOwnProperty.call(PROVIDER_DEFAULTS, PROVIDER)) {
+  console.error(`✗ unknown --provider='${PROVIDER}' (expected: openai | anthropic | perplexity)`);
+  process.exit(1);
+}
+const { envVar, defaultModel } = PROVIDER_DEFAULTS[PROVIDER];
+const MODEL = parseFlag('model', process.env.SMOKE_MODEL ?? defaultModel);
 
 function fail(msg, extra) {
   console.error(`✗ ${msg}`);
@@ -16,10 +35,10 @@ function fail(msg, extra) {
 
 function pass(msg) { console.log(`✓ ${msg}`); }
 
-if (!process.env.OPENAI_API_KEY) {
-  fail('OPENAI_API_KEY required (set it in apps/api/.env or in your shell)');
+const PROVIDER_API_KEY = process.env[envVar];
+if (!PROVIDER_API_KEY) {
+  fail(`${envVar} required (set it in apps/api/.env or in your shell)`);
 }
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // ── Cookie jar ────────────────────────────────────────────────────────────────
 
@@ -76,7 +95,7 @@ const ts    = Date.now();
 const EMAIL = `smoke-stream-${ts}@example.test`;
 const PASS  = `smoke-pass-${ts}-${Math.random().toString(36).slice(2)}`;
 
-console.log(`▶ smoke-ai-stream against ${BASE_URL} as ${EMAIL}`);
+console.log(`▶ smoke-ai-stream against ${BASE_URL} (provider=${PROVIDER}, model=${MODEL}) as ${EMAIL}`);
 
 {
   const { status, body } = await req('GET', '/v1/health');
@@ -90,14 +109,14 @@ if (!user?.id) fail('signup returned no user.id');
 const project = await expectOk('create project', req('POST', '/v1/projects', { name: `Smoke Stream ${ts}` }));
 const workspace = await expectOk('create workspace', req('POST', '/v1/workspaces', { projectId: project.id, name: 'Smoke WS' }));
 
-await expectOk('upsert openai connection', req('PUT', '/v1/provider-connections/openai', { apiKey: OPENAI_API_KEY }));
+await expectOk(`upsert ${PROVIDER} connection`, req('PUT', `/v1/provider-connections/${PROVIDER}`, { apiKey: PROVIDER_API_KEY }));
 
 const cw = await expectOk(
   'create chat-window',
   req('POST', '/v1/chat-windows', {
     workspaceId: workspace.id,
     title:       'Smoke Stream Chat',
-    provider:    'openai',
+    provider:    PROVIDER,
     model:       MODEL,
   }),
 );
@@ -168,7 +187,7 @@ if (typeof finalEvent.assistantMessage.content !== 'string' || finalEvent.assist
 if (finalEvent.assistantMessage.content !== assistantContent) {
   fail(`stream: streamed content (${assistantContent.length}b) != persisted content (${finalEvent.assistantMessage.content.length}b)`);
 }
-if (finalEvent.assistantMessage.provider !== 'openai') fail('stream: assistant provider wrong');
+if (finalEvent.assistantMessage.provider !== PROVIDER) fail(`stream: assistant provider wrong (got '${finalEvent.assistantMessage.provider}')`);
 
 const totalMs = Date.now() - startedAt;
 pass(`received ${deltaCount} deltas, ${assistantContent.length} chars`);

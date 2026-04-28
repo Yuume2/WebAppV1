@@ -60,25 +60,33 @@ End-to-end check of the full chat flow against a running API and a real OpenAI a
 
 ```bash
 # 1. API up + Postgres up + migrations applied (see "Local Postgres" below).
-# 2. apps/api/.env contains OPENAI_API_KEY (loaded automatically).
+# 2. apps/api/.env carries the relevant key:
+#    OPENAI_API_KEY (default), ANTHROPIC_API_KEY, or PERPLEXITY_API_KEY.
 pnpm api:smoke:ai
 # or equivalently:
 pnpm --filter @webapp/api smoke:ai
 ```
 
-The script signs up a fresh user, creates a project / workspace / chat-window, upserts the OpenAI key, posts a message "hello", and asserts an assistant reply was persisted. It **never logs the key value**. Missing `OPENAI_API_KEY` fails fast with a clear message.
+Default provider is `openai`. Override via `--provider=`:
+
+```bash
+pnpm api:smoke:ai -- --provider=anthropic
+pnpm api:smoke:ai -- --provider=perplexity --model=sonar
+```
+
+The script signs up a fresh user, creates a project / workspace / chat-window, upserts the provider key, posts a message "hello", and asserts an assistant reply was persisted with the right provider. It **never logs the key value**. A missing `<PROVIDER>_API_KEY` fails fast with a clear message.
 
 For the streaming endpoint (`POST /v1/messages/stream`):
 
 ```bash
 pnpm api:smoke:ai:stream
 # or
-pnpm --filter @webapp/api smoke:ai:stream
+pnpm --filter @webapp/api smoke:ai:stream -- --provider=anthropic
 ```
 
 Same setup, but exercises the SSE path: opens the stream, parses every `data:` event, asserts ≥1 `delta` chunk + the `[DONE]` sentinel + a final `{done:true,assistantMessage:…}` event, and confirms the persisted content equals the concatenated deltas. Then re-fetches `/v1/messages` to verify the assistant row landed in the DB.
 
-Both scripts are **not** wired into CI: they spend real OpenAI tokens and assume a live API on `http://localhost:4000`. Override the target with `SMOKE_API_BASE_URL=…` or the model with `SMOKE_MODEL=…`.
+Both scripts are **not** wired into CI: they spend real provider tokens and assume a live API on `http://localhost:4000`. Override the target with `SMOKE_API_BASE_URL=…` or the model with `SMOKE_MODEL=…` / `--model=…`.
 
 ## Env vars
 
