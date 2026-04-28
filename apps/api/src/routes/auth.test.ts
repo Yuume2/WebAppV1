@@ -157,6 +157,41 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('rejects whitespace-only displayName via schema trim + min:1', async () => {
+    // displayName is optional but, when present, the schema trims and
+    // enforces min:1 — a whitespace-only value should reject with
+    // invalid_body, not silently coerce to '' or to null. Pin so a
+    // refactor that drops trim doesn't accidentally let blank names
+    // through.
+    const res = await post(base, '/v1/auth/signup', {
+      email:       'spaceslayer@example.com',
+      password:    'password123',
+      displayName: '   ',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('invalid_body');
+  });
+
+  it('trims a non-empty displayName before persisting (no leading/trailing whitespace stored)', async () => {
+    let createdName: string | undefined;
+    const { baseUrl, close } = await startServer(makeDeps({
+      createUser: async (_email, _hash, displayName) => {
+        createdName = displayName;
+        return mockUser({ displayName: displayName ?? null });
+      },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', {
+      email:       'trimmed@example.com',
+      password:    'password123',
+      displayName: '  Alice  ',
+    });
+    expect(res.status).toBe(201);
+    expect(createdName).toBe('Alice');
+    await close();
+  });
+
   it('returns 400 invalid_body for short password', async () => {
     const res = await post(base, '/v1/auth/signup', { email: 'a@b.com', password: 'short' });
     expect(res.status).toBe(400);
