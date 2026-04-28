@@ -1,11 +1,12 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ApiResponse, SafeUser } from '@webapp/types';
 import { Router } from '../lib/router.js';
 import { createApiServer } from '../lib/server.js';
 import { makeAuthRoutes } from './auth.js';
 import type { AuthDeps } from '../controllers/auth.controller.js';
+import { RateLimiter } from '../lib/rate-limiter.js';
 import { hashPassword } from '../lib/password.js';
 import { hashSessionToken } from '../lib/session-token.js';
 import { SESSION_COOKIE_NAME } from '../config/auth.js';
@@ -368,5 +369,36 @@ describe('rate limiting — login', () => {
     expect(body.error.code).toBe('rate_limited');
     expect(res.headers.get('retry-after')).toBe('120');
     await close();
+  });
+});
+
+// Real RateLimiter wired through deps — proves the bucket increments AND
+// resets after the configured window when used end-to-end through the route.
+describe('rate limiting — end-to-end with real limiter', () => {
+  it('blocks after max attempts then unblocks once the window elapses', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    try {
+      const limiter = new RateLimiter(2, 60_000);
+      const { baseUrl, close } = await startServer(makeDeps({
+        checkRateLimit: (key) => limiter.check(key),
+      }));
+
+      // Two attempts allowed, third returns 429.
+      for (let i = 0; i < 2; i++) {
+        const r = await post(baseUrl, '/v1/auth/login', { email: 'a@b.com', password: 'pw' });
+        expect([200, 401]).toContain(r.status);
+      }
+      const blocked = await post(baseUrl, '/v1/auth/login', { email: 'a@b.com', password: 'pw' });
+      expect(blocked.status).toBe(429);
+
+      vi.advanceTimersByTime(60_000);
+
+      const after = await post(baseUrl, '/v1/auth/login', { email: 'a@b.com', password: 'pw' });
+      expect(after.status).not.toBe(429);
+      await close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
