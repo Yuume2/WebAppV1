@@ -612,6 +612,35 @@ describe('GET /v1/messages/:id — user isolation', () => {
     expect(res.status).toBe(404);
     await close();
   });
+
+  it('cross-user 404 and non-existent 404 share the same error code (no existence leak)', async () => {
+    // Two paths return 404: 'message belongs to another user' and 'message
+    // does not exist'. The error code MUST be identical in both responses
+    // — otherwise an attacker can probe for the existence of any message
+    // ID by checking which 404 variant they receive. Pin the code parity.
+    const a = await startServer(makeDeps({
+      resolveUser:  async () => USER_1,
+      findMessage:  async () => null, // does-not-exist
+    }));
+    const ra = await get(a.baseUrl, '/v1/messages/ghost');
+    const ba = (await ra.json()) as ApiResponse<never>;
+    if (ba.ok) throw new Error('expected error');
+    await a.close();
+
+    const b = await startServer(makeDeps({
+      resolveUser:  async () => USER_1,
+      // Cross-user: repo returns null when looked up by USER_1 even though
+      // the row exists for USER_2.
+      findMessage:  async (_id, userId) => userId === USER_2.id ? mockMessage('cw-2') : null,
+    }));
+    const rb = await get(b.baseUrl, '/v1/messages/user2-msg');
+    const bb = (await rb.json()) as ApiResponse<never>;
+    if (bb.ok) throw new Error('expected error');
+    await b.close();
+
+    expect(ra.status).toBe(rb.status);
+    expect(ba.error.code).toBe(bb.error.code);
+  });
 });
 
 // ── Streaming ────────────────────────────────────────────────────────────────
