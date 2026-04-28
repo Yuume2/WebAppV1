@@ -54,6 +54,7 @@ export type ApiErrorCode =
   | 'not_found'
   | 'conflict'
   | 'unauthenticated'
+  | 'csrf_error'
   | 'method_not_allowed'
   | 'internal_error'
   | 'provider_auth_error'

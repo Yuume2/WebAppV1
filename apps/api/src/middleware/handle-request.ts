@@ -10,6 +10,7 @@ import { logger } from '../lib/logger.js';
 import { generateRequestId } from '../lib/request-id.js';
 import type { Router } from '../lib/router.js';
 import { captureException } from '../lib/sentry.js';
+import { checkCsrf } from '../lib/csrf.js';
 
 function buildCorsHeaders(origin: string): Record<string, string> {
   if (origin === '*') {
@@ -54,6 +55,13 @@ export async function handleRequest(
   if (!isHttpMethod(rawMethod)) {
     writeJson(res, 405, fail('method_not_allowed', `Method ${rawMethod} not allowed`), requestId);
     logger.warn('request rejected', { requestId, method: rawMethod, path, status: 405 });
+    return;
+  }
+
+  const csrf = checkCsrf(req, rawMethod, corsOrigin);
+  if (!csrf.ok) {
+    writeJson(res, 403, fail('csrf_error', csrf.reason ?? 'CSRF check failed'), requestId);
+    logger.warn('request rejected (csrf)', { requestId, method: rawMethod, path, status: 403 });
     return;
   }
 
