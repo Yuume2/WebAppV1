@@ -100,11 +100,22 @@ export function AuthForm({ mode }: AuthFormProps) {
   }
 
   const c = copy[mode];
+  const rawNext = searchParams?.get('next') ?? null;
+  const nextHint = isSafeNext(rawNext) && rawNext !== '/'
+    ? `You'll be returned to ${rawNext} after signing in.`
+    : null;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
       <Panel style={{ padding: '2rem', width: '100%', maxWidth: 380 }}>
-        <h1 style={{ fontSize: '1.25rem', margin: '0 0 1.25rem 0', color: '#f5f5f5' }}>{c.title}</h1>
+        <h1 style={{ fontSize: '1.25rem', margin: '0 0 0.5rem 0', color: '#f5f5f5' }}>{c.title}</h1>
+        {nextHint ? (
+          <div style={{ fontSize: '0.78rem', color: '#8a8a95', margin: '0 0 1rem 0' }}>
+            {nextHint}
+          </div>
+        ) : (
+          <div style={{ height: '0.75rem' }} />
+        )}
         <form onSubmit={onSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
           {mode === 'register' ? (
             <Field label="Display name (optional)">
