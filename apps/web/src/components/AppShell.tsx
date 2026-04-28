@@ -16,6 +16,7 @@ export function AppShell({ title = 'AI Workspace V1', subtitle, right, children 
         Skip to main content
       </a>
       <header
+        role="banner"
         style={{
           display: 'flex',
           alignItems: 'center',

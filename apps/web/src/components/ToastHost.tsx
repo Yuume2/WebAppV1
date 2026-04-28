@@ -112,7 +112,12 @@ export function ToastHost({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div aria-live="polite" style={viewportStyle}>
+      <div
+        role="region"
+        aria-label="Notifications"
+        aria-live="polite"
+        style={viewportStyle}
+      >
         {toasts.map((t) => (
           <div
             key={t.id}

@@ -154,7 +154,12 @@ export default function ProviderSettingsPage() {
       <section aria-labelledby="add-connection-title" style={formSectionStyle}>
         <h2 id="add-connection-title" style={{ margin: 0, fontSize: '1rem' }}>Add connection</h2>
         <p style={mutedStyle}>Your key is sent to the API, then cleared from this page.</p>
-        <form onSubmit={onSubmit} autoComplete="off" style={formStyle}>
+        <form
+          onSubmit={onSubmit}
+          autoComplete="off"
+          aria-busy={saving || undefined}
+          style={formStyle}
+        >
           <label style={labelStyle}>
             <span>Provider</span>
             <select

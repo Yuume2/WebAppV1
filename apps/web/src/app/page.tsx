@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { Project } from '@webapp/types';
 import { AppShell } from '@/components/AppShell';
 import { Panel } from '@/components/Panel';
-import { listProjects as listMockProjects, listWorkspacesForProject } from '@/lib/data';
+import { listProjects as listMockProjects } from '@/lib/data';
 import { getApiBaseUrl } from '@/lib/api/env';
 import { fetchProjects } from '@/lib/api/projects';
 import { serverApiHeaders } from '@/lib/api/server';
@@ -67,13 +67,13 @@ function ProjectGrid({ projects }: { projects: Project[] }) {
       }}
     >
       {projects.map((project) => {
-        const projectWorkspaces = listWorkspacesForProject(project.id);
-        const totalWindows = projectWorkspaces.reduce((sum, w) => sum + w.windowIds.length, 0);
+        const updated = formatYYYYMMDD(project.updatedAt ?? project.createdAt);
         return (
           <Link
             key={project.id}
             href={`/project/${project.id}`}
             style={{ textDecoration: 'none', color: 'inherit' }}
+            aria-label={`Open project ${project.name}`}
           >
             <Panel style={{ padding: '1rem', height: '100%' }}>
               <div style={{ fontSize: '1rem', fontWeight: 600 }}>{project.name}</div>
@@ -82,11 +82,14 @@ function ProjectGrid({ projects }: { projects: Project[] }) {
                   {project.description}
                 </div>
               ) : null}
-              <div style={{ color: '#6a6a75', fontSize: '0.75rem', marginTop: 12 }}>
-                {projectWorkspaces.length === 0
-                  ? 'No workspace'
-                  : `${projectWorkspaces.length} workspace${projectWorkspaces.length > 1 ? 's' : ''} · ${totalWindows} windows`}
-              </div>
+              {updated ? (
+                <div
+                  style={{ color: '#6a6a75', fontSize: '0.72rem', marginTop: 12 }}
+                  title={project.updatedAt ?? project.createdAt}
+                >
+                  Updated {updated}
+                </div>
+              ) : null}
             </Panel>
           </Link>
         );
@@ -170,4 +173,11 @@ function SourceBadge({ result }: { result: ProjectsResult }) {
       {config.label}
     </span>
   );
+}
+
+function formatYYYYMMDD(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  return new Date(t).toISOString().slice(0, 10);
 }
