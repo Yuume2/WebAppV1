@@ -178,10 +178,6 @@ export function Workspace({
   const anyPending = Object.values(pendingByWindow).some(Boolean);
 
   const [, forceTick] = useState(0);
-  const markAsReadById = (id: string) => {
-    lastSeenRef.current[id] = Date.now();
-    forceTick((n: number) => n + 1);
-  };
   const markAllAsRead = () => {
     const now = Date.now();
     for (const id of Object.keys(unreadByWindow)) {
