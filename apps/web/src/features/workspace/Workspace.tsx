@@ -109,10 +109,11 @@ export function Workspace({
     }
     initSeenRef.current = true;
   }
+  const activeLastActivity = state.activeId ? lastActivityByWindow[state.activeId] : undefined;
   useEffect(() => {
     if (!state.activeId) return;
     lastSeenRef.current[state.activeId] = Date.now();
-  }, [state.activeId, lastActivityByWindow[state.activeId ?? '']]);
+  }, [state.activeId, activeLastActivity]);
 
   const unreadByWindow: Record<string, boolean> = {};
   for (const w of [...state.visibleWindows, ...state.closedWindows]) {
