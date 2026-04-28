@@ -297,6 +297,11 @@ export function ChatWindow({
     stickyRef.current = true;
     onSend?.(id, trimmed);
     setDraft('');
+    // If a starred-only or search filter is active when the user hits Send,
+    // auto-clear it so they actually see the new message land. Otherwise the
+    // send is invisible and can feel like the action did nothing.
+    if (showOnlyStarred) setShowOnlyStarred(false);
+    if (searchOpen && trimmedQuery.length > 0) setSearchQuery('');
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
