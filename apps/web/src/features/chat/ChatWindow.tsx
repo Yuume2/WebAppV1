@@ -65,6 +65,7 @@ export function ChatWindow({
   const [titleDraft, setTitleDraft] = useState(title);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchIndex, setSearchIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -75,6 +76,8 @@ export function ChatWindow({
     ? messages.filter((m) => m.content.toLowerCase().includes(lowerQuery))
     : messages;
   const matchCount = lowerQuery ? filteredMessages.length : 0;
+  const safeIndex = matchCount > 0 ? Math.min(searchIndex, matchCount - 1) : 0;
+  const activeMatchId = matchCount > 0 ? filteredMessages[safeIndex]?.id ?? null : null;
   const messagesSignature = messages
     .map((m) => `${m.id}:${m.content.length}:${m.status ?? 'ok'}`)
     .join('|');
@@ -105,15 +108,17 @@ export function ChatWindow({
   }, [draft, draftStorageKey]);
 
   useEffect(() => {
-    if (!lowerQuery) return;
-    const first = filteredMessages[0];
-    if (!first) return;
-    const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(first.id)}`);
+    if (!lowerQuery || !activeMatchId) return;
+    const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(activeMatchId)}`);
     if (el && 'scrollIntoView' in el) {
       (el as HTMLElement).scrollIntoView({ block: 'start', behavior: 'auto' });
     }
     stickyRef.current = false;
-  }, [lowerQuery, filteredMessages]);
+  }, [lowerQuery, activeMatchId]);
+
+  useEffect(() => {
+    setSearchIndex(0);
+  }, [lowerQuery]);
 
   const commitRename = () => {
     const trimmed = titleDraft.trim();
@@ -337,6 +342,14 @@ export function ChatWindow({
                   e.preventDefault();
                   setSearchQuery('');
                   setSearchOpen(false);
+                  return;
+                }
+                if (e.key === 'Enter' && matchCount > 0) {
+                  e.preventDefault();
+                  setSearchIndex((i) => {
+                    const n = matchCount;
+                    return e.shiftKey ? (i - 1 + n) % n : (i + 1) % n;
+                  });
                 }
               }}
               onClick={(e) => e.stopPropagation()}
@@ -384,9 +397,39 @@ export function ChatWindow({
             ) : null}
           </div>
           {trimmedQuery ? (
-            <span style={{ fontSize: '0.7rem', color: '#8a8a95' }} aria-live="polite">
-              {matchCount} {matchCount === 1 ? 'match' : 'matches'}
-            </span>
+            <>
+              <span style={{ fontSize: '0.7rem', color: '#8a8a95' }} aria-live="polite">
+                {matchCount > 0
+                  ? `${safeIndex + 1} of ${matchCount}`
+                  : '0 matches'}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (matchCount > 0) setSearchIndex((i) => (i - 1 + matchCount) % matchCount);
+                }}
+                disabled={matchCount === 0}
+                aria-label="Previous match"
+                title="Previous match (Shift+Enter)"
+                style={searchNavButtonStyle}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (matchCount > 0) setSearchIndex((i) => (i + 1) % matchCount);
+                }}
+                disabled={matchCount === 0}
+                aria-label="Next match"
+                title="Next match (Enter)"
+                style={searchNavButtonStyle}
+              >
+                ↓
+              </button>
+            </>
           ) : null}
           <button
             type="button"
@@ -461,6 +504,7 @@ export function ChatWindow({
               key={m.id}
               message={m}
               highlight={lowerQuery || undefined}
+              isActiveMatch={activeMatchId === m.id}
               onRetry={
                 onRetry && m.clientTempId ? () => onRetry(id, m.clientTempId!) : undefined
               }
@@ -656,11 +700,13 @@ function MessageBubble({
   onRetry,
   onRegenerate,
   highlight,
+  isActiveMatch,
 }: {
   message: MockMessage;
   onRetry?: () => void;
   onRegenerate?: () => void;
   highlight?: string;
+  isActiveMatch?: boolean;
 }) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -696,7 +742,8 @@ function MessageBubble({
         alignSelf: isUser ? 'flex-end' : 'flex-start',
         maxWidth: '85%',
         background: isUser ? '#2b2b36' : '#1b1b23',
-        border: `1px solid ${borderColor}`,
+        border: `1px solid ${isActiveMatch ? '#4f6bff' : borderColor}`,
+        boxShadow: isActiveMatch ? '0 0 0 1px rgba(79,107,255,0.45)' : 'none',
         borderRadius: 10,
         padding: '0.55rem 0.75rem',
         fontSize: '0.85rem',
@@ -705,6 +752,7 @@ function MessageBubble({
         whiteSpace: 'pre-wrap',
         opacity,
         scrollMarginTop: 16,
+        transition: 'border-color 120ms ease, box-shadow 120ms ease',
       }}
     >
       <div
@@ -880,6 +928,18 @@ function MessageActions({
     </div>
   );
 }
+
+const searchNavButtonStyle: React.CSSProperties = {
+  background: 'transparent',
+  border: '1px solid #2a2a30',
+  color: '#cfcfd6',
+  borderRadius: 6,
+  padding: '2px 6px',
+  fontSize: '0.7rem',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  minWidth: 26,
+};
 
 const messageActionButton: React.CSSProperties = {
   background: 'transparent',
