@@ -12,6 +12,7 @@ import {
   type RequestContext,
 } from '../lib/http.js';
 import { s } from '../lib/schema.js';
+import { requireUser } from '../lib/auth-helper.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import { captureException } from '../lib/sentry.js';
 import { env } from '../config/env.js';
@@ -137,8 +138,9 @@ export async function listMessagesDbController(
   ctx: RequestContext,
   deps: MessagesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
+  const user = auth.user;
 
   const chatWindowId = ctx.url.searchParams.get('chatWindowId') ?? '';
   if (!chatWindowId) return respondError('validation_error', 'Query param chatWindowId is required');
@@ -152,8 +154,9 @@ export async function createMessageDbController(
   ctx: RequestContext,
   deps: MessagesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
+  const user = auth.user;
 
   const body = await parseJsonBody(ctx, CreateMessageDbBody);
   if (!body.ok) return body.result;
@@ -241,8 +244,9 @@ export async function getMessageDbController(
   ctx: RequestContext,
   deps: MessagesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
+  const user = auth.user;
 
   const id = ctx.params['id'] ?? '';
   const row = await deps.findMessage(id, user.id);
@@ -259,8 +263,9 @@ export async function streamMessageDbController(
   ctx: RequestContext,
   deps: MessagesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
+  const user = auth.user;
 
   const body = await parseJsonBody(ctx, CreateMessageDbBody);
   if (!body.ok) return body.result;
