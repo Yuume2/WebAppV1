@@ -265,6 +265,11 @@ export function ChatWindow({
         onClose(id);
         return;
       }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        setTemplatesOpen((v) => !v);
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'Backspace') {
         e.preventDefault();
         setDraft('');

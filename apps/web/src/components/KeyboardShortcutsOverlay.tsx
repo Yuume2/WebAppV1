@@ -30,6 +30,7 @@ const GROUPS: ShortcutGroup[] = [
       { keys: ['⌘', 'E'], description: 'Rename the active chat window (Ctrl+E on Linux/Win)' },
       { keys: ['⌘', 'Shift', 'W'], description: 'Close the active chat window (hides locally; Ctrl+Shift+W on Linux/Win)' },
       { keys: ['⌘', 'Shift', '⌫'], description: 'Clear the composer draft (Ctrl+Shift+Backspace)' },
+      { keys: ['⌘', 'Shift', 'T'], description: 'Open the prompt template menu in the active composer (Ctrl+Shift+T)' },
       { keys: ['G'], description: 'Jump to the latest message (when not typing)' },
       { keys: ['g', 'g'], description: 'Jump to the top of the active chat (when not typing)' },
     ],
