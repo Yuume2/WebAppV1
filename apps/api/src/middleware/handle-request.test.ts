@@ -52,6 +52,26 @@ describe('dispatch — error envelopes', () => {
     expect(res.headers.get('x-frame-options')).toBe('DENY');
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
   });
+
+  it('emits X-Request-Id on a 200 response', async () => {
+    const res = await fetch(`${harness.baseUrl}/health`);
+    const id = res.headers.get('x-request-id');
+    expect(id).toBeTruthy();
+    expect(typeof id).toBe('string');
+    expect(id!.length).toBeGreaterThan(8);
+  });
+
+  it('emits X-Request-Id on a 405 method-not-allowed', async () => {
+    const res = await fetch(`${harness.baseUrl}/health`, { method: 'DELETE' });
+    expect(res.status).toBe(405);
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+  });
+
+  it('every response gets a fresh X-Request-Id', async () => {
+    const a = await fetch(`${harness.baseUrl}/health`);
+    const b = await fetch(`${harness.baseUrl}/health`);
+    expect(a.headers.get('x-request-id')).not.toBe(b.headers.get('x-request-id'));
+  });
 });
 
 // ── CSRF protection ───────────────────────────────────────────────────────────
