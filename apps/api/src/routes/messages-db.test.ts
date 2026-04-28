@@ -390,6 +390,13 @@ describe('POST /v1/messages — openai generation path', () => {
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('provider_error');
     expect(body.error.message).toMatch(/timed out/i);
+    // 502 from a provider timeout still rides the standard pipeline —
+    // X-Request-Id must be present so an oncall can correlate logs and
+    // the upstream provider request that hung. Pin it explicitly because
+    // the provider-error path is a narrow code branch that's easy to
+    // accidentally bypass with a bare res.end().
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 
