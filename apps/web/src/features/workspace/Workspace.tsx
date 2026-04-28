@@ -197,6 +197,10 @@ export function Workspace({
     }
     forceTick((n: number) => n + 1);
   };
+  const markAsRead = useCallback((id: string) => {
+    lastSeenRef.current[id] = Date.now();
+    forceTick((n: number) => n + 1);
+  }, []);
 
   const previousTitleRef = useRef<string | null>(null);
   useEffect(() => {
@@ -240,6 +244,7 @@ export function Workspace({
         unreadByWindow={unreadByWindow}
         unreadCountByWindow={unreadCountByWindow}
         onMarkAllAsRead={totalUnread > 0 ? markAllAsRead : undefined}
+        onMarkAsRead={markAsRead}
         onFocus={state.focus}
         onClose={state.close}
         onReopen={state.reopen}

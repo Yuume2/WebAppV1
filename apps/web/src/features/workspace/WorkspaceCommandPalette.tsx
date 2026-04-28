@@ -146,6 +146,33 @@ export function WorkspaceCommandPalette({
       .slice(0, 6);
   }, [query, pinnedSet, recentEntries, activeId, visibleWindows, closedWindows]);
 
+  type MessageMatch = typeof messageMatches[number];
+  const PER_WINDOW_LIMIT = 3;
+  const messageGroups = useMemo(() => {
+    const order: string[] = [];
+    const map = new Map<string, { windowId: string; window: ChatWindow; items: MessageMatch[] }>();
+    for (const m of messageMatches) {
+      const existing = map.get(m.windowId);
+      if (existing) {
+        existing.items.push(m);
+      } else {
+        order.push(m.windowId);
+        map.set(m.windowId, { windowId: m.windowId, window: m.window, items: [m] });
+      }
+    }
+    return order.map((id) => {
+      const g = map.get(id)!;
+      const visible = g.items.slice(0, PER_WINDOW_LIMIT);
+      const hidden = Math.max(0, g.items.length - visible.length);
+      return { windowId: g.windowId, window: g.window, items: visible, total: g.items.length, hiddenCount: hidden };
+    });
+  }, [messageMatches]);
+  const visibleMessageItems: MessageMatch[] = useMemo(() => {
+    const out: MessageMatch[] = [];
+    for (const g of messageGroups) for (const m of g.items) out.push(m);
+    return out;
+  }, [messageGroups]);
+
   const unifiedItems: UnifiedItem[] = useMemo(() => {
     const out: UnifiedItem[] = [];
     for (const it of recentEntries) {
@@ -164,13 +191,13 @@ export function WorkspaceCommandPalette({
       if (pinnedEntries.some((r) => r.window.id === it.window.id)) continue;
       out.push({ kind: 'window', key: `w-${it.window.id}`, entry: it });
     }
-    for (let i = 0; i < messageMatches.length; i += 1) {
-      const m = messageMatches[i];
+    for (let i = 0; i < visibleMessageItems.length; i += 1) {
+      const m = visibleMessageItems[i];
       if (!m) continue;
       out.push({ kind: 'message', key: `m-${m.windowId}-${m.messageId}-${i}`, match: m });
     }
     return out;
-  }, [recentEntries, pinnedEntries, filteredWorkspaces, filtered, messageMatches]);
+  }, [recentEntries, pinnedEntries, filteredWorkspaces, filtered, visibleMessageItems]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 200);
@@ -532,67 +559,100 @@ export function WorkspaceCommandPalette({
             })
           )}
         </ul>
-        {messageMatches.length > 0 ? (
+        {messageGroups.length > 0 ? (
           <>
-            <div style={sectionLabelStyle}>Messages · {messageMatches.length}</div>
-            <ul role="list" style={{ ...listStyle, maxHeight: 240 }}>
-              {messageMatches.map((m, i) => {
-                const idx = unifiedItems.findIndex(
-                  (u) => u.kind === 'message' && u.match === m,
-                );
-                const isHover = idx === Math.min(hover, unifiedItems.length - 1);
-                return (
-                  <li key={`${m.windowId}-${m.messageId}-${i}`} style={{ listStyle: 'none' }}>
+            <div style={sectionLabelStyle}>
+              Messages · {messageMatches.length} match{messageMatches.length === 1 ? '' : 'es'} in {messageGroups.length} window{messageGroups.length === 1 ? '' : 's'}
+            </div>
+            <ul role="list" style={{ ...listStyle, maxHeight: 280 }}>
+              {messageGroups.map((g) => (
+                <li key={`grp-${g.windowId}`} style={{ listStyle: 'none', marginBottom: 4 }}>
+                  <div style={{ fontSize: '0.62rem', color: '#6a6a75', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 6px 2px' }}>
+                    {g.window.title} · {g.total} match{g.total === 1 ? '' : 'es'}
+                  </div>
+                  {g.items.map((m, i) => {
+                    const idx = unifiedItems.findIndex(
+                      (u) => u.kind === 'message' && u.match === m,
+                    );
+                    const isHover = idx === Math.min(hover, unifiedItems.length - 1);
+                    return (
+                      <button
+                        key={`${m.windowId}-${m.messageId}-${i}`}
+                        type="button"
+                        role="option"
+                        aria-selected={isHover}
+                        onMouseEnter={() => idx >= 0 && setHover(idx)}
+                        onClick={() => {
+                          const visible = visibleWindows.some((w) => w.id === m.windowId);
+                          if (!visible) onReopen(m.windowId);
+                          else onFocus(m.windowId);
+                          setOpen(false);
+                          setQuery('');
+                          if (typeof window !== 'undefined') {
+                            const url = new URL(window.location.href);
+                            url.hash = `msg-${m.messageId}`;
+                            window.history.replaceState(null, '', url.toString());
+                            window.dispatchEvent(new HashChangeEvent('hashchange'));
+                          }
+                        }}
+                        style={{
+                          ...rowStyle,
+                          width: '100%',
+                          background: isHover ? '#1c1c28' : 'transparent',
+                          border: `1px solid ${isHover ? '#3a3f6b' : 'transparent'}`,
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          color: '#cfcfd6',
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              fontSize: '0.78rem',
+                              color: '#e8e8ef',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {renderHighlighted(m.snippet, query)}
+                          </div>
+                          <div style={{ fontSize: '0.65rem', color: '#8a8a95', marginTop: 2 }}>
+                            {m.role}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {g.hiddenCount > 0 ? (
                     <button
                       type="button"
-                      role="option"
-                      aria-selected={isHover}
-                      onMouseEnter={() => idx >= 0 && setHover(idx)}
                       onClick={() => {
-                        const visible = visibleWindows.some((w) => w.id === m.windowId);
-                        if (!visible) onReopen(m.windowId);
-                        else onFocus(m.windowId);
+                        const visible = visibleWindows.some((w) => w.id === g.windowId);
+                        if (!visible) onReopen(g.windowId);
+                        else onFocus(g.windowId);
                         setOpen(false);
                         setQuery('');
-                        if (typeof window !== 'undefined') {
-                          // Use hash to trigger ChatWindow's existing #msg-<id> scroll/flash effect
-                          const url = new URL(window.location.href);
-                          url.hash = `msg-${m.messageId}`;
-                          window.history.replaceState(null, '', url.toString());
-                          window.dispatchEvent(new HashChangeEvent('hashchange'));
-                        }
                       }}
+                      aria-label={`Open ${g.window.title} to see ${g.hiddenCount} more matches`}
                       style={{
                         ...rowStyle,
                         width: '100%',
-                        background: isHover ? '#1c1c28' : 'transparent',
-                        border: `1px solid ${isHover ? '#3a3f6b' : 'transparent'}`,
+                        background: 'transparent',
+                        border: '1px dashed #2a2a30',
                         textAlign: 'left',
                         cursor: 'pointer',
                         fontFamily: 'inherit',
-                        color: '#cfcfd6',
+                        color: '#9aa6ff',
+                        fontSize: '0.72rem',
                       }}
                     >
-                      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                        <div
-                          style={{
-                            fontSize: '0.78rem',
-                            color: '#e8e8ef',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {renderHighlighted(m.snippet, query)}
-                        </div>
-                        <div style={{ fontSize: '0.65rem', color: '#8a8a95', marginTop: 2 }}>
-                          {m.role} · {m.window.title}
-                        </div>
-                      </div>
+                      + {g.hiddenCount} more match{g.hiddenCount === 1 ? '' : 'es'} in this window — open
                     </button>
-                  </li>
-                );
-              })}
+                  ) : null}
+                </li>
+              ))}
             </ul>
           </>
         ) : null}

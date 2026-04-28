@@ -25,6 +25,7 @@ interface WorkspaceSidebarProps {
   unreadByWindow?: Record<string, boolean>;
   unreadCountByWindow?: Record<string, number>;
   onMarkAllAsRead?: () => void;
+  onMarkAsRead?: (id: string) => void;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
   onReopen: (id: string) => void;
@@ -51,6 +52,7 @@ export function WorkspaceSidebar({
   unreadByWindow,
   unreadCountByWindow,
   onMarkAllAsRead,
+  onMarkAsRead,
   onFocus,
   onClose,
   onReopen,
@@ -58,6 +60,9 @@ export function WorkspaceSidebar({
   onReset,
 }: WorkspaceSidebarProps) {
   const total = visibleWindows.length + closedWindows.length;
+  const totalUnreadVisible = unreadByWindow
+    ? visibleWindows.reduce((acc, w) => acc + (unreadByWindow[w.id] ? 1 : 0), 0)
+    : 0;
   const [windowFilter, setWindowFilter] = useState('');
   const filterEnabled = total >= 5;
   const lowerFilter = windowFilter.trim().toLowerCase();
@@ -171,6 +176,27 @@ export function WorkspaceSidebar({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <SectionLabel>
             Open · {filterEnabled && lowerFilter ? `${filteredVisible.length}/${visibleWindows.length}` : visibleWindows.length}
+            {totalUnreadVisible > 0 ? (
+              <span
+                aria-label={`${totalUnreadVisible} window${totalUnreadVisible === 1 ? '' : 's'} with unread replies`}
+                title={`${totalUnreadVisible} unread`}
+                style={{
+                  marginLeft: 6,
+                  fontSize: '0.6rem',
+                  padding: '0 5px',
+                  height: 14,
+                  lineHeight: '14px',
+                  borderRadius: 7,
+                  background: '#15203b',
+                  border: '1px solid #3a3f6b',
+                  color: '#9aa6ff',
+                  display: 'inline-block',
+                  verticalAlign: 'middle',
+                }}
+              >
+                {totalUnreadVisible} new
+              </span>
+            ) : null}
           </SectionLabel>
           {onMarkAllAsRead ? (
             <button
@@ -207,6 +233,7 @@ export function WorkspaceSidebar({
               pending={pendingByWindow?.[w.id]}
               unread={unreadByWindow?.[w.id]}
               unreadCount={unreadCountByWindow?.[w.id]}
+              onMarkAsRead={onMarkAsRead}
               onClick={() => onFocus(w.id)}
               onAction={() => onClose(w.id)}
               actionLabel="×"
@@ -229,6 +256,7 @@ export function WorkspaceSidebar({
                 lastActivity={lastActivityByWindow?.[w.id]}
                 unread={unreadByWindow?.[w.id]}
                 unreadCount={unreadCountByWindow?.[w.id]}
+                onMarkAsRead={onMarkAsRead}
                 onClick={() => onReopen(w.id)}
                 onAction={() => onReopen(w.id)}
                 actionLabel="↺"
@@ -695,13 +723,14 @@ interface WindowRowProps {
   pending?: boolean;
   unread?: boolean;
   unreadCount?: number;
+  onMarkAsRead?: (id: string) => void;
   onClick: () => void;
   onAction: () => void;
   actionLabel: string;
   actionAria: string;
 }
 
-function WindowRow({ window, active, muted, pinned, lastActivity, pending, unread, unreadCount, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
+function WindowRow({ window, active, muted, pinned, lastActivity, pending, unread, unreadCount, onMarkAsRead, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
   const stamp = formatRelative(lastActivity ?? window.updatedAt ?? window.createdAt);
   const rowRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -902,6 +931,28 @@ function WindowRow({ window, active, muted, pinned, lastActivity, pending, unrea
           ) : null}
         </div>
       </div>
+      {unread && onMarkAsRead ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onMarkAsRead(window.id);
+          }}
+          aria-label={`Mark ${window.title} as read`}
+          title="Mark as read"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#9aa6ff',
+            cursor: 'pointer',
+            fontSize: '0.85rem',
+            padding: '2px 5px',
+            borderRadius: 4,
+            lineHeight: 1,
+          }}
+        >
+          ✓
+        </button>
+      ) : null}
       <button
         onClick={(e) => {
           e.stopPropagation();
