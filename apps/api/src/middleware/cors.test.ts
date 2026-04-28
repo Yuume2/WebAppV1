@@ -101,6 +101,20 @@ describe('OPTIONS preflight', () => {
     const text = await res.text();
     expect(text).toBe('');
   });
+
+  it('OPTIONS preflight still emits security + hardening headers', async () => {
+    // The CORS short-circuit happens after the security headers are set,
+    // so a successful preflight must still ship them. Lock this down so a
+    // future reorder of handleRequest doesn't quietly strip them from
+    // every preflight response.
+    const res = await fetch(`${harness.baseUrl}${API_HEALTH_PATH}`, { method: 'OPTIONS' });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(res.headers.get('x-permitted-cross-domain-policies')).toBe('none');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
 });
 
 describe('CORS with explicit origin — credentialed auth', () => {
