@@ -25,6 +25,12 @@ export type ChatCompletionStreamChunk =
 
 // ── Provider client contract ──────────────────────────────────────────────────
 
+export interface StreamOptions {
+  /** Abort the upstream stream early. Useful when the downstream client
+   *  disconnects so we stop billing for tokens nobody will read. */
+  signal?: AbortSignal;
+}
+
 export interface ProviderClient {
   createChatCompletion(
     messages: ChatMessage[],
@@ -34,6 +40,7 @@ export interface ProviderClient {
   createChatCompletionStream(
     messages: ChatMessage[],
     model: string,
+    opts?: StreamOptions,
   ): AsyncIterable<ChatCompletionStreamChunk>;
 }
 

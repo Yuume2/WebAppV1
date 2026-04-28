@@ -135,12 +135,19 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
     async *createChatCompletionStream(
       messages: ChatMessage[],
       model: string,
+      opts?: { signal?: AbortSignal },
     ): AsyncIterable<ChatCompletionStreamChunk> {
       // Connect-only timeout: aborts the fetch if response headers haven't
       // arrived after STREAM_CONNECT_TIMEOUT_MS. Cleared once headers land
       // so a long legitimate stream is never cut.
+      // The caller-supplied opts.signal also propagates: when it aborts (e.g.
+      // the downstream HTTP client disconnected), the fetch body read throws
+      // and the for-await below ends — releasing the upstream socket.
       const connectController = new AbortController();
       const connectTimer = setTimeout(() => connectController.abort(), STREAM_CONNECT_TIMEOUT_MS);
+      const fetchSignal = opts?.signal
+        ? AbortSignal.any([connectController.signal, opts.signal])
+        : connectController.signal;
       let res: Response;
       try {
         res = await fetch(OPENAI_CHAT_URL, {
@@ -156,7 +163,7 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
             stream: true,
             stream_options: { include_usage: true },
           }),
-          signal: connectController.signal,
+          signal: fetchSignal,
         });
       } catch (err) {
         throw new ProviderError(
