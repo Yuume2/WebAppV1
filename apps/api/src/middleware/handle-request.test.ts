@@ -101,6 +101,27 @@ describe('dispatch — error envelopes', () => {
     const allow = res.headers.get('allow') ?? '';
     expect(allow).toContain('GET');
   });
+
+  it('rejects non-canonical HTTP methods with 405 method_not_allowed', async () => {
+    // The router only supports the seven methods declared in the HttpMethod
+    // type union. A method like LINK / UNLINK / PROPFIND must short-circuit
+    // before route matching with a 405, not silently fall through to a 404
+    // or worse, get past CSRF and reach a handler. We use a raw socket here
+    // because undici's fetch refuses some non-canonical methods at the
+    // client layer; we want to exercise the server's own check.
+    const url = new URL(harness.baseUrl);
+    const port = Number(url.port);
+    const { request } = await import('node:http');
+    const status: number = await new Promise((resolve, reject) => {
+      const r = request(
+        { host: url.hostname, port, path: '/health', method: 'PROPFIND' },
+        (res) => { res.resume(); resolve(res.statusCode ?? 0); },
+      );
+      r.on('error', reject);
+      r.end();
+    });
+    expect(status).toBe(405);
+  });
 });
 
 // ── CSRF protection ───────────────────────────────────────────────────────────
