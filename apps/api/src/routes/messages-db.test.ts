@@ -606,6 +606,9 @@ describe('POST /v1/messages/stream — authenticated', () => {
     const events = await readSseEvents(res);
     // Two deltas + final done payload + literal [DONE].
     expect(events).toContain('[DONE]');
+    // [DONE] must be the last sentinel — clients break out of their read loop on it,
+    // so anything emitted after [DONE] would be silently dropped.
+    expect(events[events.length - 1]).toBe('[DONE]');
     const deltas = events
       .filter((e) => e !== '[DONE]')
       .map((e) => JSON.parse(e) as { delta?: string; done?: boolean });
