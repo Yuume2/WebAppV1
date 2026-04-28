@@ -282,6 +282,51 @@ describe('GET /v1/auth/me', () => {
     expect(calls).toEqual([]);
     await close();
   });
+
+  it('always returns the unauthenticated code on 401, regardless of which subcheck failed', async () => {
+    // Three distinct failure paths inside meController: no cookie, no
+    // matching session, session resolves to a now-deleted user. They MUST
+    // share the same error code so a caller cannot distinguish 'never
+    // logged in' from 'session was revoked' from 'account was deleted' —
+    // that distinction is an account-enumeration oracle.
+
+    // 1. No cookie
+    const noCookie = await startServer(makeDeps());
+    const r1 = await fetch(`${noCookie.baseUrl}/v1/auth/me`);
+    expect(r1.status).toBe(401);
+    const b1 = (await r1.json()) as ApiResponse<never>;
+    if (b1.ok) throw new Error('expected error');
+    await noCookie.close();
+
+    // 2. Cookie present, session unknown
+    const noSession = await startServer(makeDeps({
+      findSessionByTokenHash: async () => null,
+    }));
+    const r2 = await fetch(`${noSession.baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${'9'.repeat(64)}` },
+    });
+    expect(r2.status).toBe(401);
+    const b2 = (await r2.json()) as ApiResponse<never>;
+    if (b2.ok) throw new Error('expected error');
+    await noSession.close();
+
+    // 3. Cookie present, session valid, user gone
+    const noUser = await startServer(makeDeps({
+      findSessionByTokenHash: async () => mockSession(KNOWN_HASH),
+      findUserById:           async () => null,
+    }));
+    const r3 = await fetch(`${noUser.baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${KNOWN_TOKEN}` },
+    });
+    expect(r3.status).toBe(401);
+    const b3 = (await r3.json()) as ApiResponse<never>;
+    if (b3.ok) throw new Error('expected error');
+    await noUser.close();
+
+    expect(b1.error.code).toBe('unauthenticated');
+    expect(b2.error.code).toBe('unauthenticated');
+    expect(b3.error.code).toBe('unauthenticated');
+  });
 });
 
 // ── Alias: /v1/me → /v1/auth/me ───────────────────────────────────────────────
