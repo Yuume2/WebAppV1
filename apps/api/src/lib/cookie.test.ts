@@ -37,6 +37,22 @@ describe('parseCookies', () => {
   it('skips entries with an empty key', () => {
     expect(parseCookies('=nope; sid=ok')).toEqual({ sid: 'ok' });
   });
+
+  it('preserves "=" characters inside the value (base64 / JWT-shaped tokens)', () => {
+    // The first "=" splits name from value; everything after stays in value.
+    // Critical for any future cookie that carries base64 or JWT-style data
+    // with trailing/internal "=" padding.
+    expect(parseCookies('token=eyJhbGciOiJIUzI1NiJ9.payload.signature==')).toEqual({
+      token: 'eyJhbGciOiJIUzI1NiJ9.payload.signature==',
+    });
+  });
+
+  it('takes the LAST entry when the same cookie name appears multiple times', () => {
+    // The cookie spec leaves duplicate-name handling implementation-defined.
+    // The current impl writes into a Map, so the last value wins. Pin that
+    // semantic so anyone changing it has to consciously choose another rule.
+    expect(parseCookies('sid=first; sid=second; sid=third').sid).toBe('third');
+  });
 });
 
 describe('serializeSetCookie', () => {

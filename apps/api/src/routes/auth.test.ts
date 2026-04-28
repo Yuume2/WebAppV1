@@ -202,6 +202,34 @@ describe('POST /v1/auth/login', () => {
     expect(body.error.code).toBe('unauthenticated');
     await close();
   });
+
+  it('returns the same code AND the same message string for unknown email vs wrong password', async () => {
+    // The whole point of the unified 'Invalid email or password' string is to
+    // be impossible to distinguish from the caller's POV. If a future
+    // refactor adds a more helpful 'No account with that email' branch, this
+    // test will fail — forcing a re-look at the enumeration trade-off.
+
+    // Path A: email unknown.
+    const a = await startServer(makeDeps({ findUserByEmail: async () => null }));
+    const ra = await post(a.baseUrl, '/v1/auth/login', { email: 'ghost@example.com', password: 'anything' });
+    expect(ra.status).toBe(401);
+    const ba = (await ra.json()) as ApiResponse<never>;
+    if (ba.ok) throw new Error('expected error');
+    await a.close();
+
+    // Path B: email known, wrong password.
+    const b = await startServer(makeDeps({
+      findUserByEmail: async () => mockUser({ passwordHash: realHash }),
+    }));
+    const rb = await post(b.baseUrl, '/v1/auth/login', { email: 'test@example.com', password: 'wrongpassword' });
+    expect(rb.status).toBe(401);
+    const bb = (await rb.json()) as ApiResponse<never>;
+    if (bb.ok) throw new Error('expected error');
+    await b.close();
+
+    expect(ba.error.code).toBe(bb.error.code);
+    expect(ba.error.message).toBe(bb.error.message);
+  });
 });
 
 // ── Me ────────────────────────────────────────────────────────────────────────
@@ -281,6 +309,51 @@ describe('GET /v1/auth/me', () => {
     expect(res.status).toBe(401);
     expect(calls).toEqual([]);
     await close();
+  });
+
+  it('always returns the unauthenticated code on 401, regardless of which subcheck failed', async () => {
+    // Three distinct failure paths inside meController: no cookie, no
+    // matching session, session resolves to a now-deleted user. They MUST
+    // share the same error code so a caller cannot distinguish 'never
+    // logged in' from 'session was revoked' from 'account was deleted' —
+    // that distinction is an account-enumeration oracle.
+
+    // 1. No cookie
+    const noCookie = await startServer(makeDeps());
+    const r1 = await fetch(`${noCookie.baseUrl}/v1/auth/me`);
+    expect(r1.status).toBe(401);
+    const b1 = (await r1.json()) as ApiResponse<never>;
+    if (b1.ok) throw new Error('expected error');
+    await noCookie.close();
+
+    // 2. Cookie present, session unknown
+    const noSession = await startServer(makeDeps({
+      findSessionByTokenHash: async () => null,
+    }));
+    const r2 = await fetch(`${noSession.baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${'9'.repeat(64)}` },
+    });
+    expect(r2.status).toBe(401);
+    const b2 = (await r2.json()) as ApiResponse<never>;
+    if (b2.ok) throw new Error('expected error');
+    await noSession.close();
+
+    // 3. Cookie present, session valid, user gone
+    const noUser = await startServer(makeDeps({
+      findSessionByTokenHash: async () => mockSession(KNOWN_HASH),
+      findUserById:           async () => null,
+    }));
+    const r3 = await fetch(`${noUser.baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${KNOWN_TOKEN}` },
+    });
+    expect(r3.status).toBe(401);
+    const b3 = (await r3.json()) as ApiResponse<never>;
+    if (b3.ok) throw new Error('expected error');
+    await noUser.close();
+
+    expect(b1.error.code).toBe('unauthenticated');
+    expect(b2.error.code).toBe('unauthenticated');
+    expect(b3.error.code).toBe('unauthenticated');
   });
 });
 
