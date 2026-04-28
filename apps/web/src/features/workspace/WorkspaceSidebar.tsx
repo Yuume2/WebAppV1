@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { AIProvider, ChatWindow, Workspace } from '@webapp/types';
 import type { WindowPreset } from '@/lib/data';
 import { Button } from '@/components/Button';
@@ -568,8 +568,24 @@ interface WindowRowProps {
 
 function WindowRow({ window, active, muted, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
   const stamp = formatRelative(window.updatedAt ?? window.createdAt);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const el = rowRef.current;
+    if (!el || typeof el.scrollIntoView !== 'function') return;
+    const rect = el.getBoundingClientRect();
+    const parent = el.parentElement;
+    if (!parent) return;
+    const parentRect = parent.getBoundingClientRect();
+    const above = rect.top < parentRect.top;
+    const below = rect.bottom > parentRect.bottom;
+    if (above || below) {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [active]);
   return (
     <div
+      ref={rowRef}
       role="button"
       tabIndex={0}
       onClick={onClick}

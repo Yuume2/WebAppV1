@@ -85,18 +85,55 @@ export function ChatWindow({
     .map((m) => `${m.id}:${m.content.length}:${m.status ?? 'ok'}`)
     .join('|');
 
+  const scrollStorageKey = `wav.chat.scroll.${id}`;
+  const restoredScrollRef = useRef(false);
+  const scrollSaveTimerRef = useRef<number | null>(null);
+  const [scrolledAway, setScrolledAway] = useState(false);
+
   const updateStickiness = () => {
     const el = scrollRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
-    stickyRef.current = distanceFromBottom < 64;
+    const sticky = distanceFromBottom < 64;
+    stickyRef.current = sticky;
+    setScrolledAway(!sticky);
+    if (restoredScrollRef.current) {
+      if (scrollSaveTimerRef.current != null) {
+        window.clearTimeout(scrollSaveTimerRef.current);
+      }
+      const top = el.scrollTop;
+      scrollSaveTimerRef.current = window.setTimeout(() => {
+        writeScrollTop(scrollStorageKey, top);
+      }, 200);
+    }
+  };
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    stickyRef.current = true;
+    setScrolledAway(false);
   };
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    if (!restoredScrollRef.current) {
+      const stored = readScrollTop(scrollStorageKey);
+      if (stored != null) {
+        const max = el.scrollHeight - el.clientHeight;
+        el.scrollTop = Math.min(stored, max);
+        const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+        stickyRef.current = distanceFromBottom < 64;
+      } else if (stickyRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+      restoredScrollRef.current = true;
+      return;
+    }
     if (stickyRef.current) el.scrollTop = el.scrollHeight;
-  }, [messagesSignature]);
+  }, [messagesSignature, scrollStorageKey]);
 
   useLayoutEffect(() => {
     const ta = textareaRef.current;
@@ -505,6 +542,11 @@ export function ChatWindow({
       <div
         ref={scrollRef}
         onScroll={updateStickiness}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            textareaRef.current?.focus();
+          }
+        }}
         role="log"
         aria-live="polite"
         aria-relevant="additions text"
@@ -565,6 +607,43 @@ export function ChatWindow({
           ))
         )}
       </div>
+
+      {scrolledAway && !lowerQuery && messages.length > 0 ? (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '0.25rem 0',
+            background: 'transparent',
+            pointerEvents: 'none',
+            marginTop: -28,
+          }}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              scrollToBottom();
+            }}
+            aria-label="Scroll to latest message"
+            title="Scroll to latest message"
+            style={{
+              pointerEvents: 'auto',
+              background: '#1b1b23',
+              border: '1px solid #2a2a30',
+              color: '#e8e8ef',
+              borderRadius: 999,
+              padding: '0.3rem 0.7rem',
+              fontSize: '0.72rem',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            }}
+          >
+            ↓ Latest
+          </button>
+        </div>
+      ) : null}
 
       <form
         onSubmit={(e) => {
@@ -1158,5 +1237,27 @@ function writeSearchQuery(key: string, value: string): void {
     else window.sessionStorage.removeItem(key);
   } catch {
     // sessionStorage unavailable / quota; ignore
+  }
+}
+
+function readScrollTop(key: string): number | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeScrollTop(key: string, value: number): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value > 0) window.sessionStorage.setItem(key, String(Math.round(value)));
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    // ignore
   }
 }
