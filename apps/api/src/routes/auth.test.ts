@@ -138,6 +138,21 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('signup Set-Cookie carries a 64-char hex token (matches generateSessionToken contract)', async () => {
+    // generateSessionToken returns 32 random bytes hex-encoded = 64 chars.
+    // Pin the wire shape: a refactor that swapped to base64url or shortened
+    // the entropy would silently weaken the cookie (or break clients that
+    // happen to validate the shape).
+    const res = await post(base, '/v1/auth/signup', { email: 'wire@example.com', password: 'password123' });
+    expect(res.status).toBe(201);
+    const cookie = getSetCookie(res);
+    expect(cookie).toBeTruthy();
+    const m = cookie?.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
+    expect(m).not.toBeNull();
+    const token = m![1]!;
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+  });
+
   it('signup creates a session whose expiry is strictly in the future (no zero/past expiry)', async () => {
     // The createSession dep receives an expiresAt Date built from
     // sessionExpiresAt(). Pin that the route actually passes a future Date —
