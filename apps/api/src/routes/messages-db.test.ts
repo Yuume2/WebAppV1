@@ -219,6 +219,31 @@ describe('POST /v1/messages — standard path', () => {
     expect(res.status).toBe(400);
     await close();
   });
+
+  it('role=system message persists as-is, no provider call attempted', async () => {
+    // The 'system' role is allowed by the schema (MESSAGE_ROLES) and travels
+    // the default persist-as-is path — no AI generation, no findChatWindow
+    // for provider lookup. Pin it: useful for callers that want to inject a
+    // system prompt or system note into the chat history without triggering
+    // a billed provider call.
+    let generateCalled = false;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:   async () => USER_1,
+      createMessage: async (chatWindowId, _userId, role, content) =>
+        mockMessage(chatWindowId, { id: 'sys-msg', role, content }),
+      generate: async () => { generateCalled = true; throw new Error('should not be called'); },
+    }));
+    const res = await post(baseUrl, '/v1/messages', {
+      chatWindowId: 'cw-1', role: 'system', content: 'Be terse.',
+    });
+    expect(res.status).toBe(201);
+    expect(generateCalled).toBe(false);
+    const body = (await res.json()) as ApiResponse<Message>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(body.data.role).toBe('system');
+    expect(body.data.content).toBe('Be terse.');
+    await close();
+  });
 });
 
 // ── Create message — OpenAI generation path ───────────────────────────────────
