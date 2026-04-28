@@ -49,6 +49,7 @@ export function WorkspaceCommandPalette({
   const [pinnedSet, setPinnedSet] = useState<Set<string>>(() => readPinned());
   const [recentIds, setRecentIds] = useState<string[]>(() => readRecents(activeWorkspaceId));
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [hover, setHover] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -74,7 +75,7 @@ export function WorkspaceCommandPalette({
   }, [workspaces, query]);
 
   const messageMatches = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
     if (!q || q.length < 2 || !getMessages) return [] as Array<{ windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; createdAt: string }>;
     const allWindows = [...visibleWindows, ...closedWindows];
     const out: Array<{ windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; createdAt: string }> = [];
@@ -104,7 +105,7 @@ export function WorkspaceCommandPalette({
       if (out.length >= 24) break;
     }
     return out;
-  }, [query, getMessages, visibleWindows, closedWindows]);
+  }, [debouncedQuery, getMessages, visibleWindows, closedWindows]);
 
   type UnifiedItem =
     | { kind: 'workspace'; key: string; workspace: Workspace }
@@ -150,6 +151,11 @@ export function WorkspaceCommandPalette({
     }
     return out;
   }, [recentEntries, filteredWorkspaces, filtered, messageMatches]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 200);
+    return () => clearTimeout(t);
+  }, [query]);
 
   useEffect(() => {
     if (!open) {
