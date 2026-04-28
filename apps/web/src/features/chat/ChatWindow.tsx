@@ -404,8 +404,10 @@ export function ChatWindow({
   const toggleStar = (msgId: string) => {
     setStarredIds((prev) => {
       const next = new Set(prev);
+      const willStar = !next.has(msgId);
       if (next.has(msgId)) next.delete(msgId);
       else next.add(msgId);
+      toast.push('info', willStar ? 'Message starred' : 'Message unstarred');
       return next;
     });
   };
