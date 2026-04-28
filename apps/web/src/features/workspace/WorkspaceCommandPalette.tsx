@@ -209,13 +209,16 @@ export function WorkspaceCommandPalette({
       }
       if (open && e.key === 'Escape') {
         e.preventDefault();
-        setOpen(false);
-        setQuery('');
+        if (query.length > 0) {
+          setQuery('');
+        } else {
+          setOpen(false);
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
+  }, [open, query]);
 
   const choose = (it: PaletteWindow) => {
     if (it.open) onFocus(it.window.id);
