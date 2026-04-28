@@ -35,6 +35,8 @@ const GROUPS: ShortcutGroup[] = [
       { keys: ['⌘', '.'], description: 'Stop the in-flight reply in the active chat window (Ctrl+. on Linux/Win)' },
       { keys: ['G'], description: 'Jump to the latest message (when not typing)' },
       { keys: ['g', 'g'], description: 'Jump to the top of the active chat (when not typing)' },
+      { keys: ['n'], description: 'Jump to the next unread assistant reply in the active chat (when not typing)' },
+      { keys: ['Shift', 'n'], description: 'Jump to the previous unread assistant reply (when not typing)' },
     ],
   },
   {
