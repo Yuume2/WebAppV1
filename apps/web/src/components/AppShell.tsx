@@ -12,6 +12,9 @@ interface AppShellProps {
 export function AppShell({ title = 'AI Workspace V1', subtitle, right, children }: AppShellProps) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <a href="#app-main" className="skip-link">
+        Skip to main content
+      </a>
       <header
         style={{
           display: 'flex',
@@ -43,7 +46,10 @@ export function AppShell({ title = 'AI Workspace V1', subtitle, right, children 
           <UserMenu />
         </div>
       </header>
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>{children}</main>
+      <main id="app-main" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {children}
+      </main>
     </div>
   );
 }
+
