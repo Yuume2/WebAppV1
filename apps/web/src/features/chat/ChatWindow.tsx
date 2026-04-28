@@ -63,8 +63,11 @@ export function ChatWindow({
   const [draft, setDraft] = useState<string>(() => readDraft(draftStorageKey));
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(title);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const searchStorageKey = `wav.chat.search.${id}`;
+  const [searchOpen, setSearchOpen] = useState<boolean>(() =>
+    readSearchQuery(searchStorageKey).length > 0,
+  );
+  const [searchQuery, setSearchQuery] = useState<string>(() => readSearchQuery(searchStorageKey));
   const [searchIndex, setSearchIndex] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef(true);
@@ -119,6 +122,10 @@ export function ChatWindow({
   useEffect(() => {
     setSearchIndex(0);
   }, [lowerQuery]);
+
+  useEffect(() => {
+    writeSearchQuery(searchStorageKey, searchQuery);
+  }, [searchStorageKey, searchQuery]);
 
   const [flashedMsgId, setFlashedMsgId] = useState<string | null>(null);
   useEffect(() => {
@@ -1114,4 +1121,23 @@ function cssEscapeId(id: string): string {
     return CSS.escape(id);
   }
   return id.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
+}
+
+function readSearchQuery(key: string): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.sessionStorage.getItem(key) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeSearchQuery(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value) window.sessionStorage.setItem(key, value);
+    else window.sessionStorage.removeItem(key);
+  } catch {
+    // sessionStorage unavailable / quota; ignore
+  }
 }
