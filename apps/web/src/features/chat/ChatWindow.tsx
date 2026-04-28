@@ -237,6 +237,42 @@ export function ChatWindow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messagesSignature]);
 
+  // Jump-to-first-unread: when this window becomes active, find the first
+  // assistant message strictly newer than the previous lastSeen and flash it.
+  const lastSeenAtRef = useRef<number>(typeof Date !== 'undefined' ? Date.now() : 0);
+  const wasActiveRef = useRef<boolean>(active);
+  useEffect(() => {
+    if (active && !wasActiveRef.current) {
+      const seenAt = lastSeenAtRef.current;
+      let firstUnread: { id: string; createdAt: string } | null = null;
+      for (const m of messages) {
+        if (m.role !== 'assistant') continue;
+        if ((m.status ?? 'ok') !== 'ok') continue;
+        const t = Date.parse(m.createdAt);
+        if (Number.isNaN(t)) continue;
+        if (t > seenAt) {
+          firstUnread = { id: m.id, createdAt: m.createdAt };
+          break;
+        }
+      }
+      if (firstUnread) {
+        const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(firstUnread.id)}`);
+        if (el && 'scrollIntoView' in el) {
+          (el as HTMLElement).scrollIntoView({ block: 'start', behavior: 'auto' });
+        }
+        stickyRef.current = false;
+        setFlashedMsgId(firstUnread.id);
+        const handle = setTimeout(() => setFlashedMsgId(null), 1500);
+        wasActiveRef.current = true;
+        lastSeenAtRef.current = Date.now();
+        return () => clearTimeout(handle);
+      }
+    }
+    if (active) lastSeenAtRef.current = Date.now();
+    wasActiveRef.current = active;
+    return undefined;
+  }, [active, messagesSignature]);
+
   useEffect(() => {
     if (!active) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
