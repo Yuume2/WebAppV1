@@ -567,8 +567,13 @@ export function WorkspaceCommandPalette({
             <ul role="list" style={{ ...listStyle, maxHeight: 280 }}>
               {messageGroups.map((g) => (
                 <li key={`grp-${g.windowId}`} style={{ listStyle: 'none', marginBottom: 4 }}>
-                  <div style={{ fontSize: '0.62rem', color: '#6a6a75', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 6px 2px' }}>
-                    {g.window.title} · {g.total} match{g.total === 1 ? '' : 'es'}
+                  <div style={{ fontSize: '0.62rem', color: '#6a6a75', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 6px 2px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>{g.window.title} · {g.total} match{g.total === 1 ? '' : 'es'}</span>
+                    {g.windowId === activeId ? (
+                      <span style={{ color: '#9aa6ff', textTransform: 'none', letterSpacing: 0, fontSize: '0.6rem' }}>
+                        (active)
+                      </span>
+                    ) : null}
                   </div>
                   {g.items.map((m, i) => {
                     const idx = unifiedItems.findIndex(
