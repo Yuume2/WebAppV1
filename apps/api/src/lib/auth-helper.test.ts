@@ -64,4 +64,14 @@ describe('requireUser', () => {
     expect(r.result.httpStatus).toBe(401);
     expect(r.result.httpStatus).not.toBe(400);
   });
+
+  it('401 envelope carries no details field (no information leak via the body)', async () => {
+    // The 401 envelope must be the minimum: { code, message } only. A
+    // future refactor that piped extra context (originating ip, why-401,
+    // etc.) into details would leak diagnostic info to anonymous callers.
+    const r = await requireUser(fakeReq, async () => null);
+    if (r.ok) throw new Error('expected fail');
+    if (r.result.body.ok) throw new Error('expected error envelope');
+    expect('details' in r.result.body.error).toBe(false);
+  });
 });
