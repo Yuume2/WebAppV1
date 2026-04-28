@@ -557,8 +557,17 @@ function WindowRow({ window, active, muted, onClick, onAction, actionLabel, acti
   const stamp = formatRelative(window.updatedAt ?? window.createdAt);
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       aria-current={active ? 'true' : undefined}
+      aria-label={`${window.title} — ${window.provider} ${window.model}`}
       style={{
         display: 'flex',
         alignItems: 'center',
