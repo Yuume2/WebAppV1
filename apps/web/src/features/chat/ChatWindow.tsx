@@ -156,6 +156,11 @@ export function ChatWindow({
           searchInputRef.current?.focus();
           searchInputRef.current?.select();
         });
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
+        e.preventDefault();
+        textareaRef.current?.focus();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -285,7 +290,7 @@ export function ChatWindow({
             }}
             aria-label={searchOpen ? 'Close search' : 'Find in chat'}
             aria-pressed={searchOpen}
-            title={searchOpen ? 'Close search' : 'Find in chat'}
+            title={searchOpen ? 'Close search' : 'Find in chat (⌘F / Ctrl+F)'}
             style={{
               background: 'transparent',
               border: 'none',
@@ -628,6 +633,7 @@ export function ChatWindow({
           <button
             type="submit"
             disabled={!canSend}
+            title="Send (Enter)"
             style={{
               background: canSend ? '#f5f5f5' : '#2a2a30',
               color: canSend ? '#0b0b0d' : '#6a6a75',
@@ -639,9 +645,22 @@ export function ChatWindow({
               cursor: canSend ? 'pointer' : 'not-allowed',
               fontFamily: 'inherit',
               alignSelf: 'stretch',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
             }}
           >
             Send
+            <span
+              aria-hidden
+              style={{
+                fontSize: '0.7rem',
+                opacity: 0.6,
+                fontWeight: 400,
+              }}
+            >
+              ↵
+            </span>
           </button>
         )}
       </form>

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import '@/styles/globals.css';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { KeyboardShortcutsOverlay } from '@/components/KeyboardShortcutsOverlay';
 import { ToastHost } from '@/components/ToastHost';
 import { SessionProvider } from '@/features/auth/SessionContext';
 
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Suspense fallback={null}>
               <SessionProvider>{children}</SessionProvider>
             </Suspense>
+            <KeyboardShortcutsOverlay />
           </ToastHost>
         </ErrorBoundary>
       </body>
