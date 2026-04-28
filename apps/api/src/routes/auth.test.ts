@@ -297,6 +297,47 @@ describe('GET /v1/auth/me', () => {
     await close();
   });
 
+  it('expired-session cleanup is fire-and-forget (response does not wait for the delete)', async () => {
+    // The opportunistic delete must not add latency to the 401 — the user is
+    // bouncing through an unauth response and shouldn't be slowed down by
+    // hygiene work. Use a deleteSession that never resolves and assert the
+    // 401 still returns within a tight budget.
+    const EXPIRED_TOKEN = '7'.repeat(64);
+    const EXPIRED_HASH  = hashSessionToken(EXPIRED_TOKEN);
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async (h) => h === EXPIRED_HASH
+        ? { id: h, userId: 'user-1', expiresAt: new Date(Date.now() - 60_000), createdAt: new Date() }
+        : null,
+      deleteSession: () => new Promise<void>(() => { /* never resolves */ }),
+    }));
+    const startedAt = Date.now();
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${EXPIRED_TOKEN}` },
+    });
+    expect(res.status).toBe(401);
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    await close();
+  });
+
+  it('expired-session cleanup swallows delete errors (no crash on hygiene failure)', async () => {
+    // The catch in meController is .catch(() => {}). A throwing delete must
+    // not affect the response or surface as an unhandled rejection that
+    // could crash the process.
+    const EXPIRED_TOKEN = '8'.repeat(64);
+    const EXPIRED_HASH  = hashSessionToken(EXPIRED_TOKEN);
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async (h) => h === EXPIRED_HASH
+        ? { id: h, userId: 'user-1', expiresAt: new Date(Date.now() - 60_000), createdAt: new Date() }
+        : null,
+      deleteSession: async () => { throw new Error('db down on cleanup'); },
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${EXPIRED_TOKEN}` },
+    });
+    expect(res.status).toBe(401);
+    await close();
+  });
+
   it('does NOT call deleteSession when token simply does not match', async () => {
     const calls: string[] = [];
     const { baseUrl, close } = await startServer(makeDeps({
@@ -417,6 +458,28 @@ describe('POST /v1/auth/logout', () => {
     expect(res.status).toBe(200);
     const cookie = getSetCookie(res);
     expect(cookie).toContain('Max-Age=0');
+    await close();
+  });
+
+  it('is idempotent — calling logout twice with the same cookie is a 200 each time', async () => {
+    // The frontend may double-fire logout (button + tab-close handler), and
+    // a second call after the session is already gone must not error. The
+    // controller deletes the session by token-hash, which is naturally
+    // idempotent — pin it with a regression test so a future refactor that
+    // returns 401 on already-deleted sessions can't ship without failing CI.
+    const { baseUrl, close } = await startServer(makeDeps({
+      deleteSession: async () => { /* idempotent: succeed both times */ },
+    }));
+    const cookie = `${SESSION_COOKIE_NAME}=${'1'.repeat(64)}`;
+    const r1 = await post(baseUrl, '/v1/auth/logout', {}, { Cookie: cookie });
+    const r2 = await post(baseUrl, '/v1/auth/logout', {}, { Cookie: cookie });
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    // Both responses must clear the cookie too — second logout is not a
+    // no-op from the cookie POV; it should still emit Max-Age=0 so a stale
+    // browser cookie can't survive the second call.
+    expect(getSetCookie(r1)).toContain('Max-Age=0');
+    expect(getSetCookie(r2)).toContain('Max-Age=0');
     await close();
   });
 

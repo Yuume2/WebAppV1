@@ -390,6 +390,13 @@ describe('POST /v1/messages — openai generation path', () => {
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('provider_error');
     expect(body.error.message).toMatch(/timed out/i);
+    // 502 from a provider timeout still rides the standard pipeline —
+    // X-Request-Id must be present so an oncall can correlate logs and
+    // the upstream provider request that hung. Pin it explicitly because
+    // the provider-error path is a narrow code branch that's easy to
+    // accidentally bypass with a bare res.end().
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 
@@ -602,6 +609,13 @@ describe('POST /v1/messages/stream — authenticated', () => {
     const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hello' });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type') ?? '').toMatch(/text\/event-stream/);
+    // Ride-headers regression: SSE-critical hints must reach the client so
+    // proxies don't buffer the stream. Pin them on the success path so a
+    // future writeHead refactor can't quietly strip them.
+    expect(res.headers.get('cache-control') ?? '').toMatch(/no-store/);
+    expect(res.headers.get('cache-control') ?? '').toMatch(/no-transform/);
+    expect(res.headers.get('x-accel-buffering')).toBe('no');
+    expect(res.headers.get('x-request-id')).toBeTruthy();
 
     const events = await readSseEvents(res);
     // Two deltas + final done payload + literal [DONE].

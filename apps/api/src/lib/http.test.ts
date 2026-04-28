@@ -1,7 +1,11 @@
 import type { IncomingMessage } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import {
+  fail,
   getClientIp,
+  isHttpMethod,
+  isRecord,
+  ok,
   respondCreated,
   respondError,
   respondNoContent,
@@ -114,5 +118,60 @@ describe('respondRateLimited', () => {
     if (r.body.ok) throw new Error('expected error envelope');
     expect(r.body.error.code).toBe('rate_limited');
     expect(r.headers).toEqual({ 'Retry-After': '120' });
+  });
+});
+
+describe('envelope invariants — ok() / fail()', () => {
+  it('ok() never carries an error field', () => {
+    const env = ok({ x: 1 });
+    expect(env.ok).toBe(true);
+    expect('error' in env).toBe(false);
+  });
+
+  it('fail() never carries a data field', () => {
+    const env = fail('validation_error', 'bad');
+    expect(env.ok).toBe(false);
+    expect('data' in env).toBe(false);
+  });
+
+  it('fail() omits details when not supplied (no spurious details: undefined in JSON)', () => {
+    const env = fail('validation_error', 'bad');
+    if (env.ok) throw new Error('expected error envelope');
+    expect('details' in env.error).toBe(false);
+    // Round-trip through JSON to confirm: a stray undefined would either
+    // crash JSON.stringify (no — JSON drops undefined) or appear as
+    // a missing key. Accept either, but pin the *parsed* shape.
+    const parsed = JSON.parse(JSON.stringify(env));
+    expect(parsed.error).not.toHaveProperty('details');
+  });
+});
+
+describe('isHttpMethod', () => {
+  it('accepts the seven canonical methods', () => {
+    for (const m of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
+      expect(isHttpMethod(m)).toBe(true);
+    }
+  });
+
+  it('rejects non-canonical or undefined methods', () => {
+    expect(isHttpMethod(undefined)).toBe(false);
+    expect(isHttpMethod('TRACE')).toBe(false);
+    expect(isHttpMethod('PROPFIND')).toBe(false);
+    expect(isHttpMethod('get')).toBe(false); // case-sensitive
+  });
+});
+
+describe('isRecord', () => {
+  it('accepts plain objects', () => {
+    expect(isRecord({})).toBe(true);
+    expect(isRecord({ a: 1 })).toBe(true);
+  });
+
+  it('rejects null, arrays, primitives', () => {
+    expect(isRecord(null)).toBe(false);
+    expect(isRecord([])).toBe(false);
+    expect(isRecord('s')).toBe(false);
+    expect(isRecord(1)).toBe(false);
+    expect(isRecord(undefined)).toBe(false);
   });
 });

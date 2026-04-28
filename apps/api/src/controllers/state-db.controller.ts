@@ -3,10 +3,10 @@ import { inArray } from 'drizzle-orm';
 import type { AIProvider, AppState, ChatWindow, Message, Project, Workspace } from '@webapp/types';
 import {
   respond,
-  respondError,
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
+import { requireUser } from '../lib/auth-helper.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db as ProjectsDb } from '../db/projects.repo.js';
 import { listProjectsByUserId } from '../db/projects.repo.js';
@@ -142,9 +142,9 @@ export async function stateDbController(
   ctx: RequestContext,
   deps: StateDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
-  const state = await deps.loadState(user.id);
+  const state = await deps.loadState(auth.user.id);
   return respond(state);
 }

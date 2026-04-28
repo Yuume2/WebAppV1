@@ -88,6 +88,52 @@ describe('POST /v1/projects', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('returns 400 invalid_body for an explicit null JSON body', async () => {
+    // The schema is s.object(...); s.object rejects null with the
+    // 'must be a JSON object' error. Make sure the controller surfaces
+    // that as a 400 invalid_body, not a 500 from a destructure later.
+    const res = await fetch(`${harness.baseUrl}/v1/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: 'null',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<unknown>;
+    expect(body.ok).toBe(false);
+    if (body.ok) throw new Error('expected error envelope');
+    expect(body.error.code).toBe('invalid_body');
+  });
+
+  it('accepts application/json with charset=utf-8 (RFC 8259 normative)', async () => {
+    // The content-type check uses substring includes('application/json') so
+    // a Content-Type with parameters must still pass. Pin it because a
+    // future tightening to strict equality would break clients that use
+    // fetch() defaults (which often append the charset).
+    const res = await fetch(`${harness.baseUrl}/v1/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify({ name: 'with-charset' }),
+    });
+    // Either 201 (success) or 401 (auth not configured here) is fine — the
+    // critical regression is that this is NOT 415 unsupported_media_type.
+    expect(res.status).not.toBe(415);
+  });
+
+  it('returns 400 invalid_body for a JSON array body (not an object)', async () => {
+    // Same path: object schema rejects arrays. Caller must not be able to
+    // sneak past validation by sending [{...}] hoping the array-form is
+    // ignored.
+    const res = await fetch(`${harness.baseUrl}/v1/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([{ name: 'A' }]),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<unknown>;
+    if (body.ok) throw new Error('expected error envelope');
+    expect(body.error.code).toBe('invalid_body');
+  });
+
   it('returns 400 for invalid JSON body', async () => {
     const res = await fetch(`${harness.baseUrl}/v1/projects`, {
       method: 'POST',
