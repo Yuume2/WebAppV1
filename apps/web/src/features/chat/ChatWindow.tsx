@@ -1740,15 +1740,81 @@ const TEMPLATES: Array<{ label: string; prefix: string }> = [
   { label: 'Continue', prefix: 'Continue from where you left off.' },
 ];
 
+interface UserTemplate {
+  id: string;
+  label: string;
+  prefix: string;
+}
+
+const USER_TEMPLATES_KEY = 'wav.templates';
+
+function readUserTemplates(): UserTemplate[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(USER_TEMPLATES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (t): t is UserTemplate =>
+          t && typeof t.id === 'string' && typeof t.label === 'string' && typeof t.prefix === 'string',
+      )
+      .slice(0, 50);
+  } catch {
+    return [];
+  }
+}
+
+function writeUserTemplates(items: UserTemplate[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(USER_TEMPLATES_KEY, JSON.stringify(items));
+    window.dispatchEvent(new Event('wav:templates-changed'));
+  } catch {
+    // ignore quota
+  }
+}
+
 function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
+  const [userTemplates, setUserTemplates] = useState<UserTemplate[]>(() => readUserTemplates());
+  const [adding, setAdding] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [newPrefix, setNewPrefix] = useState('');
   useEffect(() => {
     if (!open) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
+    const onChange = () => setUserTemplates(readUserTemplates());
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('wav:templates-changed', onChange);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('wav:templates-changed', onChange);
+    };
   }, [open, onClose]);
+  const onSaveNew = () => {
+    const label = newLabel.trim();
+    const prefix = newPrefix.trim();
+    if (!label || !prefix) return;
+    const next: UserTemplate = {
+      id: `t-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+      label,
+      prefix,
+    };
+    const updated = [next, ...userTemplates].slice(0, 50);
+    setUserTemplates(updated);
+    writeUserTemplates(updated);
+    setNewLabel('');
+    setNewPrefix('');
+    setAdding(false);
+  };
+  const onDelete = (id: string) => {
+    const updated = userTemplates.filter((t) => t.id !== id);
+    setUserTemplates(updated);
+    writeUserTemplates(updated);
+  };
   return (
     <div style={{ position: 'relative', alignSelf: 'stretch' }} onClick={(e) => e.stopPropagation()}>
       <button
@@ -1785,7 +1851,8 @@ function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
               position: 'absolute',
               bottom: 'calc(100% + 6px)',
               right: 0,
-              minWidth: 220,
+              minWidth: 260,
+              maxWidth: 320,
               background: '#161620',
               border: '1px solid #2a2a30',
               borderRadius: 8,
@@ -1797,6 +1864,60 @@ function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
               gap: 2,
             }}
           >
+            {userTemplates.length > 0 ? (
+              <>
+                <div style={tplSectionStyle}>Yours</div>
+                {userTemplates.map((t) => (
+                  <div
+                    key={t.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <button
+                      role="menuitem"
+                      type="button"
+                      onClick={() => onPick(t.prefix)}
+                      title={t.prefix}
+                      style={{
+                        flex: 1,
+                        background: 'transparent',
+                        border: 'none',
+                        textAlign: 'left',
+                        padding: '0.4rem 0.55rem',
+                        borderRadius: 4,
+                        color: '#e8e8ef',
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(t.id)}
+                      aria-label={`Delete template ${t.label}`}
+                      title={`Delete template ${t.label}`}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#8a8a95',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        padding: '0 6px',
+                        borderRadius: 4,
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </>
+            ) : null}
+            <div style={tplSectionStyle}>Built-in</div>
             {TEMPLATES.map((t) => (
               <button
                 key={t.label}
@@ -1818,9 +1939,99 @@ function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
                 {t.label}
               </button>
             ))}
+            <div style={{ height: 1, background: '#1d1d22', margin: '4px 0' }} />
+            {adding ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0.3rem 0.5rem 0.5rem' }}>
+                <input
+                  autoFocus
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  placeholder="Label"
+                  aria-label="New template label"
+                  style={tplInputStyle}
+                />
+                <textarea
+                  value={newPrefix}
+                  onChange={(e) => setNewPrefix(e.target.value)}
+                  placeholder="Prefix to insert at the end of the draft"
+                  aria-label="New template prefix"
+                  rows={3}
+                  style={{ ...tplInputStyle, resize: 'vertical', minHeight: 60, lineHeight: 1.4 }}
+                />
+                <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => { setAdding(false); setNewLabel(''); setNewPrefix(''); }} style={tplGhostBtnStyle}>
+                    Cancel
+                  </button>
+                  <button type="button" onClick={onSaveNew} disabled={!newLabel.trim() || !newPrefix.trim()} style={tplPrimaryBtnStyle}>
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  textAlign: 'left',
+                  padding: '0.4rem 0.55rem',
+                  borderRadius: 4,
+                  color: '#9aa6ff',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                + New template
+              </button>
+            )}
           </div>
         </>
       ) : null}
     </div>
   );
 }
+
+const tplSectionStyle: React.CSSProperties = {
+  fontSize: '0.62rem',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  color: '#6a6a75',
+  padding: '0.4rem 0.55rem 0.2rem',
+};
+
+const tplInputStyle: React.CSSProperties = {
+  width: '100%',
+  background: '#0f0f13',
+  border: '1px solid #2a2a30',
+  borderRadius: 4,
+  padding: '0.35rem 0.5rem',
+  color: '#f5f5f5',
+  fontSize: '0.78rem',
+  fontFamily: 'inherit',
+  outline: 'none',
+};
+
+const tplGhostBtnStyle: React.CSSProperties = {
+  background: 'transparent',
+  color: '#cfcfd6',
+  border: '1px solid #2a2a30',
+  borderRadius: 4,
+  padding: '2px 8px',
+  fontSize: '0.72rem',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+};
+
+const tplPrimaryBtnStyle: React.CSSProperties = {
+  background: '#f5f5f5',
+  color: '#0b0b0d',
+  border: 'none',
+  borderRadius: 4,
+  padding: '2px 10px',
+  fontSize: '0.72rem',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontWeight: 600,
+};
