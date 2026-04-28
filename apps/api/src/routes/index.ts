@@ -1,4 +1,5 @@
 import { healthController } from '../controllers/health.controller.js';
+import { versionController } from '../controllers/version.controller.js';
 import {
   createChatWindowController,
   deleteChatWindowController,
@@ -150,6 +151,7 @@ const stateHandler = (db && authDeps)
 export const businessRoutes: RouteDefinition[] = [
   { method: 'GET', path: API_HEALTH_PATH, handler: healthController },
   { method: 'GET', path: '/v1/health',    handler: healthController },
+  { method: 'GET', path: '/v1/version',   handler: versionController },
 
   ...projectRoutes,
 
