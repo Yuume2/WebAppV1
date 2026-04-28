@@ -389,6 +389,20 @@ export function ChatWindow({
           </button>
         )}
       </form>
+      {draft.length > 2000 ? (
+        <div
+          aria-live="polite"
+          style={{
+            padding: '0 0.75rem 0.5rem',
+            background: '#0f0f13',
+            fontSize: '0.7rem',
+            color: draft.length > 8000 ? '#ff8b8b' : '#8a8a95',
+            textAlign: 'right',
+          }}
+        >
+          {draft.length.toLocaleString()} chars
+        </div>
+      ) : null}
     </div>
   );
 }
