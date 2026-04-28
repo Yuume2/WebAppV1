@@ -57,4 +57,31 @@ describe('checkCsrf', () => {
     );
     expect(r.ok).toBe(false);
   });
+
+  it('accepts any origin from a comma-separated allowlist', () => {
+    const allow = 'https://app.example.com,https://staging.example.com';
+    expect(checkCsrf(reqWith({ origin: 'https://app.example.com'     }), 'POST', allow).ok).toBe(true);
+    expect(checkCsrf(reqWith({ origin: 'https://staging.example.com' }), 'POST', allow).ok).toBe(true);
+  });
+
+  it('rejects an origin not in the comma-separated allowlist', () => {
+    const allow = 'https://app.example.com, https://staging.example.com';
+    const r = checkCsrf(reqWith({ origin: 'https://attacker.example.com' }), 'POST', allow);
+    expect(r.ok).toBe(false);
+  });
+
+  it('Referer fallback works against any origin in the allowlist', () => {
+    const allow = 'https://app.example.com,https://staging.example.com';
+    const r = checkCsrf(
+      reqWith({ referer: 'https://staging.example.com/some/page' }),
+      'POST',
+      allow,
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('tolerates surrounding whitespace in the allowlist entries', () => {
+    const allow = '  https://app.example.com  ,  https://staging.example.com ';
+    expect(checkCsrf(reqWith({ origin: 'https://app.example.com' }), 'POST', allow).ok).toBe(true);
+  });
 });
