@@ -100,4 +100,17 @@ describe('resolveCurrentUser', () => {
     });
     expect(r).toBeNull();
   });
+
+  it('propagates repo errors instead of swallowing them as "no session"', async () => {
+    // A DB outage in findSessionByTokenHash must NOT silently auth-as-anonymous —
+    // that would mask infrastructure failures behind a 401, making them
+    // indistinguishable from genuine logged-out traffic. Bubble it up so
+    // handleRequest's catch ships a proper 500 + Sentry capture.
+    await expect(
+      resolveCurrentUser(reqWith(`${SESSION_COOKIE_NAME}=anything`), {
+        findSessionByTokenHash: async () => { throw new Error('db connection lost'); },
+        findUserById:           async () => USER,
+      }),
+    ).rejects.toThrow('db connection lost');
+  });
 });
