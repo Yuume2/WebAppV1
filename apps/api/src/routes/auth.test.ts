@@ -727,6 +727,24 @@ describe('GET /v1/auth/me', () => {
     await close();
   });
 
+  it('ignores Authorization Bearer header — only cookie auth is supported', async () => {
+    // We are cookie-auth only. A client that sends a Bearer token in
+    // Authorization is either confused (wrong API) or attempting a
+    // confusion attack. /me must NOT honour the Authorization header
+    // and must NOT call the session repo for it. Pin both: the
+    // response is 401, and no session lookup is triggered.
+    let lookupCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async () => { lookupCalls++; return null; },
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${'a'.repeat(64)}` },
+    });
+    expect(res.status).toBe(401);
+    expect(lookupCalls).toBe(0);
+    await close();
+  });
+
   it('rejects whitespace-only session cookie without touching the session repo', async () => {
     // Probe with a whitespace-only token: must short-circuit before any DB
     // lookup and return the same envelope as a missing cookie. Otherwise an
