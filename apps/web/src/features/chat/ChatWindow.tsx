@@ -120,6 +120,22 @@ export function ChatWindow({
     setSearchIndex(0);
   }, [lowerQuery]);
 
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        setSearchOpen(true);
+        requestAnimationFrame(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select();
+        });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [active]);
+
   const commitRename = () => {
     const trimmed = titleDraft.trim();
     if (trimmed && trimmed !== title) onRename?.(id, trimmed);
