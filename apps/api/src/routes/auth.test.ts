@@ -618,6 +618,21 @@ describe('rate limiting — signup', () => {
     expect(res.status).toBe(201);
     await close();
   });
+
+  it('rate-limit gate fires BEFORE the user-lookup / hash work on signup', async () => {
+    // Mirror of the login gate-ordering test: a full bucket must short-
+    // circuit BEFORE findUserByEmail so an attacker can't enumerate emails
+    // by timing the difference between rate-limited-existing-user and
+    // rate-limited-fresh-email.
+    let userLookups = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      checkRateLimit:  () => ({ ok: false, retryAfterSecs: 60 }),
+      findUserByEmail: async () => { userLookups++; return null; },
+    }));
+    await post(baseUrl, '/v1/auth/signup', { email: 'a@b.com', password: 'password123' });
+    expect(userLookups).toBe(0);
+    await close();
+  });
 });
 
 describe('rate limiting — login', () => {
