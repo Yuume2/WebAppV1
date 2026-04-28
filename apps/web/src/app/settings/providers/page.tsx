@@ -129,7 +129,14 @@ export default function ProviderSettingsPage() {
   return (
     <main style={pageStyle}>
       <header style={headerStyle}>
-        <h1 style={{ fontSize: '1.5rem', margin: 0 }}>Provider connections</h1>
+        <h1 style={{ fontSize: '1.5rem', margin: 0 }}>
+          Provider connections
+          {state.status === 'ready' && state.items.length > 0 ? (
+            <span style={{ marginLeft: 8, color: '#8a8a95', fontWeight: 400, fontSize: '1rem' }}>
+              · {state.items.length}
+            </span>
+          ) : null}
+        </h1>
         <Button variant="ghost" onClick={() => void load()} disabled={state.status === 'loading'}>
           Refresh
         </Button>
