@@ -28,6 +28,8 @@ export function AppShell({ title = 'AI Workspace V1', subtitle, right, children 
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
           <Link
             href="/"
+            prefetch={false}
+            aria-label="Home — projects"
             style={{
               fontSize: '1rem',
               fontWeight: 600,
