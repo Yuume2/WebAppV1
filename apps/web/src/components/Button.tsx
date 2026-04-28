@@ -29,6 +29,13 @@ const variants: Record<Variant, React.CSSProperties> = {
   },
 };
 
-export function Button({ variant = 'primary', style, ...rest }: ButtonProps) {
-  return <button {...rest} style={{ ...base, ...variants[variant], ...style }} />;
+export function Button({ variant = 'primary', className, style, ...rest }: ButtonProps) {
+  const merged = ['wav-btn', className].filter(Boolean).join(' ');
+  return (
+    <button
+      {...rest}
+      className={merged}
+      style={{ ...base, ...variants[variant], ...style }}
+    />
+  );
 }
