@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { HelpButton } from '@/components/HelpButton';
 import { UserMenu } from '@/features/auth/UserMenu';
 
 interface AppShellProps {
@@ -46,6 +47,7 @@ export function AppShell({ title = 'AI Workspace V1', subtitle, right, children 
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           {right}
+          <HelpButton />
           <UserMenu />
         </div>
       </header>

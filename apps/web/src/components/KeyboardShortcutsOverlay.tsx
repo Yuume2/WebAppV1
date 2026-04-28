@@ -41,8 +41,13 @@ export function KeyboardShortcutsOverlay() {
         setOpen(false);
       }
     };
+    const onCustom = () => setOpen((v) => !v);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('wav:toggle-shortcuts', onCustom);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('wav:toggle-shortcuts', onCustom);
+    };
   }, [open]);
 
   if (!open) return null;
