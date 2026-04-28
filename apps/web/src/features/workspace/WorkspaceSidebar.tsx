@@ -60,6 +60,10 @@ export function WorkspaceSidebar({
     );
   };
   const [pinnedSet, setPinnedSet] = useState<Set<string>>(() => readPinnedSet());
+  const [onlyPinned, setOnlyPinned] = useState(false);
+  useEffect(() => {
+    if (onlyPinned && pinnedSet.size === 0) setOnlyPinned(false);
+  }, [onlyPinned, pinnedSet.size]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onChange = () => setPinnedSet(readPinnedSet());
@@ -72,9 +76,12 @@ export function WorkspaceSidebar({
     return pb - pa;
   };
   const filteredVisible = (filterEnabled ? visibleWindows.filter(matchesFilter) : visibleWindows)
+    .filter((w) => (onlyPinned ? pinnedSet.has(w.id) : true))
     .slice()
     .sort(sortPinnedFirst);
-  const filteredClosed = filterEnabled ? closedWindows.filter(matchesFilter) : closedWindows;
+  const filteredClosed = (filterEnabled ? closedWindows.filter(matchesFilter) : closedWindows).filter(
+    (w) => (onlyPinned ? pinnedSet.has(w.id) : true),
+  );
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
 
   return (
@@ -124,6 +131,31 @@ export function WorkspaceSidebar({
               aria-label="Filter chat windows"
               style={filterInputStyle}
             />
+          </div>
+        ) : null}
+        {pinnedSet.size > 0 ? (
+          <div style={{ padding: '0 0.05rem 0.5rem' }}>
+            <button
+              type="button"
+              onClick={() => setOnlyPinned((v) => !v)}
+              aria-pressed={onlyPinned}
+              aria-label={onlyPinned ? 'Show all windows' : 'Show only pinned windows'}
+              title={onlyPinned ? 'Show all windows' : `Show only pinned windows (${pinnedSet.size})`}
+              style={{
+                width: '100%',
+                background: onlyPinned ? '#1c1c28' : 'transparent',
+                color: onlyPinned ? '#f0c14b' : '#cfcfd6',
+                border: `1px solid ${onlyPinned ? '#3a3f6b' : '#24242c'}`,
+                borderRadius: 6,
+                padding: '0.3rem 0.55rem',
+                fontSize: '0.72rem',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                textAlign: 'left',
+              }}
+            >
+              {onlyPinned ? `Pinned only (${pinnedSet.size})` : `Show pinned only (${pinnedSet.size})`}
+            </button>
           </div>
         ) : null}
         <SectionLabel>
