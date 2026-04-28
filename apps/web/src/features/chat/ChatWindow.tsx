@@ -531,6 +531,11 @@ export function ChatWindow({
       <div
         ref={scrollRef}
         onScroll={updateStickiness}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            textareaRef.current?.focus();
+          }
+        }}
         role="log"
         aria-live="polite"
         aria-relevant="additions text"
