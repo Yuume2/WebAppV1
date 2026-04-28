@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Button } from '@/components/Button';
 import { Panel } from '@/components/Panel';
 import { login, register } from '@/lib/api/auth';
@@ -68,17 +68,20 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const emailRef = useRef<HTMLInputElement | null>(null);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (pending) return;
     setError(null);
     setPending(true);
+    const trimmedEmail = email.trim();
     try {
       if (mode === 'login') {
-        await login({ email, password });
+        await login({ email: trimmedEmail, password });
       } else {
         await register({
-          email,
+          email: trimmedEmail,
           password,
           ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
         });
@@ -91,6 +94,8 @@ export function AuthForm({ mode }: AuthFormProps) {
     } catch (err) {
       setError(messageFor(err as ApiCallError, mode));
       setPending(false);
+      emailRef.current?.focus();
+      emailRef.current?.select();
     }
   }
 
@@ -114,11 +119,14 @@ export function AuthForm({ mode }: AuthFormProps) {
           ) : null}
           <Field label="Email">
             <input
+              ref={emailRef}
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
+              autoFocus
+              spellCheck={false}
               style={inputStyle}
             />
           </Field>
