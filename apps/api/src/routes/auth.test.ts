@@ -262,6 +262,20 @@ describe('POST /v1/auth/login', () => {
     await close();
   });
 
+  it('trims surrounding whitespace from the email before lookup (form-paste tolerance)', async () => {
+    // The schema trims; the lookup must therefore see the clean form. A
+    // user pasting their email from a column with trailing whitespace
+    // shouldn't be locked out. Pin the trim → lookup chain with an explicit
+    // capture of the email passed to findUserByEmail.
+    let lookupEmail: string | null = null;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async (email) => { lookupEmail = email; return null; },
+    }));
+    await post(baseUrl, '/v1/auth/login', { email: '  alice@example.com  ', password: 'whatever' });
+    expect(lookupEmail).toBe('alice@example.com');
+    await close();
+  });
+
   it('lowercases the email before user lookup (mirror of signup normalisation)', async () => {
     // Both signup and login lowercase the email server-side. If they
     // disagreed, a user who signed up with 'Alice@example.com' would be
