@@ -300,10 +300,54 @@ export function ChatWindow({
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
+  // Composer history: when the textarea is empty, ↑/↓ recall recent user prompts.
+  // Indexed from 0 = newest. We pull the list from the live messages prop so it
+  // always reflects what's on screen — no separate persistence needed.
+  const userPromptHistory = messages
+    .filter((m) => m.role === 'user' && (m.status ?? 'ok') !== 'failed')
+    .map((m) => m.content)
+    .reverse();
+  const historyIdxRef = useRef<number>(-1);
+
   const onComposerKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
+      historyIdxRef.current = -1;
+      return;
+    }
+    if (e.key === 'Escape' && draft.length > 0) {
+      e.preventDefault();
+      setDraft('');
+      historyIdxRef.current = -1;
+      return;
+    }
+    if (e.key === 'ArrowUp' && userPromptHistory.length > 0) {
+      // Only recall when caret is at start AND on the first line — avoids
+      // hijacking normal up-arrow navigation inside multi-line drafts.
+      const ta = e.currentTarget;
+      const beforeCaret = ta.value.slice(0, ta.selectionStart);
+      const onFirstLine = !beforeCaret.includes('\n');
+      const isAtStart = ta.selectionStart === 0 && ta.selectionEnd === 0;
+      // Activate history recall only when the textarea is empty (first ↑) or
+      // we're already cycling (historyIdxRef >= 0). This keeps the bar to
+      // entry low — pressing ↑ on a typed-but-not-sent draft doesn't
+      // clobber the in-progress text.
+      const cyclingActive = historyIdxRef.current >= 0;
+      if ((draft.length === 0 || cyclingActive) && (isAtStart || onFirstLine)) {
+        e.preventDefault();
+        const nextIdx = Math.min(historyIdxRef.current + 1, userPromptHistory.length - 1);
+        historyIdxRef.current = nextIdx;
+        setDraft(userPromptHistory[nextIdx] ?? '');
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown' && historyIdxRef.current >= 0) {
+      e.preventDefault();
+      const nextIdx = historyIdxRef.current - 1;
+      historyIdxRef.current = nextIdx;
+      setDraft(nextIdx < 0 ? '' : userPromptHistory[nextIdx] ?? '');
+      return;
     }
   };
 
