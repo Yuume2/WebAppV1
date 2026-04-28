@@ -18,7 +18,7 @@ const GROUPS: ShortcutGroup[] = [
     items: [
       { keys: ['?'], description: 'Show this help' },
       { keys: ['⌘', '/'], description: 'Show this help (also works while typing; Ctrl+/ on Linux/Win)' },
-      { keys: ['Esc'], description: 'Close menus, modals, search bar, this help' },
+      { keys: ['Esc'], description: 'Close menus, modals, search bar, this help  ·  In composer: clear draft' },
       { keys: ['⌘', 'K'], description: 'Open command palette — switch chat window by title (Ctrl+K on Linux/Win)' },
     ],
   },
@@ -39,6 +39,8 @@ const GROUPS: ShortcutGroup[] = [
     items: [
       { keys: ['Enter'], description: 'In composer: send message  ·  In Find: jump to next match' },
       { keys: ['Shift', 'Enter'], description: 'In composer: newline  ·  In Find: jump to previous match' },
+      { keys: ['↑'], description: 'In empty composer: recall the previous user prompt' },
+      { keys: ['↓'], description: 'While cycling history: step toward the latest / clear' },
     ],
   },
 ];
