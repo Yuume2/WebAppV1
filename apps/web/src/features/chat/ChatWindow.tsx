@@ -386,7 +386,16 @@ export function ChatWindow({
     });
   };
 
-  const [showOnlyStarred, setShowOnlyStarred] = useState(false);
+  const showStarredStorageKey = `wav.chat.showStarred.${id}`;
+  const [showOnlyStarred, setShowOnlyStarred] = useState<boolean>(() => readBoolFlag(showStarredStorageKey));
+  useEffect(() => {
+    writeBoolFlag(showStarredStorageKey, showOnlyStarred);
+  }, [showStarredStorageKey, showOnlyStarred]);
+  // Auto-clear the filter when the underlying star set becomes empty so the
+  // user isn't left staring at a permanent empty state with no obvious recovery.
+  useEffect(() => {
+    if (showOnlyStarred && starredIds.size === 0) setShowOnlyStarred(false);
+  }, [showOnlyStarred, starredIds.size]);
   const displayedMessages = showOnlyStarred
     ? filteredMessages.filter((m) => starredIds.has(m.id))
     : filteredMessages;
@@ -1501,6 +1510,25 @@ function writeStarred(key: string, value: Set<string>): void {
   try {
     if (value.size === 0) window.localStorage.removeItem(key);
     else window.localStorage.setItem(key, JSON.stringify(Array.from(value)));
+  } catch {
+    // localStorage unavailable / quota exceeded; ignore
+  }
+}
+
+function readBoolFlag(key: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeBoolFlag(key: string, value: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value) window.localStorage.setItem(key, '1');
+    else window.localStorage.removeItem(key);
   } catch {
     // localStorage unavailable / quota exceeded; ignore
   }
