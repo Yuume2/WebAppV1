@@ -179,8 +179,16 @@ export async function meController(ctx: RequestContext, deps: AuthDeps): Promise
 
   if (!token) return respondError('unauthenticated', 'Not authenticated', 401);
 
-  const session = await deps.findSessionByTokenHash(hashSessionToken(token));
-  if (!session || session.expiresAt <= new Date()) {
+  const tokenHash = hashSessionToken(token);
+  const session = await deps.findSessionByTokenHash(tokenHash);
+  if (!session) {
+    return respondError('unauthenticated', 'Session expired or invalid', 401);
+  }
+  if (session.expiresAt <= new Date()) {
+    // Opportunistic cleanup — the matching row is now strictly stale, no
+    // value keeping it in the DB. Fire-and-forget so we don't add latency
+    // to the response, and swallow errors (best-effort hygiene).
+    deps.deleteSession(tokenHash).catch(() => { /* ignore */ });
     return respondError('unauthenticated', 'Session expired or invalid', 401);
   }
 

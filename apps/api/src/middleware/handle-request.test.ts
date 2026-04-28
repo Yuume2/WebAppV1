@@ -52,6 +52,41 @@ describe('dispatch — error envelopes', () => {
     expect(res.headers.get('x-frame-options')).toBe('DENY');
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
   });
+
+  it('emits X-Request-Id on a 200 response', async () => {
+    const res = await fetch(`${harness.baseUrl}/health`);
+    const id = res.headers.get('x-request-id');
+    expect(id).toBeTruthy();
+    expect(typeof id).toBe('string');
+    expect(id!.length).toBeGreaterThan(8);
+  });
+
+  it('emits X-Request-Id on a 405 method-not-allowed', async () => {
+    const res = await fetch(`${harness.baseUrl}/health`, { method: 'DELETE' });
+    expect(res.status).toBe(405);
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+  });
+
+  it('every response gets a fresh X-Request-Id', async () => {
+    const a = await fetch(`${harness.baseUrl}/health`);
+    const b = await fetch(`${harness.baseUrl}/health`);
+    expect(a.headers.get('x-request-id')).not.toBe(b.headers.get('x-request-id'));
+  });
+
+  it('emits Cache-Control: no-store on JSON responses', async () => {
+    const ok = await fetch(`${harness.baseUrl}/health`);
+    expect(ok.headers.get('cache-control')).toBe('no-store');
+    const notFound = await fetch(`${harness.baseUrl}/nope`);
+    expect(notFound.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('emits Allow header on 405 listing the methods the path actually supports', async () => {
+    // /health is a GET-only route; a DELETE must surface Allow: GET (RFC 7231).
+    const res = await fetch(`${harness.baseUrl}/health`, { method: 'DELETE' });
+    expect(res.status).toBe(405);
+    const allow = res.headers.get('allow') ?? '';
+    expect(allow).toContain('GET');
+  });
 });
 
 // ── CSRF protection ───────────────────────────────────────────────────────────
@@ -84,6 +119,10 @@ describe('CSRF protection — explicit origin', () => {
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error envelope');
     expect(body.error.code).toBe('csrf_error');
+    // Defensive headers must still ride 403s — they're set before any short-circuit.
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-request-id')).toBeTruthy();
     await close();
   });
 

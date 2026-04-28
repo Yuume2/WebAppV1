@@ -238,6 +238,41 @@ describe('GET /v1/auth/me', () => {
     expect(res.status).toBe(401);
     await close();
   });
+
+  it('opportunistically cleans up an expired session row', async () => {
+    const EXPIRED_TOKEN = 'e'.repeat(64);
+    const EXPIRED_HASH  = hashSessionToken(EXPIRED_TOKEN);
+    const deletes: string[] = [];
+    let resolveDel!: () => void;
+    const deleteDone = new Promise<void>((r) => { resolveDel = r; });
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async (h) => h === EXPIRED_HASH
+        ? { id: h, userId: 'user-1', expiresAt: new Date(Date.now() - 60_000), createdAt: new Date() }
+        : null,
+      deleteSession: async (h) => { deletes.push(h); resolveDel(); },
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${EXPIRED_TOKEN}` },
+    });
+    expect(res.status).toBe(401);
+    await deleteDone;
+    expect(deletes).toEqual([EXPIRED_HASH]);
+    await close();
+  });
+
+  it('does NOT call deleteSession when token simply does not match', async () => {
+    const calls: string[] = [];
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async () => null,
+      deleteSession:          async (h) => { calls.push(h); },
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${'f'.repeat(64)}` },
+    });
+    expect(res.status).toBe(401);
+    expect(calls).toEqual([]);
+    await close();
+  });
 });
 
 // ── Alias: /v1/me → /v1/auth/me ───────────────────────────────────────────────
