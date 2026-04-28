@@ -33,7 +33,16 @@ export default async function HomePage() {
   const result = await loadProjects();
 
   return (
-    <AppShell subtitle="Projects" right={<SourceBadge result={result} />}>
+    <AppShell
+      subtitle={
+        result.source === 'error'
+          ? 'Projects'
+          : result.projects.length === 0
+            ? 'Projects'
+            : `Projects · ${result.projects.length}`
+      }
+      right={<SourceBadge result={result} />}
+    >
       <section style={{ padding: '1.5rem', maxWidth: 960, width: '100%', margin: '0 auto' }}>
         <h1 style={{ fontSize: '1.5rem', margin: '0 0 1.25rem 0' }}>Your projects</h1>
         {result.source === 'error' ? (
