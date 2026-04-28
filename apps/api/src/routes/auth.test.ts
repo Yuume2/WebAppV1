@@ -487,6 +487,21 @@ describe('POST /v1/auth/logout', () => {
     await close();
   });
 
+  it('does not call deleteSession when the cookie value is whitespace-only', async () => {
+    // Same probe-resistance logic as meController: a whitespace-only token
+    // must not reach the session repo. The cookie is still cleared on the
+    // way out (Max-Age=0) so a subsequent normal logout still works.
+    let deleteCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      deleteSession: async () => { deleteCalls++; },
+    }));
+    const res = await post(baseUrl, '/v1/auth/logout', {}, { Cookie: `${SESSION_COOKIE_NAME}=  ` });
+    expect(res.status).toBe(200);
+    expect(deleteCalls).toBe(0);
+    expect(getSetCookie(res)).toContain('Max-Age=0');
+    await close();
+  });
+
   it('is idempotent — calling logout twice with the same cookie is a 200 each time', async () => {
     // The frontend may double-fire logout (button + tab-close handler), and
     // a second call after the session is already gone must not error. The

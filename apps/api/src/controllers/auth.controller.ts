@@ -161,7 +161,10 @@ export async function logoutController(ctx: RequestContext, deps: AuthDeps): Pro
   const cookies = parseCookies(ctx.req.headers.cookie);
   const token   = cookies[SESSION_COOKIE_NAME];
 
-  if (token) {
+  // Same trim-empty short-circuit as meController: a whitespace-only cookie
+  // is a probe / clearing artefact, not a real session — don't waste a
+  // session-by-hash lookup on it.
+  if (token && token.trim().length > 0) {
     await deps.deleteSession(hashSessionToken(token));
   }
 
