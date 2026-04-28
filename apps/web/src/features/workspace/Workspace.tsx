@@ -30,6 +30,14 @@ export function Workspace({
 }: WorkspaceProps) {
   const toast = useToast();
   const router = useRouter();
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const previous = document.title;
+    document.title = `${projectName} · ${activeWorkspace.name} — AI Workspace V1`;
+    return () => {
+      document.title = previous;
+    };
+  }, [projectName, activeWorkspace.name]);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const initialWindowParam = searchParams?.get('window') ?? null;
