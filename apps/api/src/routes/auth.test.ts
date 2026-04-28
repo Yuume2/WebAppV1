@@ -103,7 +103,16 @@ describe('POST /v1/auth/signup', () => {
     const cookie = getSetCookie(res);
     expect(cookie).toBeTruthy();
     expect(cookie).toContain(`${SESSION_COOKIE_NAME}=`);
+    // Lock down the cookie hardening attributes so a future refactor that
+    // accidentally drops SameSite or Path cannot ship without failing CI.
     expect(cookie).toContain('HttpOnly');
+    expect(cookie).toMatch(/SameSite=(Lax|Strict|None)/);
+    expect(cookie).toContain('Path=/');
+    // Max-Age must be positive on a fresh session — a 0 here would be the
+    // signature of a 'log everyone out' deploy bug.
+    const maxAgeMatch = cookie?.match(/Max-Age=(\d+)/);
+    expect(maxAgeMatch).not.toBeNull();
+    expect(Number(maxAgeMatch?.[1])).toBeGreaterThan(0);
   });
 
   it('normalises email to lowercase', async () => {
