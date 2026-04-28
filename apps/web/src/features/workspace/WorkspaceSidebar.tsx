@@ -23,6 +23,8 @@ interface WorkspaceSidebarProps {
   lastActivityByWindow?: Record<string, string | undefined>;
   pendingByWindow?: Record<string, boolean>;
   unreadByWindow?: Record<string, boolean>;
+  unreadCountByWindow?: Record<string, number>;
+  onMarkAllAsRead?: () => void;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
   onReopen: (id: string) => void;
@@ -47,6 +49,8 @@ export function WorkspaceSidebar({
   lastActivityByWindow,
   pendingByWindow,
   unreadByWindow,
+  unreadCountByWindow,
+  onMarkAllAsRead,
   onFocus,
   onClose,
   onReopen,
@@ -164,9 +168,32 @@ export function WorkspaceSidebar({
             </button>
           </div>
         ) : null}
-        <SectionLabel>
-          Open · {filterEnabled && lowerFilter ? `${filteredVisible.length}/${visibleWindows.length}` : visibleWindows.length}
-        </SectionLabel>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <SectionLabel>
+            Open · {filterEnabled && lowerFilter ? `${filteredVisible.length}/${visibleWindows.length}` : visibleWindows.length}
+          </SectionLabel>
+          {onMarkAllAsRead ? (
+            <button
+              type="button"
+              onClick={onMarkAllAsRead}
+              aria-label="Mark all unread windows as read"
+              title="Mark all unread windows as read"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#9aa6ff',
+                cursor: 'pointer',
+                fontSize: '0.62rem',
+                fontFamily: 'inherit',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                padding: '0 0.25rem',
+              }}
+            >
+              Mark all read
+            </button>
+          ) : null}
+        </div>
         {filteredVisible.length === 0 ? (
           <EmptyHint>{lowerFilter ? 'No matches' : 'No windows open'}</EmptyHint>
         ) : (
@@ -179,6 +206,7 @@ export function WorkspaceSidebar({
               lastActivity={lastActivityByWindow?.[w.id]}
               pending={pendingByWindow?.[w.id]}
               unread={unreadByWindow?.[w.id]}
+              unreadCount={unreadCountByWindow?.[w.id]}
               onClick={() => onFocus(w.id)}
               onAction={() => onClose(w.id)}
               actionLabel="×"
@@ -200,6 +228,7 @@ export function WorkspaceSidebar({
                 muted
                 lastActivity={lastActivityByWindow?.[w.id]}
                 unread={unreadByWindow?.[w.id]}
+                unreadCount={unreadCountByWindow?.[w.id]}
                 onClick={() => onReopen(w.id)}
                 onAction={() => onReopen(w.id)}
                 actionLabel="↺"
@@ -665,13 +694,14 @@ interface WindowRowProps {
   lastActivity?: string;
   pending?: boolean;
   unread?: boolean;
+  unreadCount?: number;
   onClick: () => void;
   onAction: () => void;
   actionLabel: string;
   actionAria: string;
 }
 
-function WindowRow({ window, active, muted, pinned, lastActivity, pending, unread, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
+function WindowRow({ window, active, muted, pinned, lastActivity, pending, unread, unreadCount, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
   const stamp = formatRelative(lastActivity ?? window.updatedAt ?? window.createdAt);
   const rowRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -746,18 +776,40 @@ function WindowRow({ window, active, muted, pinned, lastActivity, pending, unrea
           }}
         >
           {unread ? (
-            <span
-              aria-label="Unread reply"
-              title="New reply since you last viewed this window"
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: '#9aa6ff',
-                boxShadow: '0 0 0 2px rgba(79,107,255,0.25)',
-                flexShrink: 0,
-              }}
-            />
+            unreadCount && unreadCount > 1 ? (
+              <span
+                aria-label={`${unreadCount} unread replies`}
+                title={`${unreadCount} new replies since you last viewed this window`}
+                style={{
+                  fontSize: '0.6rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.04em',
+                  padding: '0 5px',
+                  height: 14,
+                  lineHeight: '14px',
+                  borderRadius: 7,
+                  background: '#15203b',
+                  border: '1px solid #3a3f6b',
+                  color: '#9aa6ff',
+                  flexShrink: 0,
+                }}
+              >
+                +{unreadCount}
+              </span>
+            ) : (
+              <span
+                aria-label="Unread reply"
+                title="New reply since you last viewed this window"
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: '#9aa6ff',
+                  boxShadow: '0 0 0 2px rgba(79,107,255,0.25)',
+                  flexShrink: 0,
+                }}
+              />
+            )
           ) : null}
           {pinned ? (
             <span

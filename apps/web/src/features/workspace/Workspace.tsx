@@ -230,6 +230,8 @@ export function Workspace({
         lastActivityByWindow={lastActivityByWindow}
         pendingByWindow={pendingByWindow}
         unreadByWindow={unreadByWindow}
+        unreadCountByWindow={unreadCountByWindow}
+        onMarkAllAsRead={totalUnread > 0 ? markAllAsRead : undefined}
         onFocus={state.focus}
         onClose={state.close}
         onReopen={state.reopen}
