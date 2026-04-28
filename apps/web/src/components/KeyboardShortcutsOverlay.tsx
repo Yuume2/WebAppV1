@@ -10,6 +10,7 @@ interface Shortcut {
 const SHORTCUTS: Shortcut[] = [
   { keys: ['?'], description: 'Show this help' },
   { keys: ['Esc'], description: 'Close menus, modals, search bar, this help' },
+  { keys: ['⌘', 'K'], description: 'Open command palette — switch chat window by title (Ctrl+K on Linux/Win)' },
   { keys: ['⌘', 'F'], description: 'Find inside the active chat window (Ctrl+F on Linux/Win)' },
   { keys: ['⌘', 'J'], description: 'Focus the composer of the active chat window (Ctrl+J on Linux/Win)' },
   { keys: ['Enter'], description: 'In Find: jump to next match' },
