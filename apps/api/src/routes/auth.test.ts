@@ -278,6 +278,21 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('signup that crashes during createUser does not emit Set-Cookie (no half-grant)', async () => {
+    // The throw becomes a 500 via handleRequest's catch. The 500 envelope
+    // is built by writeJson with no extra headers, so Set-Cookie cannot
+    // ride that response. Pin it so a future refactor that pre-built
+    // cookieHeader before calling createUser cannot accidentally ship a
+    // cookie with no matching DB row behind it.
+    const { baseUrl, close } = await startServer(makeDeps({
+      createUser: async () => { throw new Error('crash'); },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'half@example.com', password: 'password123' });
+    expect(res.status).toBe(500);
+    expect(res.headers.get('set-cookie')).toBeNull();
+    await close();
+  });
+
   it('createSession is called only AFTER createUser succeeds (no orphan session)', async () => {
     // Pin: if createUser throws, createSession must not have been called.
     // Otherwise a partial-failure could leave a session row pointing at a
