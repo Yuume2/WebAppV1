@@ -289,6 +289,37 @@ describe('GET /v1/auth/me', () => {
     await close();
   });
 
+  it('SafeUser body carries exactly the contract fields (id, email, displayName, createdAt, updatedAt)', async () => {
+    // Pin the full SafeUser shape: a refactor that drops a field would
+    // silently break frontend rendering; one that adds a sensitive field
+    // (e.g. role, internal_metadata) would leak it. Pin both the inclusion
+    // list AND the exact key set so additions/removals fail CI.
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async (h) => h === KNOWN_HASH ? mockSession(h) : null,
+      findUserById:           async (id) => id === USER.id ? USER : null,
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${KNOWN_TOKEN}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiResponse<SafeUser>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(Object.keys(body.data).sort()).toEqual([
+      'createdAt',
+      'displayName',
+      'email',
+      'id',
+      'updatedAt',
+    ]);
+    expect(typeof body.data.email).toBe('string');
+    expect(body.data.displayName === null || typeof body.data.displayName === 'string').toBe(true);
+    // ISO date strings must parse — pin against accidental Date-object
+    // serialisation breakage that would ship a {} or NaN to the client.
+    expect(() => new Date(body.data.createdAt).toISOString()).not.toThrow();
+    expect(() => new Date(body.data.updatedAt).toISOString()).not.toThrow();
+    await close();
+  });
+
   it('returns 401 with no cookie', async () => {
     const { baseUrl, close } = await startServer(makeDeps());
     const res = await fetch(`${baseUrl}/v1/auth/me`);
