@@ -265,6 +265,7 @@ export function Workspace({
         closedWindows={state.closedWindows}
         activeId={state.activeId}
         unreadByWindow={unreadByWindow}
+        unreadCountByWindow={unreadCountByWindow}
         onFocus={state.focus}
         onReopen={state.reopen}
       />

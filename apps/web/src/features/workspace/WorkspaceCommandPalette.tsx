@@ -17,6 +17,7 @@ interface WorkspaceCommandPaletteProps {
   closedWindows: ChatWindow[];
   activeId: string | null;
   unreadByWindow?: Record<string, boolean>;
+  unreadCountByWindow?: Record<string, number>;
   onFocus: (id: string) => void;
   onReopen: (id: string) => void;
 }
@@ -37,6 +38,7 @@ export function WorkspaceCommandPalette({
   closedWindows,
   activeId,
   unreadByWindow,
+  unreadCountByWindow,
   onFocus,
   onReopen,
 }: WorkspaceCommandPaletteProps) {
@@ -222,7 +224,15 @@ export function WorkspaceCommandPalette({
                   <span style={metaStyle}>
                     {it.window.provider} · {it.window.model}
                   </span>
-                  {unreadByWindow?.[it.window.id] ? <span style={unreadBadgeStyle}>unread</span> : null}
+                  {unreadByWindow?.[it.window.id]
+                    ? (
+                      <span style={unreadBadgeStyle}>
+                        {(unreadCountByWindow?.[it.window.id] ?? 0) > 1
+                          ? `+${unreadCountByWindow?.[it.window.id]} unread`
+                          : 'unread'}
+                      </span>
+                    )
+                    : null}
                   {pinnedSet.has(it.window.id) ? <span style={pinnedBadgeStyle}>pinned</span> : null}
                   {!it.open ? <span style={badgeStyle}>closed</span> : null}
                   {isActive ? <span style={activeBadgeStyle}>active</span> : null}
