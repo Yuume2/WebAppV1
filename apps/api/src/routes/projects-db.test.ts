@@ -124,6 +124,10 @@ describe('GET /v1/projects — authenticated', () => {
     expect(body.data).toHaveLength(2);
     expect(body.data.map((p) => p.id)).toEqual(['p1', 'p2']);
     expect(body.data.every((p) => !('userId' in p))).toBe(true);
+    // Per-user list: must not be cached at a shared proxy. Same blast
+    // radius as /me — a cached projects list would broadcast user A's
+    // project names to user B on the next cache hit.
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 

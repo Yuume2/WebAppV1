@@ -143,6 +143,9 @@ describe('GET /v1/workspaces — authenticated', () => {
     expect(body.data).toHaveLength(2);
     expect(body.data.map((w) => w.id)).toEqual(['ws-1', 'ws-2']);
     expect(body.data.every((w) => Array.isArray(w.windowIds))).toBe(true);
+    // Per-user data — must not be cached. Same caching catastrophe as
+    // the other list endpoints; pin no-store explicitly.
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 });
