@@ -22,5 +22,11 @@ describe('GET /v1/version', () => {
     expect(typeof body.data.buildTimestamp).toBe('string');
     // commit may be null when no GIT_SHA-style env var is set
     expect(body.data.commit === null || typeof body.data.commit === 'string').toBe(true);
+    // /version exposes the deployed service version + commit — useful
+    // for ops, but every reason for crawlers to NOT index it (lets a
+    // search engine snapshot a stale deployment SHA forever, and lets
+    // a probe enumerate what version is in production via cached
+    // search results). Pin the anti-indexing header.
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
   });
 });
