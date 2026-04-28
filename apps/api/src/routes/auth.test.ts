@@ -208,6 +208,21 @@ describe('POST /v1/auth/login', () => {
     await close();
   });
 
+  it('lowercases the email before user lookup (mirror of signup normalisation)', async () => {
+    // Both signup and login lowercase the email server-side. If they
+    // disagreed, a user who signed up with 'Alice@example.com' would be
+    // unable to log back in with the exact-same casing — the signup row
+    // is stored lowercased, the login lookup would receive 'Alice@...'.
+    // Pin the contract: login must lookup the lowercased form.
+    let lookupEmail: string | null = null;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async (email) => { lookupEmail = email; return null; },
+    }));
+    await post(baseUrl, '/v1/auth/login', { email: 'ALICE@EXAMPLE.COM', password: 'whatever' });
+    expect(lookupEmail).toBe('alice@example.com');
+    await close();
+  });
+
   it('returns 401 for wrong password', async () => {
     const { baseUrl, close } = await startServer(
       makeDeps({ findUserByEmail: async () => mockUser({ passwordHash: realHash }) }),
