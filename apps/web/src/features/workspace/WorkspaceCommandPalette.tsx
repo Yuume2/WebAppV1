@@ -50,6 +50,7 @@ export function WorkspaceCommandPalette({
   const [recentIds, setRecentIds] = useState<string[]>(() => readRecents(activeWorkspaceId));
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [scopeActiveOnly, setScopeActiveOnly] = useState(false);
   const [hover, setHover] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -77,7 +78,9 @@ export function WorkspaceCommandPalette({
   const messageMatches = useMemo(() => {
     const q = debouncedQuery.trim().toLowerCase();
     if (!q || q.length < 2 || !getMessages) return [] as Array<{ windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; createdAt: string }>;
-    const allWindows = [...visibleWindows, ...closedWindows];
+    const allWindows = scopeActiveOnly && activeId
+      ? [...visibleWindows, ...closedWindows].filter((w) => w.id === activeId)
+      : [...visibleWindows, ...closedWindows];
     const out: Array<{ windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; createdAt: string }> = [];
     for (const w of allWindows) {
       const list = getMessages(w.id);
@@ -105,7 +108,7 @@ export function WorkspaceCommandPalette({
       if (out.length >= 24) break;
     }
     return out;
-  }, [debouncedQuery, getMessages, visibleWindows, closedWindows]);
+  }, [debouncedQuery, getMessages, visibleWindows, closedWindows, scopeActiveOnly, activeId]);
 
   type UnifiedItem =
     | { kind: 'workspace'; key: string; workspace: Workspace }
@@ -290,6 +293,36 @@ export function WorkspaceCommandPalette({
           aria-label="Filter chat windows or workspaces"
           style={inputStyle}
         />
+        {query.trim().length >= 2 && activeId ? (
+          <div style={{ display: 'flex', gap: 6, padding: '0 0.1rem' }}>
+            <button
+              type="button"
+              onClick={() => setScopeActiveOnly(false)}
+              aria-pressed={!scopeActiveOnly}
+              style={{
+                ...scopeChipStyle,
+                background: !scopeActiveOnly ? '#1c1c28' : 'transparent',
+                color: !scopeActiveOnly ? '#9aa6ff' : '#8a8a95',
+                borderColor: !scopeActiveOnly ? '#3a3f6b' : '#24242c',
+              }}
+            >
+              All windows
+            </button>
+            <button
+              type="button"
+              onClick={() => setScopeActiveOnly(true)}
+              aria-pressed={scopeActiveOnly}
+              style={{
+                ...scopeChipStyle,
+                background: scopeActiveOnly ? '#1c1c28' : 'transparent',
+                color: scopeActiveOnly ? '#9aa6ff' : '#8a8a95',
+                borderColor: scopeActiveOnly ? '#3a3f6b' : '#24242c',
+              }}
+            >
+              Active window only
+            </button>
+          </div>
+        ) : null}
         {recentEntries.length > 0 ? (
           <div>
             <div style={sectionLabelStyle}>Recent</div>
@@ -671,3 +704,14 @@ function readRecents(workspaceId: string): string[] {
     return [];
   }
 }
+
+
+const scopeChipStyle: React.CSSProperties = {
+  fontSize: '0.66rem',
+  padding: '2px 8px',
+  borderRadius: 999,
+  border: '1px solid #24242c',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  letterSpacing: '0.02em',
+};
