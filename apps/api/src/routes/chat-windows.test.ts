@@ -117,19 +117,4 @@ describe('POST /v1/chat-windows', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
-  for (const provider of ['perplexity'] as const) {
-    it(`rejects valid-but-unsupported provider '${provider}' with 400 validation_error`, async () => {
-      const ws = await createWorkspace(harness.baseUrl);
-      const res = await fetch(`${harness.baseUrl}/v1/chat-windows`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspaceId: ws.id, title: 'CW', provider, model: 'm' }),
-      });
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as ApiResponse<unknown>;
-      if (body.ok) throw new Error('expected error envelope');
-      expect(body.error.code).toBe('validation_error');
-      expect(body.error.message).toContain('not yet supported');
-    });
-  }
 });

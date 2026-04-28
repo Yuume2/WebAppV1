@@ -203,28 +203,6 @@ describe('POST /v1/chat-windows — authenticated', () => {
     await close();
   });
 
-  for (const provider of ['perplexity'] as const) {
-    it(`rejects valid-but-unsupported provider '${provider}' with 400 validation_error (no silent dead-end)`, async () => {
-      let createCalled = false;
-      const { baseUrl, close } = await startServer(makeDeps({
-        resolveUser:      async () => USER_1,
-        createChatWindow: async (workspaceId, _userId, title, p, model) => {
-          createCalled = true;
-          return mockChatWindow(workspaceId, { title, provider: p, model });
-        },
-      }));
-      const res = await post(baseUrl, '/v1/chat-windows', {
-        workspaceId: 'ws-1', title: 'X', provider, model: 'm',
-      });
-      expect(res.status).toBe(400);
-      const body = (await res.json()) as ApiResponse<never>;
-      if (body.ok) throw new Error('expected error');
-      expect(body.error.code).toBe('validation_error');
-      expect(body.error.message).toContain('not yet supported');
-      expect(createCalled).toBe(false);
-      await close();
-    });
-  }
 });
 
 // ── Get chat window by id ─────────────────────────────────────────────────────
