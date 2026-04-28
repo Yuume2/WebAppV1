@@ -39,6 +39,7 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 const AUTO_DISMISS_MS = 5000;
+const MAX_VISIBLE_TOASTS = 5;
 
 let counter = 0;
 function nextId(): string {
@@ -63,7 +64,12 @@ export function ToastHost({ children }: { children: ReactNode }) {
 
   const push = useCallback((tone: ToastTone, message: string, options?: PushOptions) => {
     const id = nextId();
-    setToasts((prev) => [...prev, { id, tone, message, action: options?.action }]);
+    setToasts((prev) => {
+      const next = [...prev, { id, tone, message, action: options?.action }];
+      return next.length > MAX_VISIBLE_TOASTS
+        ? next.slice(next.length - MAX_VISIBLE_TOASTS)
+        : next;
+    });
   }, []);
 
   const pushError = useCallback(
