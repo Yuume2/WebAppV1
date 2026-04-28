@@ -204,6 +204,32 @@ describe('GET /v1/projects/:id — user isolation', () => {
     expect(res.status).toBe(404);
     await close();
   });
+
+  it('cross-user 404 + non-existent 404 share the same code (no existence leak)', async () => {
+    // Mirror of messages-db / chat-windows-db / workspaces-db parity pins.
+    // Pin that both 404 paths return identical status + error code so an
+    // attacker probing project IDs cannot enumerate other users' projects.
+    const a = await startServer(makeDeps({
+      resolveUser: async () => USER_1,
+      findProject: async () => null,
+    }));
+    const ra = await get(a.baseUrl, '/v1/projects/ghost-proj');
+    const ba = (await ra.json()) as ApiResponse<never>;
+    if (ba.ok) throw new Error('expected error');
+    await a.close();
+
+    const b = await startServer(makeDeps({
+      resolveUser: async () => USER_1,
+      findProject: async (_id, userId) => userId === USER_2.id ? mockProject(USER_2.id) : null,
+    }));
+    const rb = await get(b.baseUrl, '/v1/projects/user2-proj');
+    const bb = (await rb.json()) as ApiResponse<never>;
+    if (bb.ok) throw new Error('expected error');
+    await b.close();
+
+    expect(ra.status).toBe(rb.status);
+    expect(ba.error.code).toBe(bb.error.code);
+  });
 });
 
 describe('PATCH /v1/projects/:id — authenticated', () => {
