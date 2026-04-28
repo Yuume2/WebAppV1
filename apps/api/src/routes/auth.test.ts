@@ -278,6 +278,18 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('signup 201 does not emit a Location header (auth response is data + Set-Cookie, not a redirect target)', async () => {
+    // POST /v1/auth/signup returns 201 with the SafeUser body in the
+    // response — there's no canonical resource URL to point at. A
+    // refactor that switched to respondCreated would attach a Location
+    // header, which clients might follow as a 302 once it ships in
+    // some HTTP libraries. Pin the absence so that change has to update
+    // the test deliberately.
+    const res = await post(base, '/v1/auth/signup', { email: 'noloc@example.com', password: 'password123' });
+    expect(res.status).toBe(201);
+    expect(res.headers.get('location')).toBeNull();
+  });
+
   it('signup that crashes during createUser does not emit Set-Cookie (no half-grant)', async () => {
     // The throw becomes a 500 via handleRequest's catch. The 500 envelope
     // is built by writeJson with no extra headers, so Set-Cookie cannot
