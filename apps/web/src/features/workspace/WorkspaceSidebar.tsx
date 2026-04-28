@@ -59,7 +59,21 @@ export function WorkspaceSidebar({
       w.provider.toLowerCase().includes(lowerFilter)
     );
   };
-  const filteredVisible = filterEnabled ? visibleWindows.filter(matchesFilter) : visibleWindows;
+  const [pinnedSet, setPinnedSet] = useState<Set<string>>(() => readPinnedSet());
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onChange = () => setPinnedSet(readPinnedSet());
+    window.addEventListener('wav:pin-changed', onChange);
+    return () => window.removeEventListener('wav:pin-changed', onChange);
+  }, []);
+  const sortPinnedFirst = (a: ChatWindow, b: ChatWindow): number => {
+    const pa = pinnedSet.has(a.id) ? 1 : 0;
+    const pb = pinnedSet.has(b.id) ? 1 : 0;
+    return pb - pa;
+  };
+  const filteredVisible = (filterEnabled ? visibleWindows.filter(matchesFilter) : visibleWindows)
+    .slice()
+    .sort(sortPinnedFirst);
   const filteredClosed = filterEnabled ? closedWindows.filter(matchesFilter) : closedWindows;
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId);
 
@@ -123,6 +137,7 @@ export function WorkspaceSidebar({
               key={w.id}
               window={w}
               active={activeId === w.id}
+              pinned={pinnedSet.has(w.id)}
               onClick={() => onFocus(w.id)}
               onAction={() => onClose(w.id)}
               actionLabel="×"
@@ -603,13 +618,14 @@ interface WindowRowProps {
   window: ChatWindow;
   active: boolean;
   muted?: boolean;
+  pinned?: boolean;
   onClick: () => void;
   onAction: () => void;
   actionLabel: string;
   actionAria: string;
 }
 
-function WindowRow({ window, active, muted, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
+function WindowRow({ window, active, muted, pinned, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
   const stamp = formatRelative(window.updatedAt ?? window.createdAt);
   const rowRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -683,6 +699,21 @@ function WindowRow({ window, active, muted, onClick, onAction, actionLabel, acti
             overflow: 'hidden',
           }}
         >
+          {pinned ? (
+            <span
+              aria-hidden
+              title="Pinned"
+              style={{
+                fontSize: '0.6rem',
+                color: '#f0c14b',
+                fontWeight: 700,
+                letterSpacing: '0.05em',
+                flexShrink: 0,
+              }}
+            >
+              PIN
+            </span>
+          ) : null}
           <span
             style={{
               overflow: 'hidden',
@@ -799,3 +830,21 @@ const filterInputStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   outline: 'none',
 };
+
+function readPinnedSet(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  const out = new Set<string>();
+  try {
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (!key || !key.startsWith('wav.chat.pinned.')) continue;
+      const v = window.sessionStorage.getItem(key);
+      if (v === '1' || v === 'true') {
+        out.add(key.slice('wav.chat.pinned.'.length));
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return out;
+}

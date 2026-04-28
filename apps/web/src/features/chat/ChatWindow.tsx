@@ -93,6 +93,14 @@ export function ChatWindow({
   const [scrolledAway, setScrolledAway] = useState(false);
   const [exportLabel, setExportLabel] = useState<'idle' | 'copied' | 'failed'>('idle');
   const toast = useToast();
+  const pinStorageKey = `wav.chat.pinned.${id}`;
+  const [pinned, setPinned] = useState<boolean>(() => readBoolFlag(pinStorageKey));
+  useEffect(() => {
+    writeBoolFlag(pinStorageKey, pinned);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wav:pin-changed', { detail: { id, pinned } }));
+    }
+  }, [pinStorageKey, pinned, id]);
 
   const updateStickiness = () => {
     const el = scrollRef.current;
@@ -490,6 +498,32 @@ export function ChatWindow({
           <ProviderBadge provider={provider} model={model} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPinned((v) => !v);
+            }}
+            aria-label={pinned ? 'Unpin chat window' : 'Pin chat window'}
+            aria-pressed={pinned}
+            title={pinned ? 'Unpin (kept first in sidebar)' : 'Pin (keep first in sidebar)'}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: pinned ? '#f0c14b' : '#8a8a95',
+              cursor: 'pointer',
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              padding: '0.25rem 0.5rem',
+              borderRadius: 6,
+              lineHeight: 1,
+              fontFamily: 'inherit',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            {pinned ? 'Pinned' : 'Pin'}
+          </button>
           <button
             type="button"
             onClick={(e) => {
