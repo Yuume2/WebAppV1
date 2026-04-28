@@ -96,6 +96,17 @@ describe('createAnthropicClient.createChatCompletion', () => {
     await expect(createAnthropicClient(API_KEY).createChatCompletion(MESSAGES, MODEL))
       .rejects.toBeInstanceOf(ProviderError);
   });
+
+  it('passes an AbortSignal so a completion call cannot hang forever', async () => {
+    vi.mocked(fetch).mockResolvedValue(ok({
+      model: MODEL,
+      content: [{ type: 'text', text: 'ok' }],
+      usage:   { input_tokens: 1, output_tokens: 1 },
+    }));
+    await createAnthropicClient(API_KEY).createChatCompletion(MESSAGES, MODEL);
+    const init = vi.mocked(fetch).mock.calls[0]![1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
 });
 
 describe('createAnthropicClient.createChatCompletionStream', () => {

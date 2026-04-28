@@ -58,6 +58,11 @@ interface OpenAIResponse {
 
 const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
 
+/** Hard cap on a single completion request — prevents an unresponsive upstream
+ *  from holding our request handler hostage. Streaming intentionally has no
+ *  total cap (only the connect needs guarding); a long stream is legitimate. */
+const RUNTIME_TIMEOUT_MS = 60_000;
+
 export function createOpenAIClient(apiKey: string): ProviderClient {
   return {
     async createChatCompletion(
@@ -73,6 +78,7 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
             'Authorization': `Bearer ${apiKey}`,
           },
           body: JSON.stringify({ model, messages, stream: false }),
+          signal: AbortSignal.timeout(RUNTIME_TIMEOUT_MS),
         });
       } catch (err) {
         throw new ProviderError(

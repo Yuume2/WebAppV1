@@ -81,6 +81,17 @@ describe('createPerplexityClient.createChatCompletion', () => {
     await expect(createPerplexityClient(API_KEY).createChatCompletion(MESSAGES, MODEL))
       .rejects.toBeInstanceOf(ProviderError);
   });
+
+  it('passes an AbortSignal so a completion call cannot hang forever', async () => {
+    vi.mocked(fetch).mockResolvedValue(ok({
+      model: MODEL,
+      choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+      usage:   { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    }));
+    await createPerplexityClient(API_KEY).createChatCompletion(MESSAGES, MODEL);
+    const init = vi.mocked(fetch).mock.calls[0]![1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
 });
 
 describe('createPerplexityClient.createChatCompletionStream', () => {
