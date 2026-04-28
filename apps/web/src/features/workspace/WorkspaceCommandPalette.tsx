@@ -401,7 +401,7 @@ export function WorkspaceCommandPalette({
           </>
         ) : null}
         <div style={footerStyle}>
-          <span>↑↓ navigate · Enter to switch · Esc to close</span>
+          <span>↑↓ navigate · Enter to open · Esc to close · type ≥2 chars to search messages</span>
         </div>
       </div>
     </div>
