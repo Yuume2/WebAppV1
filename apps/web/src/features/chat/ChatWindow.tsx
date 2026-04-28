@@ -93,6 +93,7 @@ export function ChatWindow({
   const [scrolledAway, setScrolledAway] = useState(false);
   const [exportLabel, setExportLabel] = useState<'idle' | 'copied' | 'failed'>('idle');
   const toast = useToast();
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const pinStorageKey = `wav.chat.pinned.${id}`;
   const [pinned, setPinned] = useState<boolean>(() => readBoolFlag(pinStorageKey));
   const pinInitRef = useRef(false);
@@ -983,6 +984,26 @@ export function ChatWindow({
             lineHeight: 1.4,
           }}
         />
+        {!pending ? (
+          <TemplateMenu
+            open={templatesOpen}
+            onToggle={() => setTemplatesOpen((v) => !v)}
+            onClose={() => setTemplatesOpen(false)}
+            onPick={(prefix) => {
+              setTemplatesOpen(false);
+              setDraft((prev) => {
+                const sep = prev.length === 0 || prev.endsWith(' ') || prev.endsWith('\n') ? '' : ' ';
+                return `${prev}${sep}${prefix}`;
+              });
+              requestAnimationFrame(() => {
+                const ta = textareaRef.current;
+                if (!ta) return;
+                ta.focus();
+                ta.selectionStart = ta.selectionEnd = ta.value.length;
+              });
+            }}
+          />
+        ) : null}
         {pending && onCancel ? (
           <button
             type="button"
@@ -1679,4 +1700,106 @@ function writeScrollTop(key: string, value: number): void {
   } catch {
     // ignore
   }
+}
+
+
+interface TemplateMenuProps {
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  onPick: (prefix: string) => void;
+}
+
+const TEMPLATES: Array<{ label: string; prefix: string }> = [
+  { label: 'Summarize', prefix: 'Summarize the following:\n' },
+  { label: 'Critique', prefix: 'Critique this and point out the weakest assumptions:\n' },
+  { label: 'Translate', prefix: 'Translate to French:\n' },
+  { label: 'Explain like 5', prefix: 'Explain like I am five:\n' },
+  { label: 'Code review', prefix: 'Code review — list bugs, smells, missing edge cases:\n' },
+  { label: 'Continue', prefix: 'Continue from where you left off.' },
+];
+
+function TemplateMenu({ open, onToggle, onClose, onPick }: TemplateMenuProps) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+  return (
+    <div style={{ position: 'relative', alignSelf: 'stretch' }} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Insert template"
+        title="Insert prompt template"
+        style={{
+          background: 'transparent',
+          color: '#cfcfd6',
+          border: '1px solid #2a2a30',
+          borderRadius: 8,
+          padding: '0 0.7rem',
+          fontSize: '0.8rem',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          height: '100%',
+        }}
+      >
+        T
+      </button>
+      {open ? (
+        <>
+          <button
+            aria-label="Close templates"
+            onClick={onClose}
+            style={{ position: 'fixed', inset: 0, background: 'transparent', border: 'none', cursor: 'default', zIndex: 20 }}
+          />
+          <div
+            role="menu"
+            style={{
+              position: 'absolute',
+              bottom: 'calc(100% + 6px)',
+              right: 0,
+              minWidth: 220,
+              background: '#161620',
+              border: '1px solid #2a2a30',
+              borderRadius: 8,
+              padding: 4,
+              zIndex: 30,
+              boxShadow: '0 10px 28px rgba(0,0,0,0.45)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+            }}
+          >
+            {TEMPLATES.map((t) => (
+              <button
+                key={t.label}
+                role="menuitem"
+                type="button"
+                onClick={() => onPick(t.prefix)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  textAlign: 'left',
+                  padding: '0.4rem 0.55rem',
+                  borderRadius: 4,
+                  color: '#e8e8ef',
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
 }
