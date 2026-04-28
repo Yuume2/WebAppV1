@@ -156,6 +156,11 @@ export function ChatWindow({
           searchInputRef.current?.focus();
           searchInputRef.current?.select();
         });
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
+        e.preventDefault();
+        textareaRef.current?.focus();
       }
     };
     window.addEventListener('keydown', onKey);
