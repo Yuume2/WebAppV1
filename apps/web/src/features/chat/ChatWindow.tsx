@@ -1261,6 +1261,7 @@ function MessageActions({
 }) {
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [mdCopied, setMdCopied] = useState(false);
   const writeToClipboard = async (value: string): Promise<void> => {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(value);
@@ -1348,6 +1349,27 @@ function MessageActions({
           style={messageActionButton}
         >
           Quote
+        </button>
+      ) : null}
+      {canCopy ? (
+        <button
+          type="button"
+          onClick={async (e) => {
+            e.stopPropagation();
+            const md = formatAsMarkdown(content, absoluteStamp);
+            try {
+              await writeToClipboard(md);
+              setMdCopied(true);
+              setTimeout(() => setMdCopied(false), 1500);
+            } catch {
+              // ignore
+            }
+          }}
+          aria-label="Copy as Markdown"
+          title="Copy as Markdown (with role + timestamp)"
+          style={messageActionButton}
+        >
+          {mdCopied ? 'MD copied' : 'Copy MD'}
         </button>
       ) : null}
       {onToggleStar ? (
@@ -1482,6 +1504,13 @@ function writeStarred(key: string, value: Set<string>): void {
   } catch {
     // localStorage unavailable / quota exceeded; ignore
   }
+}
+
+function formatAsMarkdown(content: string, absoluteStamp: string | null): string {
+  // Useful for paste-into-doc / paste-into-issue: a small header block
+  // gives the receiver context (when, who) without needing the full UI.
+  const header = absoluteStamp ? `> ${absoluteStamp}` : '';
+  return [header, '', content].filter((line, i) => !(i === 0 && line === '')).join('\n');
 }
 
 function renderWithHighlight(content: string, query: string): ReactNode {
