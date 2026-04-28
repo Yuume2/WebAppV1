@@ -5,7 +5,6 @@ import {
   parseJsonBody,
   respond,
   respondCreated,
-  respondError,
   respondNoContent,
   respondNotFound,
   type InternalResult,
