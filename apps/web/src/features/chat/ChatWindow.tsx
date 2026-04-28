@@ -1322,6 +1322,8 @@ function MessageActions({
         marginTop: 6,
         display: 'flex',
         justifyContent: align === 'end' ? 'flex-end' : 'flex-start',
+        flexWrap: 'wrap',
+        rowGap: 4,
         gap: 8,
         fontSize: '0.65rem',
         color: '#6a6a75',
