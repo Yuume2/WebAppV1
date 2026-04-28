@@ -314,15 +314,45 @@ export function WorkspaceCommandPalette({
         <h2 id="cmdk-title" style={titleStyle}>
           Switch chat window
         </h2>
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onInputKeyDown}
-          placeholder="Search windows, workspaces, or messages…"
-          aria-label="Filter chat windows or workspaces"
-          style={inputStyle}
-        />
+        <div style={{ position: 'relative' }}>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onInputKeyDown}
+            placeholder="Search windows, workspaces, or messages…"
+            aria-label="Filter chat windows or workspaces"
+            style={{ ...inputStyle, paddingRight: query.length > 0 ? 28 : undefined }}
+          />
+          {query.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery('');
+                inputRef.current?.focus();
+              }}
+              aria-label="Clear search"
+              title="Clear search"
+              style={{
+                position: 'absolute',
+                right: 6,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'transparent',
+                border: 'none',
+                color: '#8a8a95',
+                cursor: 'pointer',
+                fontSize: '0.95rem',
+                lineHeight: 1,
+                padding: '2px 6px',
+                borderRadius: 4,
+                fontFamily: 'inherit',
+              }}
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
         {query.trim().length >= 2 && activeId ? (
           <div style={{ display: 'flex', gap: 6, padding: '0 0.1rem' }}>
             <button
