@@ -262,6 +262,10 @@ export function ChatWindow({
       <div
         ref={scrollRef}
         onScroll={updateStickiness}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions text"
+        aria-label={`Conversation with ${title}`}
         style={{
           flex: 1,
           overflowY: 'auto',

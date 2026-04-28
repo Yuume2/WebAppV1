@@ -158,7 +158,7 @@ export function AuthForm({ mode }: AuthFormProps) {
             </div>
           ) : null}
 
-          <Button type="submit" disabled={pending}>
+          <Button type="submit" disabled={pending} aria-busy={pending || undefined}>
             {pending ? 'Please wait…' : c.cta}
           </Button>
         </form>
