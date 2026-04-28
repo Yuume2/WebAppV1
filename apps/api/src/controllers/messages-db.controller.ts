@@ -321,10 +321,15 @@ export async function streamMessageDbController(
   // Cancel the upstream provider call when the downstream client drops the
   // connection — stops billing for tokens nobody will read. The for-await
   // loop will throw on read; we catch the abort below and return cleanly.
+  // We listen on `res` (not `req`) because once the request body has been
+  // fully read, Node's IncomingMessage 'close' event does not fire on
+  // mid-response socket teardown — only the ServerResponse 'close' does.
   const upstreamAbort = new AbortController();
-  ctx.req.on('close', () => {
-    aborted = true;
-    upstreamAbort.abort();
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      aborted = true;
+      upstreamAbort.abort();
+    }
   });
 
   try {
