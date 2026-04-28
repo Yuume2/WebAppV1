@@ -105,6 +105,29 @@ export function WorkspaceCommandPalette({
     return out;
   }, [query, getMessages, visibleWindows, closedWindows]);
 
+  type UnifiedItem =
+    | { kind: 'workspace'; key: string; workspace: Workspace }
+    | { kind: 'window'; key: string; entry: PaletteWindow }
+    | { kind: 'message'; key: string; match: typeof messageMatches[number] };
+
+  const unifiedItems: UnifiedItem[] = useMemo(() => {
+    const out: UnifiedItem[] = [];
+    if (filteredWorkspaces.length > 1) {
+      for (const w of filteredWorkspaces) {
+        out.push({ kind: 'workspace', key: `ws-${w.id}`, workspace: w });
+      }
+    }
+    for (const it of filtered) {
+      out.push({ kind: 'window', key: `w-${it.window.id}`, entry: it });
+    }
+    for (let i = 0; i < messageMatches.length; i += 1) {
+      const m = messageMatches[i];
+      if (!m) continue;
+      out.push({ kind: 'message', key: `m-${m.windowId}-${m.messageId}-${i}`, match: m });
+    }
+    return out;
+  }, [filteredWorkspaces, filtered, messageMatches]);
+
   useEffect(() => {
     if (!open) {
       setHover(0);
@@ -114,9 +137,11 @@ export function WorkspaceCommandPalette({
       setHover(0);
       return;
     }
-    const idx = filtered.findIndex((it) => unreadByWindow?.[it.window.id]);
+    const idx = unifiedItems.findIndex(
+      (it) => it.kind === 'window' && unreadByWindow?.[it.entry.window.id],
+    );
     setHover(idx >= 0 ? idx : 0);
-  }, [query, open, filtered, unreadByWindow]);
+  }, [query, open, unifiedItems, unreadByWindow]);
 
   useEffect(() => {
     if (!open) return;
@@ -161,17 +186,46 @@ export function WorkspaceCommandPalette({
     setQuery('');
   };
 
+  const activate = (item: UnifiedItem) => {
+    if (item.kind === 'window') {
+      choose(item.entry);
+      return;
+    }
+    if (item.kind === 'workspace') {
+      setOpen(false);
+      setQuery('');
+      if (typeof window !== 'undefined') {
+        window.location.assign(`/project/${projectId}?workspace=${item.workspace.id}`);
+      }
+      return;
+    }
+    if (item.kind === 'message') {
+      const m = item.match;
+      const visible = visibleWindows.some((w) => w.id === m.windowId);
+      if (!visible) onReopen(m.windowId);
+      else onFocus(m.windowId);
+      setOpen(false);
+      setQuery('');
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.hash = `msg-${m.messageId}`;
+        window.history.replaceState(null, '', url.toString());
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      }
+    }
+  };
+
   const onInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHover((h) => (filtered.length > 0 ? (h + 1) % filtered.length : 0));
+      setHover((h) => (unifiedItems.length > 0 ? (h + 1) % unifiedItems.length : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHover((h) => (filtered.length > 0 ? (h - 1 + filtered.length) % filtered.length : 0));
+      setHover((h) => (unifiedItems.length > 0 ? (h - 1 + unifiedItems.length) % unifiedItems.length : 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const target = filtered[Math.min(hover, filtered.length - 1)];
-      if (target) choose(target);
+      const target = unifiedItems[Math.min(hover, unifiedItems.length - 1)];
+      if (target) activate(target);
     }
   };
 
@@ -207,10 +261,13 @@ export function WorkspaceCommandPalette({
             <ul role="list" style={listStyle}>
               {filteredWorkspaces.map((w) => {
                 const active = w.id === activeWorkspaceId;
+                const idx = unifiedItems.findIndex((u) => u.kind === 'workspace' && u.workspace.id === w.id);
+                const isHover = idx === Math.min(hover, unifiedItems.length - 1);
                 return (
                   <li key={w.id} style={{ listStyle: 'none' }}>
                     <Link
                       href={`/project/${projectId}?workspace=${w.id}`}
+                      onMouseEnter={() => idx >= 0 && setHover(idx)}
                       onClick={() => {
                         setOpen(false);
                         setQuery('');
@@ -219,11 +276,12 @@ export function WorkspaceCommandPalette({
                         ...rowStyle,
                         textDecoration: 'none',
                         color: active ? '#9aa6ff' : '#cfcfd6',
-                        background: active ? '#1c1c28' : 'transparent',
+                        background: isHover ? '#1c1c28' : active ? '#1c1c28' : 'transparent',
+                        border: `1px solid ${isHover ? '#3a3f6b' : 'transparent'}`,
                       }}
                     >
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {w.name}
+                        {renderHighlighted(w.name, query)}
                       </span>
                       {active ? <span style={activeBadgeStyle}>active</span> : null}
                     </Link>
@@ -238,15 +296,16 @@ export function WorkspaceCommandPalette({
           {filtered.length === 0 ? (
             <li style={emptyStyle}>No matches.</li>
           ) : (
-            filtered.map((it, i) => {
-              const isHover = i === Math.min(hover, filtered.length - 1);
+            filtered.map((it) => {
+              const idx = unifiedItems.findIndex((u) => u.kind === 'window' && u.entry.window.id === it.window.id);
+              const isHover = idx === Math.min(hover, unifiedItems.length - 1);
               const isActive = it.window.id === activeId;
               return (
                 <li
                   key={it.window.id}
                   role="option"
                   aria-selected={isHover}
-                  onMouseEnter={() => setHover(i)}
+                  onMouseEnter={() => idx >= 0 && setHover(idx)}
                   onClick={() => choose(it)}
                   style={{
                     ...rowStyle,
@@ -255,7 +314,7 @@ export function WorkspaceCommandPalette({
                   }}
                 >
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {it.window.title}
+                    {renderHighlighted(it.window.title, query)}
                   </span>
                   <span style={metaStyle}>
                     {it.window.provider} · {it.window.model}
@@ -281,59 +340,68 @@ export function WorkspaceCommandPalette({
           <>
             <div style={sectionLabelStyle}>Messages · {messageMatches.length}</div>
             <ul role="list" style={{ ...listStyle, maxHeight: 240 }}>
-              {messageMatches.map((m, i) => (
-                <li key={`${m.windowId}-${m.messageId}-${i}`} style={{ listStyle: 'none' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const visible = visibleWindows.some((w) => w.id === m.windowId);
-                      if (!visible) onReopen(m.windowId);
-                      else onFocus(m.windowId);
-                      setOpen(false);
-                      setQuery('');
-                      if (typeof window !== 'undefined') {
-                        // Use hash to trigger ChatWindow's existing #msg-<id> scroll/flash effect
-                        const url = new URL(window.location.href);
-                        url.hash = `msg-${m.messageId}`;
-                        window.history.replaceState(null, '', url.toString());
-                        window.dispatchEvent(new HashChangeEvent('hashchange'));
-                      }
-                    }}
-                    style={{
-                      ...rowStyle,
-                      width: '100%',
-                      background: 'transparent',
-                      border: 'none',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                      color: '#cfcfd6',
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          fontSize: '0.78rem',
-                          color: '#e8e8ef',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {m.snippet}
+              {messageMatches.map((m, i) => {
+                const idx = unifiedItems.findIndex(
+                  (u) => u.kind === 'message' && u.match === m,
+                );
+                const isHover = idx === Math.min(hover, unifiedItems.length - 1);
+                return (
+                  <li key={`${m.windowId}-${m.messageId}-${i}`} style={{ listStyle: 'none' }}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isHover}
+                      onMouseEnter={() => idx >= 0 && setHover(idx)}
+                      onClick={() => {
+                        const visible = visibleWindows.some((w) => w.id === m.windowId);
+                        if (!visible) onReopen(m.windowId);
+                        else onFocus(m.windowId);
+                        setOpen(false);
+                        setQuery('');
+                        if (typeof window !== 'undefined') {
+                          // Use hash to trigger ChatWindow's existing #msg-<id> scroll/flash effect
+                          const url = new URL(window.location.href);
+                          url.hash = `msg-${m.messageId}`;
+                          window.history.replaceState(null, '', url.toString());
+                          window.dispatchEvent(new HashChangeEvent('hashchange'));
+                        }
+                      }}
+                      style={{
+                        ...rowStyle,
+                        width: '100%',
+                        background: isHover ? '#1c1c28' : 'transparent',
+                        border: `1px solid ${isHover ? '#3a3f6b' : 'transparent'}`,
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        color: '#cfcfd6',
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            fontSize: '0.78rem',
+                            color: '#e8e8ef',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {renderHighlighted(m.snippet, query)}
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: '#8a8a95', marginTop: 2 }}>
+                          {m.role} · {m.window.title}
+                        </div>
                       </div>
-                      <div style={{ fontSize: '0.65rem', color: '#8a8a95', marginTop: 2 }}>
-                        {m.role} · {m.window.title}
-                      </div>
-                    </div>
-                  </button>
-                </li>
-              ))}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </>
         ) : null}
         <div style={footerStyle}>
-          <span>↑↓ navigate · Enter to switch · Esc to close</span>
+          <span>↑↓ navigate · Enter to open · Esc to close · type ≥2 chars to search messages</span>
         </div>
       </div>
     </div>
@@ -491,3 +559,36 @@ const unreadBadgeStyle: React.CSSProperties = {
   border: '1px solid #3a3f6b',
   color: '#9aa6ff',
 };
+
+function renderHighlighted(content: string, query: string): React.ReactNode {
+  const q = query.trim();
+  if (!q) return content;
+  const lc = content.toLowerCase();
+  const lq = q.toLowerCase();
+  const out: React.ReactNode[] = [];
+  let cursor = 0;
+  let key = 0;
+  while (cursor < content.length) {
+    const idx = lc.indexOf(lq, cursor);
+    if (idx < 0) {
+      out.push(content.slice(cursor));
+      break;
+    }
+    if (idx > cursor) out.push(content.slice(cursor, idx));
+    out.push(
+      <mark
+        key={key++}
+        style={{
+          background: '#4f6bff44',
+          color: 'inherit',
+          borderRadius: 2,
+          padding: '0 1px',
+        }}
+      >
+        {content.slice(idx, idx + q.length)}
+      </mark>,
+    );
+    cursor = idx + q.length;
+  }
+  return out;
+}
