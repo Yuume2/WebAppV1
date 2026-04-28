@@ -278,6 +278,27 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('createSession is called only AFTER createUser succeeds (no orphan session)', async () => {
+    // Pin: if createUser throws, createSession must not have been called.
+    // Otherwise a partial-failure could leave a session row pointing at a
+    // user_id that was never persisted — a foreign-key violation in
+    // production, and a real-userId-spoof oracle in dev where FKs are
+    // off. Pin the call ordering with a spy.
+    let createSessionCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      createUser:    async () => { throw new Error('user-create-boom'); },
+      createSession: async (h, userId, expiresAt) => {
+        createSessionCalls++;
+        return { id: h, userId, expiresAt, createdAt: new Date() };
+      },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'orphan@example.com', password: 'password123' });
+    // The route's catch-all in handleRequest converts the throw to a 500.
+    expect(res.status).toBe(500);
+    expect(createSessionCalls).toBe(0);
+    await close();
+  });
+
   it('409 conflict fires BEFORE createUser (no orphan user row on duplicate-email path)', async () => {
     // Order-of-operations pin: a duplicate-email probe must NOT trigger
     // createUser. Otherwise a unique-constraint violation would surface as
