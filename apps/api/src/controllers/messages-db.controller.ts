@@ -306,6 +306,11 @@ export async function streamMessageDbController(
     'X-Accel-Buffering': 'no',
     'X-Request-Id': ctx.requestId,
   });
+  // Ship headers immediately so reverse proxies / browsers see the SSE
+  // content-type before the first delta arrives — otherwise Node may buffer
+  // the response start until enough body is queued, and proxies that
+  // sniff content-type can decide to buffer the whole response.
+  res.flushHeaders();
 
   const startedAt = Date.now();
   let assistantContent = '';
@@ -316,8 +321,22 @@ export async function streamMessageDbController(
   // Cancel the upstream provider call when the downstream client drops the
   // connection — stops billing for tokens nobody will read. The for-await
   // loop will throw on read; we catch the abort below and return cleanly.
+  // We listen on `res` (not `req`) because once the request body has been
+  // fully read, Node's IncomingMessage 'close' event does not fire on
+  // mid-response socket teardown — only the ServerResponse 'close' does.
   const upstreamAbort = new AbortController();
-  ctx.req.on('close', () => {
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      aborted = true;
+      upstreamAbort.abort();
+    }
+  });
+  // A mid-stream socket error (ECONNRESET, EPIPE) emits 'error' on the
+  // ServerResponse. With no listener, Node treats it as unhandled and the
+  // process can crash. Treat it like a client disconnect: cancel upstream,
+  // mark aborted, and swallow — the catch block downstream will see the
+  // for-await throw and exit cleanly.
+  res.on('error', () => {
     aborted = true;
     upstreamAbort.abort();
   });

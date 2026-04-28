@@ -606,6 +606,9 @@ describe('POST /v1/messages/stream — authenticated', () => {
     const events = await readSseEvents(res);
     // Two deltas + final done payload + literal [DONE].
     expect(events).toContain('[DONE]');
+    // [DONE] must be the last sentinel — clients break out of their read loop on it,
+    // so anything emitted after [DONE] would be silently dropped.
+    expect(events[events.length - 1]).toBe('[DONE]');
     const deltas = events
       .filter((e) => e !== '[DONE]')
       .map((e) => JSON.parse(e) as { delta?: string; done?: boolean });
@@ -637,6 +640,11 @@ describe('POST /v1/messages/stream — authenticated', () => {
       .map((e) => JSON.parse(e) as { error?: string })
       .find((e) => typeof e.error === 'string');
     expect(errEvent?.error).toContain('upstream boom');
+    // Error path must still terminate the SSE stream with [DONE] as the final
+    // sentinel so clients exit their read loop instead of hanging until the
+    // socket closes.
+    expect(events).toContain('[DONE]');
+    expect(events[events.length - 1]).toBe('[DONE]');
     expect(persisted).toBe(false);
     await close();
   });
@@ -698,6 +706,54 @@ describe('POST /v1/messages/stream — authenticated', () => {
     expect(res.status).toBe(200);
     await readSseEvents(res); // drain
     expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    await close();
+  });
+
+  it('aborts the upstream signal when the client disconnects mid-stream', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    let persisted = false;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-test',
+      listMessages:   async () => [],
+      generateStream: async function* (_p, _k, _msgs, _model, opts) {
+        capturedSignal = opts?.signal;
+        yield { type: 'delta', content: 'first' };
+        // Park here until the controller propagates the client disconnect
+        // via the abort signal. If the wiring is broken, this hangs and the
+        // test times out — that's exactly the regression we want to catch.
+        await new Promise<void>((resolve, reject) => {
+          if (opts?.signal?.aborted) return resolve();
+          opts?.signal?.addEventListener('abort', () => resolve(), { once: true });
+          setTimeout(() => reject(new Error('signal never aborted')), 2_000);
+        });
+      },
+      persistMessagePair: async () => { persisted = true; return null; },
+    }));
+    // Use a request-level AbortController so we can tear the TCP socket down
+    // mid-stream — mirrors the browser closing the tab. (reader.cancel alone
+    // doesn't reliably close the keep-alive socket under undici.)
+    const ac = new AbortController();
+    const res = await fetch(`${baseUrl}/v1/messages/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Connection': 'close' },
+      body: JSON.stringify({ chatWindowId: 'cw-1', role: 'user', content: 'hi' }),
+      signal: ac.signal,
+    });
+    expect(res.status).toBe(200);
+    if (!res.body) throw new Error('no body');
+    const reader = res.body.getReader();
+    // Read the first chunk so the generator is parked, then abort.
+    await reader.read();
+    try { await reader.cancel(); } catch { /* expected */ }
+    ac.abort();
+    for (let i = 0; i < 100; i++) {
+      if (capturedSignal?.aborted) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(persisted).toBe(false);
     await close();
   });
 });
