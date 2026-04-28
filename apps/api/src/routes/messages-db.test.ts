@@ -640,6 +640,11 @@ describe('POST /v1/messages/stream — authenticated', () => {
       .map((e) => JSON.parse(e) as { error?: string })
       .find((e) => typeof e.error === 'string');
     expect(errEvent?.error).toContain('upstream boom');
+    // Error path must still terminate the SSE stream with [DONE] as the final
+    // sentinel so clients exit their read loop instead of hanging until the
+    // socket closes.
+    expect(events).toContain('[DONE]');
+    expect(events[events.length - 1]).toBe('[DONE]');
     expect(persisted).toBe(false);
     await close();
   });
