@@ -138,6 +138,138 @@ describe('POST /v1/auth/signup', () => {
     expect(body.error.code).toBe('invalid_body');
   });
 
+  it('signup Set-Cookie token hashes to the value persisted via createSession', async () => {
+    // The cookie carries the RAW token; the DB stores the SHA-256 hash.
+    // The cookie value the client receives MUST hash to the value the
+    // controller passed to createSession — otherwise the next /me request
+    // looks up a hash that doesn't exist and the user is instantly 401.
+    // Pin the loop with a real hash comparison.
+    let storedHash: string | null = null;
+    const { baseUrl, close } = await startServer(makeDeps({
+      createSession: async (h, userId, expiresAt) => {
+        storedHash = h;
+        return { id: h, userId, expiresAt, createdAt: new Date() };
+      },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'roundtrip@example.com', password: 'password123' });
+    expect(res.status).toBe(201);
+    const cookie = getSetCookie(res);
+    const m = cookie?.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
+    expect(m).not.toBeNull();
+    const token = m![1]!;
+    expect(storedHash).not.toBeNull();
+    expect(storedHash).toBe(hashSessionToken(token));
+    await close();
+  });
+
+  it('signup Set-Cookie carries a 64-char hex token (matches generateSessionToken contract)', async () => {
+    // generateSessionToken returns 32 random bytes hex-encoded = 64 chars.
+    // Pin the wire shape: a refactor that swapped to base64url or shortened
+    // the entropy would silently weaken the cookie (or break clients that
+    // happen to validate the shape).
+    const res = await post(base, '/v1/auth/signup', { email: 'wire@example.com', password: 'password123' });
+    expect(res.status).toBe(201);
+    const cookie = getSetCookie(res);
+    expect(cookie).toBeTruthy();
+    const m = cookie?.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
+    expect(m).not.toBeNull();
+    const token = m![1]!;
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('signup creates a session whose expiry is strictly in the future (no zero/past expiry)', async () => {
+    // The createSession dep receives an expiresAt Date built from
+    // sessionExpiresAt(). Pin that the route actually passes a future Date —
+    // a refactor that lost the +SESSION_EXPIRY_MS offset would create
+    // already-expired sessions, locking everyone out the moment they sign
+    // up. The unit test on sessionExpiresAt() pins the helper; this pins
+    // the wiring through the controller.
+    let receivedExpiresAt: Date | null = null;
+    const before = Date.now();
+    const { baseUrl, close } = await startServer(makeDeps({
+      createSession: async (h, userId, expiresAt) => {
+        receivedExpiresAt = expiresAt;
+        return { id: h, userId, expiresAt, createdAt: new Date() };
+      },
+    }));
+    await post(baseUrl, '/v1/auth/signup', { email: 'expiry@example.com', password: 'password123' });
+    expect(receivedExpiresAt).not.toBeNull();
+    expect((receivedExpiresAt as unknown as Date).getTime()).toBeGreaterThan(before);
+    await close();
+  });
+
+  it('persists lowercase email (createUser receives the normalised form, not the raw input)', async () => {
+    // The response email is lowercase (pinned by 'normalises email to
+    // lowercase'), but that doesn't prove the *storage* call also got
+    // the normalised form — a refactor could lowercase post-create
+    // and break the unique-constraint guarantee on the column. Pin
+    // that the createUser dep receives the lowercased email directly.
+    let createdEmail: string | undefined;
+    const { baseUrl, close } = await startServer(makeDeps({
+      createUser: async (email, hash, displayName) => {
+        createdEmail = email;
+        return mockUser({ email, passwordHash: hash, displayName: displayName ?? null });
+      },
+    }));
+    await post(baseUrl, '/v1/auth/signup', { email: 'CaSeD@Example.COM', password: 'password123' });
+    expect(createdEmail).toBe('cased@example.com');
+    await close();
+  });
+
+  it.each([
+    ['missing-at-sign',     'aliceexample.com'],
+    ['empty-local-part',    '@example.com'],
+    ['empty-domain',        'alice@'],
+    ['missing-tld',         'alice@localhost'],
+    ['embedded-space',      'al ice@example.com'],
+    ['double-at',           'alice@@example.com'],
+    ['leading-at-only',     '@'],
+  ])('rejects malformed email "%s" (%s) with invalid_body', async (_label, badEmail) => {
+    // The signup schema's regex is /^[^@\s]+@[^@\s]+\.[^@\s]+$/ — pin a
+    // representative set of malformed emails so a future loosening of the
+    // pattern can't ship without updating these cases.
+    const res = await post(base, '/v1/auth/signup', { email: badEmail, password: 'password123' });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('invalid_body');
+  });
+
+  it('rejects whitespace-only displayName via schema trim + min:1', async () => {
+    // displayName is optional but, when present, the schema trims and
+    // enforces min:1 — a whitespace-only value should reject with
+    // invalid_body, not silently coerce to '' or to null. Pin so a
+    // refactor that drops trim doesn't accidentally let blank names
+    // through.
+    const res = await post(base, '/v1/auth/signup', {
+      email:       'spaceslayer@example.com',
+      password:    'password123',
+      displayName: '   ',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as ApiResponse<never>;
+    if (body.ok) throw new Error('expected error');
+    expect(body.error.code).toBe('invalid_body');
+  });
+
+  it('trims a non-empty displayName before persisting (no leading/trailing whitespace stored)', async () => {
+    let createdName: string | undefined;
+    const { baseUrl, close } = await startServer(makeDeps({
+      createUser: async (_email, _hash, displayName) => {
+        createdName = displayName;
+        return mockUser({ displayName: displayName ?? null });
+      },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', {
+      email:       'trimmed@example.com',
+      password:    'password123',
+      displayName: '  Alice  ',
+    });
+    expect(res.status).toBe(201);
+    expect(createdName).toBe('Alice');
+    await close();
+  });
+
   it('returns 400 invalid_body for short password', async () => {
     const res = await post(base, '/v1/auth/signup', { email: 'a@b.com', password: 'short' });
     expect(res.status).toBe(400);
@@ -208,6 +340,59 @@ describe('POST /v1/auth/login', () => {
     await close();
   });
 
+  it('login Set-Cookie token hashes to the value persisted via createSession (mirror of signup)', async () => {
+    // Same end-to-end invariant as signup: the cookie's raw token must hash
+    // to the value passed to createSession. A divergence here means the
+    // user logs in successfully but immediately fails /me on the next
+    // request — the most-confusing-possible failure mode for an end user.
+    const realHash = await hashPassword('validpassword');
+    let storedHash: string | null = null;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async () => mockUser({ passwordHash: realHash }),
+      createSession:   async (h, userId, expiresAt) => {
+        storedHash = h;
+        return { id: h, userId, expiresAt, createdAt: new Date() };
+      },
+    }));
+    const res = await post(baseUrl, '/v1/auth/login', { email: 'test@example.com', password: 'validpassword' });
+    expect(res.status).toBe(200);
+    const cookie = getSetCookie(res);
+    const m = cookie?.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
+    expect(m).not.toBeNull();
+    const token = m![1]!;
+    expect(storedHash).toBe(hashSessionToken(token));
+    await close();
+  });
+
+  it('trims surrounding whitespace from the email before lookup (form-paste tolerance)', async () => {
+    // The schema trims; the lookup must therefore see the clean form. A
+    // user pasting their email from a column with trailing whitespace
+    // shouldn't be locked out. Pin the trim → lookup chain with an explicit
+    // capture of the email passed to findUserByEmail.
+    let lookupEmail: string | null = null;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async (email) => { lookupEmail = email; return null; },
+    }));
+    await post(baseUrl, '/v1/auth/login', { email: '  alice@example.com  ', password: 'whatever' });
+    expect(lookupEmail).toBe('alice@example.com');
+    await close();
+  });
+
+  it('lowercases the email before user lookup (mirror of signup normalisation)', async () => {
+    // Both signup and login lowercase the email server-side. If they
+    // disagreed, a user who signed up with 'Alice@example.com' would be
+    // unable to log back in with the exact-same casing — the signup row
+    // is stored lowercased, the login lookup would receive 'Alice@...'.
+    // Pin the contract: login must lookup the lowercased form.
+    let lookupEmail: string | null = null;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async (email) => { lookupEmail = email; return null; },
+    }));
+    await post(baseUrl, '/v1/auth/login', { email: 'ALICE@EXAMPLE.COM', password: 'whatever' });
+    expect(lookupEmail).toBe('alice@example.com');
+    await close();
+  });
+
   it('returns 401 for wrong password', async () => {
     const { baseUrl, close } = await startServer(
       makeDeps({ findUserByEmail: async () => mockUser({ passwordHash: realHash }) }),
@@ -271,6 +456,37 @@ describe('GET /v1/auth/me', () => {
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.id).toBe(USER.id);
     expect('passwordHash' in body.data).toBe(false);
+    await close();
+  });
+
+  it('SafeUser body carries exactly the contract fields (id, email, displayName, createdAt, updatedAt)', async () => {
+    // Pin the full SafeUser shape: a refactor that drops a field would
+    // silently break frontend rendering; one that adds a sensitive field
+    // (e.g. role, internal_metadata) would leak it. Pin both the inclusion
+    // list AND the exact key set so additions/removals fail CI.
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async (h) => h === KNOWN_HASH ? mockSession(h) : null,
+      findUserById:           async (id) => id === USER.id ? USER : null,
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${KNOWN_TOKEN}` },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ApiResponse<SafeUser>;
+    if (!body.ok) throw new Error('expected ok');
+    expect(Object.keys(body.data).sort()).toEqual([
+      'createdAt',
+      'displayName',
+      'email',
+      'id',
+      'updatedAt',
+    ]);
+    expect(typeof body.data.email).toBe('string');
+    expect(body.data.displayName === null || typeof body.data.displayName === 'string').toBe(true);
+    // ISO date strings must parse — pin against accidental Date-object
+    // serialisation breakage that would ship a {} or NaN to the client.
+    expect(() => new Date(body.data.createdAt).toISOString()).not.toThrow();
+    expect(() => new Date(body.data.updatedAt).toISOString()).not.toThrow();
     await close();
   });
 
