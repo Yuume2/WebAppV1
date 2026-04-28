@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Button } from '@/components/Button';
 import { Panel } from '@/components/Panel';
 import { login, register } from '@/lib/api/auth';
@@ -194,45 +194,65 @@ function PasswordInput({
   autoComplete?: string;
 }) {
   const [show, setShow] = useState(false);
+  const [capsOn, setCapsOn] = useState(false);
+  const updateCaps = (e: KeyboardEvent<HTMLInputElement>) => {
+    setCapsOn(e.getModifierState('CapsLock'));
+  };
   return (
-    <div style={{ position: 'relative', display: 'flex' }}>
-      <input
-        type={show ? 'text' : 'password'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required
-        minLength={minLength}
-        autoComplete={autoComplete}
-        style={{ ...inputStyle, flex: 1, paddingRight: '3.5rem' }}
-      />
-      <button
-        type="button"
-        onClick={() => setShow((s) => !s)}
-        aria-label={show ? 'Hide password' : 'Show password'}
-        aria-pressed={show}
-        style={{
-          position: 'absolute',
-          top: '50%',
-          right: 6,
-          transform: 'translateY(-50%)',
-          background: 'transparent',
-          border: 'none',
-          color: '#a0a0aa',
-          fontSize: '0.72rem',
-          fontWeight: 500,
-          padding: '4px 8px',
-          borderRadius: 4,
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-        }}
-      >
-        {show ? 'Hide' : 'Show'}
-      </button>
-    </div>
+    <>
+      <div style={{ position: 'relative', display: 'flex' }}>
+        <input
+          type={show ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={updateCaps}
+          onKeyUp={updateCaps}
+          onBlur={() => setCapsOn(false)}
+          required
+          minLength={minLength}
+          autoComplete={autoComplete}
+          aria-describedby={capsOn ? 'capslock-hint' : undefined}
+          style={{ ...inputStyle, flex: 1, paddingRight: '3.5rem' }}
+        />
+        <button
+          type="button"
+          onClick={() => setShow((s) => !s)}
+          aria-label={show ? 'Hide password' : 'Show password'}
+          aria-pressed={show}
+          style={{
+            position: 'absolute',
+            top: '50%',
+            right: 6,
+            transform: 'translateY(-50%)',
+            background: 'transparent',
+            border: 'none',
+            color: '#a0a0aa',
+            fontSize: '0.72rem',
+            fontWeight: 500,
+            padding: '4px 8px',
+            borderRadius: 4,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+          }}
+        >
+          {show ? 'Hide' : 'Show'}
+        </button>
+      </div>
+      {capsOn ? (
+        <span id="capslock-hint" style={capsHintStyle} role="status">
+          Caps Lock is on
+        </span>
+      ) : null}
+    </>
   );
 }
+
+const capsHintStyle: React.CSSProperties = {
+  fontSize: '0.72rem',
+  color: '#ffd166',
+};
 
 const inputStyle: React.CSSProperties = {
   padding: '0.55rem 0.7rem',
