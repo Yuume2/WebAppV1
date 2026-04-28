@@ -678,4 +678,26 @@ describe('POST /v1/messages/stream — authenticated', () => {
     expect(res.status).toBe(404);
     await close();
   });
+
+  it('passes an AbortSignal opts.signal to generateStream so client disconnect can cancel upstream', async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-test',
+      listMessages:   async () => [],
+      generateStream: async function* (_p, _k, _msgs, _model, opts) {
+        receivedSignal = opts?.signal;
+        yield { type: 'delta',  content: 'x' };
+        yield { type: 'done',   model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+      },
+      persistMessagePair: async (chatWindowId, _userId, userContent, assistantContent) =>
+        mockPair(chatWindowId, userContent, assistantContent),
+    }));
+    const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hi' });
+    expect(res.status).toBe(200);
+    await readSseEvents(res); // drain
+    expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    await close();
+  });
 });
