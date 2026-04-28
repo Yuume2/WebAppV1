@@ -104,6 +104,10 @@ describe('CSRF protection — explicit origin', () => {
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error envelope');
     expect(body.error.code).toBe('csrf_error');
+    // Defensive headers must still ride 403s — they're set before any short-circuit.
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('x-request-id')).toBeTruthy();
     await close();
   });
 
