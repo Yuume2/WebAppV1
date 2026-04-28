@@ -306,6 +306,11 @@ export async function streamMessageDbController(
     'X-Accel-Buffering': 'no',
     'X-Request-Id': ctx.requestId,
   });
+  // Ship headers immediately so reverse proxies / browsers see the SSE
+  // content-type before the first delta arrives — otherwise Node may buffer
+  // the response start until enough body is queued, and proxies that
+  // sniff content-type can decide to buffer the whole response.
+  res.flushHeaders();
 
   const startedAt = Date.now();
   let assistantContent = '';
