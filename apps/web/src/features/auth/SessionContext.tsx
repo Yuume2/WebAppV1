@@ -169,7 +169,7 @@ function FullScreenLoader() {
   return (
     <div role="status" aria-live="polite" style={loaderStyle}>
       <div style={spinnerStyle} aria-hidden />
-      <span style={{ color: '#8a8a95', fontSize: '0.875rem' }}>Loading…</span>
+      <span style={{ color: '#8a8a95', fontSize: '0.875rem' }}>Verifying session…</span>
     </div>
   );
 }
