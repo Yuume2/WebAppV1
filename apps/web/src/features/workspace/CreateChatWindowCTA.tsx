@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { AIProvider } from '@webapp/types';
 import { Button } from '@/components/Button';
@@ -48,6 +48,14 @@ function CreateChatWindowModal({
   const [provider, setProvider] = useState<AIProvider>('openai');
   const [model, setModel] = useState('gpt-4o-mini');
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [submitting, onClose]);
 
   const onProviderChange = (value: AIProvider) => {
     setProvider(value);

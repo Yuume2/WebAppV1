@@ -64,6 +64,15 @@ export default function ProviderSettingsPage() {
     return () => controller.abort();
   }, [load]);
 
+  useEffect(() => {
+    if (!pendingDelete) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !deleting) setPendingDelete(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pendingDelete, deleting]);
+
   const onSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
