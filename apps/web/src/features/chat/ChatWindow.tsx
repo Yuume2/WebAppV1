@@ -949,7 +949,13 @@ export function ChatWindow({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onComposerKeyDown}
           onFocus={() => onFocus?.(id)}
-          placeholder={pending ? 'Waiting for reply…' : 'Send a message…  (Shift+Enter for newline)'}
+          placeholder={
+            pending
+              ? 'Waiting for reply…'
+              : userPromptHistory.length > 0 && draft.length === 0
+                ? 'Send a message…  (Shift+Enter newline · ↑ history)'
+                : 'Send a message…  (Shift+Enter for newline)'
+          }
           aria-label={`Message ${title}`}
           disabled={pending}
           style={{
