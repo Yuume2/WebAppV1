@@ -340,6 +340,30 @@ describe('POST /v1/auth/login', () => {
     await close();
   });
 
+  it('login Set-Cookie token hashes to the value persisted via createSession (mirror of signup)', async () => {
+    // Same end-to-end invariant as signup: the cookie's raw token must hash
+    // to the value passed to createSession. A divergence here means the
+    // user logs in successfully but immediately fails /me on the next
+    // request — the most-confusing-possible failure mode for an end user.
+    const realHash = await hashPassword('validpassword');
+    let storedHash: string | null = null;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async () => mockUser({ passwordHash: realHash }),
+      createSession:   async (h, userId, expiresAt) => {
+        storedHash = h;
+        return { id: h, userId, expiresAt, createdAt: new Date() };
+      },
+    }));
+    const res = await post(baseUrl, '/v1/auth/login', { email: 'test@example.com', password: 'validpassword' });
+    expect(res.status).toBe(200);
+    const cookie = getSetCookie(res);
+    const m = cookie?.match(new RegExp(`${SESSION_COOKIE_NAME}=([^;]+)`));
+    expect(m).not.toBeNull();
+    const token = m![1]!;
+    expect(storedHash).toBe(hashSessionToken(token));
+    await close();
+  });
+
   it('trims surrounding whitespace from the email before lookup (form-paste tolerance)', async () => {
     // The schema trims; the lookup must therefore see the clean form. A
     // user pasting their email from a column with trailing whitespace
