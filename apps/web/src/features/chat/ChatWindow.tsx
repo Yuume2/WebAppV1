@@ -290,7 +290,7 @@ export function ChatWindow({
             }}
             aria-label={searchOpen ? 'Close search' : 'Find in chat'}
             aria-pressed={searchOpen}
-            title={searchOpen ? 'Close search' : 'Find in chat'}
+            title={searchOpen ? 'Close search' : 'Find in chat (⌘F / Ctrl+F)'}
             style={{
               background: 'transparent',
               border: 'none',
