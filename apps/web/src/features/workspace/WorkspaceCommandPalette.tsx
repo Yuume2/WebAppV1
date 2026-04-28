@@ -47,6 +47,7 @@ export function WorkspaceCommandPalette({
 }: WorkspaceCommandPaletteProps) {
   const [open, setOpen] = useState(false);
   const [pinnedSet, setPinnedSet] = useState<Set<string>>(() => readPinned());
+  const [recentIds, setRecentIds] = useState<string[]>(() => readRecents(activeWorkspaceId));
   const [query, setQuery] = useState('');
   const [hover, setHover] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -110,14 +111,36 @@ export function WorkspaceCommandPalette({
     | { kind: 'window'; key: string; entry: PaletteWindow }
     | { kind: 'message'; key: string; match: typeof messageMatches[number] };
 
+  const recentEntries: PaletteWindow[] = useMemo(() => {
+    if (query.trim()) return [];
+    const all = [
+      ...visibleWindows.map((w) => ({ window: w, open: true })),
+      ...closedWindows.map((w) => ({ window: w, open: false })),
+    ];
+    const byId = new Map(all.map((it) => [it.window.id, it]));
+    const out: PaletteWindow[] = [];
+    for (const id of recentIds) {
+      if (id === activeId) continue; // skip the currently focused one
+      const it = byId.get(id);
+      if (!it) continue;
+      out.push(it);
+      if (out.length >= 5) break;
+    }
+    return out;
+  }, [query, recentIds, activeId, visibleWindows, closedWindows]);
+
   const unifiedItems: UnifiedItem[] = useMemo(() => {
     const out: UnifiedItem[] = [];
+    for (const it of recentEntries) {
+      out.push({ kind: 'window', key: `recent-${it.window.id}`, entry: it });
+    }
     if (filteredWorkspaces.length > 1) {
       for (const w of filteredWorkspaces) {
         out.push({ kind: 'workspace', key: `ws-${w.id}`, workspace: w });
       }
     }
     for (const it of filtered) {
+      if (recentEntries.some((r) => r.window.id === it.window.id)) continue;
       out.push({ kind: 'window', key: `w-${it.window.id}`, entry: it });
     }
     for (let i = 0; i < messageMatches.length; i += 1) {
@@ -126,7 +149,7 @@ export function WorkspaceCommandPalette({
       out.push({ kind: 'message', key: `m-${m.windowId}-${m.messageId}-${i}`, match: m });
     }
     return out;
-  }, [filteredWorkspaces, filtered, messageMatches]);
+  }, [recentEntries, filteredWorkspaces, filtered, messageMatches]);
 
   useEffect(() => {
     if (!open) {
@@ -146,10 +169,16 @@ export function WorkspaceCommandPalette({
   useEffect(() => {
     if (!open) return;
     setPinnedSet(readPinned());
+    setRecentIds(readRecents(activeWorkspaceId));
     const onChange = () => setPinnedSet(readPinned());
+    const onRecents = () => setRecentIds(readRecents(activeWorkspaceId));
     window.addEventListener('wav:pin-changed', onChange);
-    return () => window.removeEventListener('wav:pin-changed', onChange);
-  }, [open]);
+    window.addEventListener('wav:recents-changed', onRecents);
+    return () => {
+      window.removeEventListener('wav:pin-changed', onChange);
+      window.removeEventListener('wav:recents-changed', onRecents);
+    };
+  }, [open, activeWorkspaceId]);
 
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -255,6 +284,37 @@ export function WorkspaceCommandPalette({
           aria-label="Filter chat windows or workspaces"
           style={inputStyle}
         />
+        {recentEntries.length > 0 ? (
+          <div>
+            <div style={sectionLabelStyle}>Recent</div>
+            <ul role="list" style={listStyle}>
+              {recentEntries.map((it) => {
+                const idx = unifiedItems.findIndex(
+                  (u) => u.kind === 'window' && u.key === `recent-${it.window.id}`,
+                );
+                const isHover = idx === Math.min(hover, unifiedItems.length - 1);
+                return (
+                  <li key={`recent-${it.window.id}`} role="option" aria-selected={isHover}
+                    onMouseEnter={() => idx >= 0 && setHover(idx)}
+                    onClick={() => choose(it)}
+                    style={{
+                      ...rowStyle,
+                      background: isHover ? '#1c1c28' : 'transparent',
+                      border: `1px solid ${isHover ? '#3a3f6b' : 'transparent'}`,
+                    }}
+                  >
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {it.window.title}
+                    </span>
+                    <span style={metaStyle}>{it.window.provider} · {it.window.model}</span>
+                    {!it.open ? <span style={badgeStyle}>closed</span> : null}
+                    {pinnedSet.has(it.window.id) ? <span style={pinnedBadgeStyle}>pinned</span> : null}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
         {filteredWorkspaces.length > 1 ? (
           <div>
             <div style={sectionLabelStyle}>Workspaces</div>
@@ -293,10 +353,10 @@ export function WorkspaceCommandPalette({
           </div>
         ) : null}
         <ul role="listbox" aria-label="Chat windows" style={listStyle}>
-          {filtered.length === 0 ? (
+          {filtered.length === 0 && messageMatches.length === 0 && filteredWorkspaces.length <= 1 && recentEntries.length === 0 ? (
             <li style={emptyStyle}>No matches.</li>
           ) : (
-            filtered.map((it) => {
+            filtered.filter((it) => !recentEntries.some((r) => r.window.id === it.window.id)).map((it) => {
               const idx = unifiedItems.findIndex((u) => u.kind === 'window' && u.entry.window.id === it.window.id);
               const isHover = idx === Math.min(hover, unifiedItems.length - 1);
               const isActive = it.window.id === activeId;
@@ -591,4 +651,17 @@ function renderHighlighted(content: string, query: string): React.ReactNode {
     cursor = idx + q.length;
   }
   return out;
+}
+
+function readRecents(workspaceId: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.sessionStorage.getItem(`wav.workspace.recents.${workspaceId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string').slice(0, 8);
+  } catch {
+    return [];
+  }
 }

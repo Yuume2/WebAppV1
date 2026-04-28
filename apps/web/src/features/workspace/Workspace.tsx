@@ -113,7 +113,19 @@ export function Workspace({
   useEffect(() => {
     if (!state.activeId) return;
     lastSeenRef.current[state.activeId] = Date.now();
-  }, [state.activeId, activeLastActivity]);
+    if (typeof window !== 'undefined') {
+      try {
+        const key = `wav.workspace.recents.${activeWorkspace.id}`;
+        const raw = window.sessionStorage.getItem(key);
+        const list: string[] = raw ? (JSON.parse(raw) as string[]).filter((x) => typeof x === 'string') : [];
+        const next = [state.activeId, ...list.filter((x) => x !== state.activeId)].slice(0, 8);
+        window.sessionStorage.setItem(key, JSON.stringify(next));
+        window.dispatchEvent(new Event('wav:recents-changed'));
+      } catch {
+        // ignore
+      }
+    }
+  }, [state.activeId, activeLastActivity, activeWorkspace.id]);
 
   const visibleWindowsForKey = state.visibleWindows;
   const activeIdForKey = state.activeId;
