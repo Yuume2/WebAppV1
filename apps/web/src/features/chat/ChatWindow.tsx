@@ -297,17 +297,113 @@ export function ChatWindow({
     stickyRef.current = true;
     onSend?.(id, trimmed);
     setDraft('');
+    // If a starred-only or search filter is active when the user hits Send,
+    // auto-clear it so they actually see the new message land. Otherwise the
+    // send is invisible and can feel like the action did nothing.
+    if (showOnlyStarred) setShowOnlyStarred(false);
+    if (searchOpen && trimmedQuery.length > 0) setSearchQuery('');
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
+
+  // Composer history: when the textarea is empty, ↑/↓ recall recent user prompts.
+  // Indexed from 0 = newest. We pull the list from the live messages prop so it
+  // always reflects what's on screen — no separate persistence needed.
+  const userPromptHistory = messages
+    .filter((m) => m.role === 'user' && (m.status ?? 'ok') !== 'failed')
+    .map((m) => m.content)
+    .reverse();
+  const historyIdxRef = useRef<number>(-1);
 
   const onComposerKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
+      historyIdxRef.current = -1;
+      return;
+    }
+    if (e.key === 'Escape' && draft.length > 0) {
+      e.preventDefault();
+      setDraft('');
+      historyIdxRef.current = -1;
+      return;
+    }
+    if (e.key === 'ArrowUp' && userPromptHistory.length > 0) {
+      // Only recall when caret is at start AND on the first line — avoids
+      // hijacking normal up-arrow navigation inside multi-line drafts.
+      const ta = e.currentTarget;
+      const beforeCaret = ta.value.slice(0, ta.selectionStart);
+      const onFirstLine = !beforeCaret.includes('\n');
+      const isAtStart = ta.selectionStart === 0 && ta.selectionEnd === 0;
+      // Activate history recall only when the textarea is empty (first ↑) or
+      // we're already cycling (historyIdxRef >= 0). This keeps the bar to
+      // entry low — pressing ↑ on a typed-but-not-sent draft doesn't
+      // clobber the in-progress text.
+      const cyclingActive = historyIdxRef.current >= 0;
+      if ((draft.length === 0 || cyclingActive) && (isAtStart || onFirstLine)) {
+        e.preventDefault();
+        const nextIdx = Math.min(historyIdxRef.current + 1, userPromptHistory.length - 1);
+        historyIdxRef.current = nextIdx;
+        setDraft(userPromptHistory[nextIdx] ?? '');
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown' && historyIdxRef.current >= 0) {
+      e.preventDefault();
+      const nextIdx = historyIdxRef.current - 1;
+      historyIdxRef.current = nextIdx;
+      setDraft(nextIdx < 0 ? '' : userPromptHistory[nextIdx] ?? '');
+      return;
     }
   };
 
   const canSend = !pending && draft.trim().length > 0;
+
+  const onQuoteMessage = (content: string) => {
+    if (!content) return;
+    const quoted = content
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n');
+    setDraft((prev) => {
+      const trimmed = prev.replace(/\s+$/, '');
+      const sep = trimmed.length === 0 ? '' : trimmed.endsWith('\n') ? '\n' : '\n\n';
+      return `${trimmed}${sep}${quoted}\n\n`;
+    });
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = ta.value.length;
+    });
+  };
+
+  const starredStorageKey = `wav.chat.starred.${id}`;
+  const [starredIds, setStarredIds] = useState<Set<string>>(() => readStarred(starredStorageKey));
+  useEffect(() => {
+    writeStarred(starredStorageKey, starredIds);
+  }, [starredStorageKey, starredIds]);
+  const toggleStar = (msgId: string) => {
+    setStarredIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msgId)) next.delete(msgId);
+      else next.add(msgId);
+      return next;
+    });
+  };
+
+  const showStarredStorageKey = `wav.chat.showStarred.${id}`;
+  const [showOnlyStarred, setShowOnlyStarred] = useState<boolean>(() => readBoolFlag(showStarredStorageKey));
+  useEffect(() => {
+    writeBoolFlag(showStarredStorageKey, showOnlyStarred);
+  }, [showStarredStorageKey, showOnlyStarred]);
+  // Auto-clear the filter when the underlying star set becomes empty so the
+  // user isn't left staring at a permanent empty state with no obvious recovery.
+  useEffect(() => {
+    if (showOnlyStarred && starredIds.size === 0) setShowOnlyStarred(false);
+  }, [showOnlyStarred, starredIds.size]);
+  const displayedMessages = showOnlyStarred
+    ? filteredMessages.filter((m) => starredIds.has(m.id))
+    : filteredMessages;
 
   return (
     <div
@@ -448,6 +544,37 @@ export function ChatWindow({
             }}
           >
             Find
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowOnlyStarred((prev) => !prev);
+            }}
+            aria-label={showOnlyStarred ? 'Show all messages' : 'Show only starred messages'}
+            aria-pressed={showOnlyStarred}
+            title={
+              showOnlyStarred
+                ? 'Showing only starred — click to clear'
+                : `Show only starred (${starredIds.size})`
+            }
+            disabled={!showOnlyStarred && starredIds.size === 0}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: showOnlyStarred ? '#f0c14b' : starredIds.size === 0 ? '#4a4a52' : '#8a8a95',
+              cursor: !showOnlyStarred && starredIds.size === 0 ? 'not-allowed' : 'pointer',
+              fontSize: '0.7rem',
+              fontWeight: 500,
+              padding: '0.25rem 0.5rem',
+              borderRadius: 6,
+              lineHeight: 1,
+              fontFamily: 'inherit',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            {showOnlyStarred ? '★ Starred' : `☆ Starred${starredIds.size > 0 ? ` (${starredIds.size})` : ''}`}
           </button>
           {onDelete ? (
             <button
@@ -691,8 +818,19 @@ export function ChatWindow({
           >
             No messages match &ldquo;{trimmedQuery}&rdquo;.
           </div>
+        ) : showOnlyStarred && displayedMessages.length === 0 ? (
+          <div
+            style={{
+              margin: 'auto',
+              textAlign: 'center',
+              color: '#8a8a95',
+              fontSize: '0.85rem',
+            }}
+          >
+            No starred messages yet — use the ☆ on a message bubble to pin it here.
+          </div>
         ) : (
-          filteredMessages.map((m) => (
+          displayedMessages.map((m) => (
             <MessageBubble
               key={m.id}
               message={m}
@@ -707,6 +845,9 @@ export function ChatWindow({
                   ? () => onRegenerate(id, m.id)
                   : undefined
               }
+              onQuote={onQuoteMessage}
+              isStarred={starredIds.has(m.id)}
+              onToggleStar={() => toggleStar(m.id)}
             />
           ))
         )}
@@ -944,16 +1085,22 @@ function MessageBubble({
   message,
   onRetry,
   onRegenerate,
+  onQuote,
   highlight,
   isActiveMatch,
   isFlashing,
+  isStarred,
+  onToggleStar,
 }: {
   message: MockMessage;
   onRetry?: () => void;
   onRegenerate?: () => void;
+  onQuote?: (content: string) => void;
   highlight?: string;
   isActiveMatch?: boolean;
   isFlashing?: boolean;
+  isStarred?: boolean;
+  onToggleStar?: () => void;
 }) {
   const isUser = message.role === 'user';
   const isAssistant = message.role === 'assistant';
@@ -1094,7 +1241,10 @@ function MessageBubble({
         relativeStamp={relativeStamp}
         canCopy={canCopy}
         onRegenerate={isAssistant && !isStreaming && !isPending ? onRegenerate : undefined}
+        onQuote={canCopy && onQuote ? () => onQuote(message.content) : undefined}
         align={isUser ? 'end' : 'start'}
+        isStarred={isStarred}
+        onToggleStar={onToggleStar}
       />
     </div>
   );
@@ -1107,7 +1257,10 @@ function MessageActions({
   relativeStamp,
   canCopy,
   onRegenerate,
+  onQuote,
   align,
+  isStarred,
+  onToggleStar,
 }: {
   messageId: string;
   content: string;
@@ -1115,10 +1268,14 @@ function MessageActions({
   relativeStamp: string | null;
   canCopy: boolean;
   onRegenerate?: () => void;
+  onQuote?: () => void;
   align: 'start' | 'end';
+  isStarred?: boolean;
+  onToggleStar?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [mdCopied, setMdCopied] = useState(false);
   const writeToClipboard = async (value: string): Promise<void> => {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(value);
@@ -1165,6 +1322,8 @@ function MessageActions({
         marginTop: 6,
         display: 'flex',
         justifyContent: align === 'end' ? 'flex-end' : 'flex-start',
+        flexWrap: 'wrap',
+        rowGap: 4,
         gap: 8,
         fontSize: '0.65rem',
         color: '#6a6a75',
@@ -1194,6 +1353,60 @@ function MessageActions({
       >
         {linkCopied ? 'Link copied' : 'Copy link'}
       </button>
+      {onQuote ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onQuote();
+          }}
+          aria-label="Quote this message in composer"
+          title="Quote in composer"
+          style={messageActionButton}
+        >
+          Quote
+        </button>
+      ) : null}
+      {canCopy ? (
+        <button
+          type="button"
+          onClick={async (e) => {
+            e.stopPropagation();
+            const md = formatAsMarkdown(content, absoluteStamp);
+            try {
+              await writeToClipboard(md);
+              setMdCopied(true);
+              setTimeout(() => setMdCopied(false), 1500);
+            } catch {
+              // ignore
+            }
+          }}
+          aria-label="Copy as Markdown"
+          title="Copy as Markdown (with role + timestamp)"
+          style={messageActionButton}
+        >
+          {mdCopied ? 'MD copied' : 'Copy MD'}
+        </button>
+      ) : null}
+      {onToggleStar ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleStar();
+          }}
+          aria-label={isStarred ? 'Unstar this message' : 'Star this message'}
+          title={isStarred ? 'Unstar' : 'Star'}
+          aria-pressed={isStarred ? true : false}
+          style={{
+            ...messageActionButton,
+            color: isStarred ? '#f0c14b' : '#9a9aa3',
+            borderColor: isStarred ? '#5a4a1f' : messageActionButton.border?.toString().includes('1px') ? '#2a2a30' : '#2a2a30',
+          }}
+        >
+          {isStarred ? '★' : '☆'}
+        </button>
+      ) : null}
       {onRegenerate ? (
         <button
           type="button"
@@ -1284,6 +1497,55 @@ function writeDraft(key: string, value: string): void {
   } catch {
     // localStorage unavailable / quota exceeded; ignore
   }
+}
+
+function readStarred(key: string): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((v): v is string => typeof v === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function writeStarred(key: string, value: Set<string>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value.size === 0) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, JSON.stringify(Array.from(value)));
+  } catch {
+    // localStorage unavailable / quota exceeded; ignore
+  }
+}
+
+function readBoolFlag(key: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeBoolFlag(key: string, value: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value) window.localStorage.setItem(key, '1');
+    else window.localStorage.removeItem(key);
+  } catch {
+    // localStorage unavailable / quota exceeded; ignore
+  }
+}
+
+function formatAsMarkdown(content: string, absoluteStamp: string | null): string {
+  // Useful for paste-into-doc / paste-into-issue: a small header block
+  // gives the receiver context (when, who) without needing the full UI.
+  const header = absoluteStamp ? `> ${absoluteStamp}` : '';
+  return [header, '', content].filter((line, i) => !(i === 0 && line === '')).join('\n');
 }
 
 function renderWithHighlight(content: string, query: string): ReactNode {
