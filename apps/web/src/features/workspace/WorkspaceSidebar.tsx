@@ -414,11 +414,15 @@ function WorkspaceSwitcher({
           />
         ) : (
           <button
+            type="button"
             onClick={() => !single && setOpen((v) => !v)}
             onDoubleClick={() => {
               setDraft(name);
               setEditing(true);
             }}
+            aria-haspopup={single ? undefined : 'listbox'}
+            aria-expanded={single ? undefined : open}
+            aria-label={single ? `Workspace: ${name}` : `Switch workspace (current: ${name})`}
             title={single ? 'Double-click to rename' : 'Switch · double-click to rename'}
             style={{
               flex: 1,
