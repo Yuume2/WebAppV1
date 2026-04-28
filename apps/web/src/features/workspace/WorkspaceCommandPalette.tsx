@@ -444,7 +444,13 @@ export function WorkspaceCommandPalette({
         ) : null}
         <ul role="listbox" aria-label="Chat windows" style={listStyle}>
           {filtered.length === 0 && messageMatches.length === 0 && filteredWorkspaces.length <= 1 && recentEntries.length === 0 && pinnedEntries.length === 0 ? (
-            <li style={emptyStyle}>No matches.</li>
+            <li style={emptyStyle}>
+              {query.trim().length === 0
+                ? 'No chat windows yet.'
+                : query.trim().length < 2
+                  ? `No window titled “${query}”. Type 2+ chars to also search messages.`
+                  : `No matches for “${query}” in titles or messages.`}
+            </li>
           ) : (
             filtered.filter((it) => !recentEntries.some((r) => r.window.id === it.window.id) && !pinnedEntries.some((p) => p.window.id === it.window.id)).map((it) => {
               const idx = unifiedItems.findIndex((u) => u.kind === 'window' && u.entry.window.id === it.window.id);
