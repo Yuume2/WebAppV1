@@ -28,16 +28,26 @@ export function checkCsrf(
   if (SAFE_METHODS.has(method)) return { ok: true };
   if (allowedOrigin === '*')    return { ok: true };
 
+  // CORS_ORIGIN may carry a comma-separated allowlist when the same API serves
+  // multiple frontend origins (e.g. "https://app.example.com,https://staging.example.com").
+  const allowed = allowedOrigin
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
   const origin = headerStr(req.headers.origin);
   if (origin) {
-    return origin === allowedOrigin
+    return allowed.includes(origin)
       ? { ok: true }
       : { ok: false, reason: `Origin '${origin}' is not allowed` };
   }
 
   const referer = headerStr(req.headers.referer);
-  if (referer && referer.startsWith(`${allowedOrigin}/`)) return { ok: true };
-  if (referer === allowedOrigin)                          return { ok: true };
+  if (referer) {
+    for (const o of allowed) {
+      if (referer === o || referer.startsWith(`${o}/`)) return { ok: true };
+    }
+  }
 
   return {
     ok: false,
