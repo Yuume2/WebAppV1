@@ -387,6 +387,7 @@ export function ChatWindow({
       ta.focus();
       ta.selectionStart = ta.selectionEnd = ta.value.length;
     });
+    toast.push('info', `Quoted into ${title}`);
   };
 
   const starredStorageKey = `wav.chat.starred.${id}`;
