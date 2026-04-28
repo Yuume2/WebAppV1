@@ -5,13 +5,13 @@ import {
   parseJsonBody,
   respond,
   respondCreated,
-  respondError,
   respondNoContent,
   respondNotFound,
   type InternalResult,
   type RequestContext,
 } from '../lib/http.js';
 import { s } from '../lib/schema.js';
+import { requireUser } from '../lib/auth-helper.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db, ProjectPatch } from '../db/projects.repo.js';
 import * as projectsRepo from '../db/projects.repo.js';
@@ -84,10 +84,10 @@ export async function listProjectsDbController(
   ctx: RequestContext,
   deps: ProjectsDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
-  const rows = await deps.listProjects(user.id);
+  const rows = await deps.listProjects(auth.user.id);
   return respond(rows.map(toProject));
 }
 
@@ -95,13 +95,13 @@ export async function createProjectDbController(
   ctx: RequestContext,
   deps: ProjectsDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
   const body = await parseJsonBody(ctx, CreateProjectDbBody);
   if (!body.ok) return body.result;
 
-  const row = await deps.createProject(user.id, body.value.name, body.value.description ?? undefined);
+  const row = await deps.createProject(auth.user.id, body.value.name, body.value.description ?? undefined);
   const project = toProject(row);
   return respondCreated(project, getProjectPath(project.id));
 }
@@ -110,11 +110,11 @@ export async function getProjectDbController(
   ctx: RequestContext,
   deps: ProjectsDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
   const id = ctx.params['id'] ?? '';
-  const row = await deps.findProject(id, user.id);
+  const row = await deps.findProject(id, auth.user.id);
   return row ? respond(toProject(row)) : respondNotFound(`Project ${id} not found`);
 }
 
@@ -122,14 +122,14 @@ export async function patchProjectDbController(
   ctx: RequestContext,
   deps: ProjectsDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
   const body = await parseJsonBody(ctx, PatchProjectDbBody);
   if (!body.ok) return body.result;
 
   const id = ctx.params['id'] ?? '';
-  const row = await deps.updateProject(id, user.id, body.value);
+  const row = await deps.updateProject(id, auth.user.id, body.value);
   return row ? respond(toProject(row)) : respondNotFound(`Project ${id} not found`);
 }
 
@@ -137,10 +137,10 @@ export async function deleteProjectDbController(
   ctx: RequestContext,
   deps: ProjectsDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
   const id = ctx.params['id'] ?? '';
-  const deleted = await deps.deleteProject(id, user.id);
+  const deleted = await deps.deleteProject(id, auth.user.id);
   return deleted ? respondNoContent() : respondNotFound(`Project ${id} not found`);
 }

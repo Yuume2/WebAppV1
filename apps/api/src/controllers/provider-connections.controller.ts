@@ -10,6 +10,7 @@ import {
   type RequestContext,
 } from '../lib/http.js';
 import { s } from '../lib/schema.js';
+import { requireUser } from '../lib/auth-helper.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db, ProviderConnectionMeta } from '../db/provider-connections.repo.js';
 import * as providerRepo from '../db/provider-connections.repo.js';
@@ -80,9 +81,9 @@ export async function listConnectionsController(
   ctx: RequestContext,
   deps: ProviderConnectionsDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
-  const list = await deps.listConnections(user.id);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
+  const list = await deps.listConnections(auth.user.id);
   return respond(list.map(toResponse));
 }
 
@@ -90,11 +91,11 @@ export async function getConnectionController(
   ctx: RequestContext,
   deps: ProviderConnectionsDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
   const provider = parseProvider(ctx.params['provider'] ?? '');
   if (!provider) return respondError('validation_error', 'Unknown provider', 400);
-  const meta = await deps.findConnection(user.id, provider);
+  const meta = await deps.findConnection(auth.user.id, provider);
   return meta ? respond(toResponse(meta)) : respondNotFound(`No connection for provider '${provider}'`);
 }
 
@@ -102,8 +103,8 @@ export async function upsertConnectionController(
   ctx: RequestContext,
   deps: ProviderConnectionsDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
   const provider = parseProvider(ctx.params['provider'] ?? '');
   if (!provider) return respondError('validation_error', 'Unknown provider', 400);
   if (!ENABLED_PROVIDERS.has(provider)) {
@@ -119,7 +120,7 @@ export async function upsertConnectionController(
   if (verifyResult === 'provider_error') {
     return respondError('provider_error', 'Could not reach the provider to validate the key — try again later', 502);
   }
-  const meta = await deps.upsertConnection(user.id, provider, apiKey);
+  const meta = await deps.upsertConnection(auth.user.id, provider, apiKey);
   return respond(toResponse(meta));
 }
 
@@ -127,11 +128,11 @@ export async function deleteConnectionController(
   ctx: RequestContext,
   deps: ProviderConnectionsDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
   const provider = parseProvider(ctx.params['provider'] ?? '');
   if (!provider) return respondError('validation_error', 'Unknown provider', 400);
-  await deps.deleteConnection(user.id, provider);
+  await deps.deleteConnection(auth.user.id, provider);
   return respond(null);
 }
 
@@ -139,13 +140,13 @@ export async function testConnectionController(
   ctx: RequestContext,
   deps: ProviderConnectionsDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
   const connectionId = ctx.params['id'] ?? '';
   if (!connectionId) return respondError('validation_error', 'Missing connection id', 400);
 
-  const record = await deps.getDecryptedKeyById(user.id, connectionId);
+  const record = await deps.getDecryptedKeyById(auth.user.id, connectionId);
   if (!record) return respondNotFound(`No connection found with id '${connectionId}'`);
 
   const rl = deps.checkRateLimit(connectionId);

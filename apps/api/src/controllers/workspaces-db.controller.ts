@@ -12,6 +12,7 @@ import {
   type RequestContext,
 } from '../lib/http.js';
 import { s } from '../lib/schema.js';
+import { requireUser } from '../lib/auth-helper.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import type { Db, WorkspacePatch } from '../db/workspaces.repo.js';
 import * as workspacesRepo from '../db/workspaces.repo.js';
@@ -94,13 +95,13 @@ export async function listWorkspacesDbController(
   ctx: RequestContext,
   deps: WorkspacesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
   const projectId = ctx.url.searchParams.get('projectId') ?? '';
   if (!projectId) return respondError('validation_error', 'Query param projectId is required');
 
-  const rows = await deps.listWorkspaces(projectId, user.id);
+  const rows = await deps.listWorkspaces(projectId, auth.user.id);
   if (rows === null) return respondNotFound(`Project ${projectId} not found`);
   const windowRows = await deps.listWindowIds(rows.map((r) => r.id));
   const windowMap = buildWindowMap(windowRows);
@@ -111,13 +112,13 @@ export async function createWorkspaceDbController(
   ctx: RequestContext,
   deps: WorkspacesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
   const body = await parseJsonBody(ctx, CreateWorkspaceDbBody);
   if (!body.ok) return body.result;
 
-  const row = await deps.createWorkspace(body.value.projectId, user.id, body.value.name);
+  const row = await deps.createWorkspace(body.value.projectId, auth.user.id, body.value.name);
   if (row === null) return respondNotFound(`Project ${body.value.projectId} not found`);
   return respondCreated(toWorkspace(row, []), getWorkspacePath(row.id));
 }
@@ -126,11 +127,11 @@ export async function getWorkspaceDbController(
   ctx: RequestContext,
   deps: WorkspacesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
   const id = ctx.params['id'] ?? '';
-  const row = await deps.findWorkspace(id, user.id);
+  const row = await deps.findWorkspace(id, auth.user.id);
   if (!row) return respondNotFound(`Workspace ${id} not found`);
   const windowRows = await deps.listWindowIds([row.id]);
   return respond(toWorkspace(row, windowRows.map((cw) => cw.id)));
@@ -140,14 +141,14 @@ export async function patchWorkspaceDbController(
   ctx: RequestContext,
   deps: WorkspacesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
   const body = await parseJsonBody(ctx, PatchWorkspaceDbBody);
   if (!body.ok) return body.result;
 
   const id = ctx.params['id'] ?? '';
-  const row = await deps.updateWorkspace(id, user.id, body.value);
+  const row = await deps.updateWorkspace(id, auth.user.id, body.value);
   if (!row) return respondNotFound(`Workspace ${id} not found`);
   const windowRows = await deps.listWindowIds([row.id]);
   return respond(toWorkspace(row, windowRows.map((cw) => cw.id)));
@@ -157,10 +158,10 @@ export async function deleteWorkspaceDbController(
   ctx: RequestContext,
   deps: WorkspacesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
 
   const id = ctx.params['id'] ?? '';
-  const deleted = await deps.deleteWorkspace(id, user.id);
+  const deleted = await deps.deleteWorkspace(id, auth.user.id);
   return deleted ? respondNoContent() : respondNotFound(`Workspace ${id} not found`);
 }

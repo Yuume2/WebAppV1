@@ -12,8 +12,10 @@ import {
   type RequestContext,
 } from '../lib/http.js';
 import { s } from '../lib/schema.js';
+import { requireUser } from '../lib/auth-helper.js';
 import { resolveCurrentUser } from '../lib/resolve-user.js';
 import { captureException } from '../lib/sentry.js';
+import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
 import type { Db, AssistantMessageMetadata } from '../db/messages.repo.js';
 import * as messagesRepo from '../db/messages.repo.js';
@@ -137,8 +139,9 @@ export async function listMessagesDbController(
   ctx: RequestContext,
   deps: MessagesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
+  const user = auth.user;
 
   const chatWindowId = ctx.url.searchParams.get('chatWindowId') ?? '';
   if (!chatWindowId) return respondError('validation_error', 'Query param chatWindowId is required');
@@ -152,8 +155,9 @@ export async function createMessageDbController(
   ctx: RequestContext,
   deps: MessagesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
+  const user = auth.user;
 
   const body = await parseJsonBody(ctx, CreateMessageDbBody);
   if (!body.ok) return body.result;
@@ -241,8 +245,9 @@ export async function getMessageDbController(
   ctx: RequestContext,
   deps: MessagesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
+  const user = auth.user;
 
   const id = ctx.params['id'] ?? '';
   const row = await deps.findMessage(id, user.id);
@@ -259,8 +264,9 @@ export async function streamMessageDbController(
   ctx: RequestContext,
   deps: MessagesDeps,
 ): Promise<InternalResult> {
-  const user = await deps.resolveUser(ctx.req);
-  if (!user) return respondError('unauthenticated', 'Not authenticated', 401);
+  const auth = await requireUser(ctx.req, deps.resolveUser);
+  if (!auth.ok) return auth.result;
+  const user = auth.user;
 
   const body = await parseJsonBody(ctx, CreateMessageDbBody);
   if (!body.ok) return body.result;
@@ -357,6 +363,13 @@ export async function streamMessageDbController(
     // throw happens because we asked the upstream to stop. Don't ship an
     // 'error' SSE event (the client is gone anyway) and don't capture it.
     if (aborted) {
+      logger.info('stream cancelled by client disconnect', {
+        requestId: ctx.requestId,
+        provider: cw.provider,
+        model: cw.model,
+        partialBytes: assistantContent.length,
+        durationMs: Date.now() - startedAt,
+      });
       try { res.end(); } catch { /* socket already closed */ }
       return respondStreamed(499);
     }
@@ -400,5 +413,13 @@ export async function streamMessageDbController(
   });
   res.write('data: [DONE]\n\n');
   res.end();
+  logger.info('stream completed', {
+    requestId:        ctx.requestId,
+    provider:         cw.provider,
+    model,
+    promptTokens:     usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    latencyMs,
+  });
   return respondStreamed(200);
 }
