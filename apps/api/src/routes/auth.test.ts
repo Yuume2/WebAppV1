@@ -403,6 +403,23 @@ describe('GET /v1/auth/me', () => {
     expect(b3.error.message).toBe('Not authenticated');
   });
 
+  it('401 from /me does not emit a Set-Cookie header (no surprise session clear)', async () => {
+    // /me is a read endpoint. A 401 should not mutate the caller's cookie
+    // jar — only the explicit /logout path is allowed to emit Set-Cookie
+    // for the session cookie. Pin this so a refactor that defensively
+    // 'cleans up' a stale cookie on /me 401 doesn't accidentally log out
+    // a legit user whose session got invalidated server-side.
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async () => null,
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${'a'.repeat(64)}` },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get('set-cookie')).toBeNull();
+    await close();
+  });
+
   it('rejects whitespace-only session cookie without touching the session repo', async () => {
     // Probe with a whitespace-only token: must short-circuit before any DB
     // lookup and return the same envelope as a missing cookie. Otherwise an
