@@ -72,6 +72,13 @@ describe('dispatch — error envelopes', () => {
     const b = await fetch(`${harness.baseUrl}/health`);
     expect(a.headers.get('x-request-id')).not.toBe(b.headers.get('x-request-id'));
   });
+
+  it('emits Cache-Control: no-store on JSON responses', async () => {
+    const ok = await fetch(`${harness.baseUrl}/health`);
+    expect(ok.headers.get('cache-control')).toBe('no-store');
+    const notFound = await fetch(`${harness.baseUrl}/nope`);
+    expect(notFound.headers.get('cache-control')).toBe('no-store');
+  });
 });
 
 // ── CSRF protection ───────────────────────────────────────────────────────────
