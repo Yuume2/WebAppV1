@@ -130,6 +130,7 @@ export function Workspace({
     unreadByWindow[w.id] = seenAt == null ? true : messageTime > seenAt;
   }
   const totalUnread = Object.values(unreadByWindow).filter(Boolean).length;
+  const anyPending = Object.values(pendingByWindow).some(Boolean);
 
   const previousTitleRef = useRef<string | null>(null);
   useEffect(() => {
@@ -141,8 +142,9 @@ export function Workspace({
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const base = `${projectName} · ${activeWorkspace.name} — AI Workspace V1`;
-    document.title = totalUnread > 0 ? `(${totalUnread}) ${base}` : base;
-  }, [totalUnread, projectName, activeWorkspace.name]);
+    const prefix = totalUnread > 0 ? `(${totalUnread}) ` : anyPending ? '… ' : '';
+    document.title = `${prefix}${base}`;
+  }, [totalUnread, anyPending, projectName, activeWorkspace.name]);
   useEffect(() => {
     return () => {
       if (typeof document === 'undefined') return;
