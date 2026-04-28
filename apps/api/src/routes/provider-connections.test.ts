@@ -238,16 +238,6 @@ describe('PUT /v1/provider-connections/:provider — authenticated', () => {
     await close();
   });
 
-  it('returns 400 for unsupported but valid provider (perplexity)', async () => {
-    const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
-    const res = await put(baseUrl, '/v1/provider-connections/perplexity', { apiKey: 'pplx-test' });
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as ApiResponse<never>;
-    if (body.ok) throw new Error('expected error');
-    expect(body.error.code).toBe('validation_error');
-    await close();
-  });
-
   it('returns 400 for unknown provider param', async () => {
     const { baseUrl, close } = await startServer(makeDeps({ resolveUser: async () => USER_1 }));
     const res = await put(baseUrl, '/v1/provider-connections/gpt99', { apiKey: 'sk-test' });

@@ -32,7 +32,7 @@ function mockMessage(chatWindowId: string, overrides: Partial<{
   };
 }
 
-function mockChatWindow(provider: AIProvider = 'perplexity', model = 'sonar') {
+function mockChatWindow(provider: AIProvider = 'openai', model = 'gpt-4o-mini') {
   return {
     id:          'cw-1',
     workspaceId: 'ws-1',
@@ -59,8 +59,9 @@ function makeDeps(overrides: Partial<MessagesDeps> = {}): MessagesDeps {
     persistMessagePair: async (chatWindowId, _userId, userContent, assistantContent) =>
       mockPair(chatWindowId, userContent, assistantContent),
     findMessage:        async () => null,
-    // Default: unsupported-provider window so existing tests bypass generation path.
-    findChatWindow:     async () => mockChatWindow('perplexity'),
+    // Default: openai window. Tests that exercise the user-role generation path
+    // override this and getApiKey/generate explicitly.
+    findChatWindow:     async () => mockChatWindow('openai'),
     getApiKey:          async () => null,
     generate:           async () => { throw new Error('should not be called in this test'); },
     generateStream:     async function* () { throw new Error('should not be called in this test'); },
@@ -186,25 +187,6 @@ describe('POST /v1/messages — standard path', () => {
     expect(body.data.content).toBe('Replying manually');
     expect(body.data.role).toBe('assistant');
     expect(res.headers.get('location')).toMatch(/\/v1\/messages\//);
-    await close();
-  });
-
-  it('creates user message in unsupported-provider window (perplexity), returns single message', async () => {
-    const { baseUrl, close } = await startServer(makeDeps({
-      resolveUser:    async () => USER_1,
-      findChatWindow: async () => mockChatWindow('perplexity'),
-      createMessage:  async (chatWindowId, _userId, role, content) =>
-        mockMessage(chatWindowId, { id: 'new-msg', role, content }),
-    }));
-    const res = await post(baseUrl, '/v1/messages', {
-      chatWindowId: 'cw-1', role: 'user', content: 'Hello',
-    });
-    expect(res.status).toBe(201);
-    const body = (await res.json()) as ApiResponse<Message>;
-    if (!body.ok) throw new Error('expected ok');
-    // Single message returned — no assistantMessage field
-    expect(body.data.content).toBe('Hello');
-    expect('assistantMessage' in body.data).toBe(false);
     await close();
   });
 
@@ -663,19 +645,6 @@ describe('POST /v1/messages/stream — authenticated', () => {
     const { baseUrl, close } = await startServer(makeDeps());
     const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hi' });
     expect(res.status).toBe(401);
-    await close();
-  });
-
-  it('returns 412 provider_not_configured when chat-window provider is unsupported (perplexity)', async () => {
-    const { baseUrl, close } = await startServer(makeDeps({
-      resolveUser:    async () => USER_1,
-      findChatWindow: async () => mockChatWindow('perplexity'),
-    }));
-    const res = await post(baseUrl, '/v1/messages/stream', { chatWindowId: 'cw-1', role: 'user', content: 'hi' });
-    expect(res.status).toBe(412);
-    const body = (await res.json()) as ApiResponse<never>;
-    if (body.ok) throw new Error('expected error');
-    expect(body.error.code).toBe('provider_not_configured');
     await close();
   });
 

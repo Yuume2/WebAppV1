@@ -6,59 +6,76 @@ import type {
 } from './provider.interface.js';
 import { ProviderError } from './provider.interface.js';
 
+// Perplexity is OpenAI-compatible at the chat-completions schema level.
+// We post the same shape and parse the same response, with a different base URL
+// and model namespace ('sonar', 'sonar-pro', ...).
+
+const PERPLEXITY_CHAT_URL = 'https://api.perplexity.ai/chat/completions';
+
+// Used by verifyPerplexityKey: smallest possible completion that the API will
+// accept just to confirm the bearer token is valid. Non-streaming, max_tokens=1.
+const VERIFY_MODEL = 'sonar';
+
 // ── Key verification ──────────────────────────────────────────────────────────
 
-export type OpenAIVerifyResult = 'ok' | 'unauthorized' | 'provider_error';
+export type PerplexityVerifyResult = 'ok' | 'unauthorized' | 'provider_error';
 
-const OPENAI_MODELS_URL = 'https://api.openai.com/v1/models';
 const VERIFY_TIMEOUT_MS = 10_000;
 
-export async function verifyOpenAIKey(apiKey: string): Promise<OpenAIVerifyResult> {
+export async function verifyPerplexityKey(apiKey: string): Promise<PerplexityVerifyResult> {
   let res: Response;
   try {
-    res = await fetch(OPENAI_MODELS_URL, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${apiKey}` },
+    res = await fetch(PERPLEXITY_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: VERIFY_MODEL,
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 1,
+        stream: false,
+      }),
       signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
     });
   } catch {
-    // network failure or abort — treat as transient, surface to caller as 502.
     return 'provider_error';
   }
-  if (res.status === 200) return 'ok';
-  if (res.status === 401) return 'unauthorized';
+  if (res.ok)              return 'ok';
+  if (res.status === 401)  return 'unauthorized';
+  if (res.status === 403)  return 'unauthorized';
   return 'provider_error';
 }
 
-// ── OpenAI wire types (subset of actual response) ─────────────────────────────
+// ── Wire types ────────────────────────────────────────────────────────────────
 
-interface OpenAIUsage {
-  prompt_tokens: number;
-  completion_tokens: number;
-  total_tokens: number;
+interface PerplexityUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
 }
 
-interface OpenAIMessage {
+interface PerplexityMessage {
   role: string;
   content: string | null;
 }
 
-interface OpenAIChoice {
-  message: OpenAIMessage;
-  finish_reason: string;
+interface PerplexityChoice {
+  message?: PerplexityMessage;
+  delta?:   { content?: string };
+  finish_reason?: string;
 }
 
-interface OpenAIResponse {
+interface PerplexityResponse {
   model: string;
-  choices: OpenAIChoice[];
-  usage: OpenAIUsage;
+  choices: PerplexityChoice[];
+  usage:   PerplexityUsage;
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────────
 
-const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions';
-
-export function createOpenAIClient(apiKey: string): ProviderClient {
+export function createPerplexityClient(apiKey: string): ProviderClient {
   return {
     async createChatCompletion(
       messages: ChatMessage[],
@@ -66,50 +83,41 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
     ): Promise<ChatCompletionResult> {
       let res: Response;
       try {
-        res = await fetch(OPENAI_CHAT_URL, {
+        res = await fetch(PERPLEXITY_CHAT_URL, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type':  'application/json',
             'Authorization': `Bearer ${apiKey}`,
           },
           body: JSON.stringify({ model, messages, stream: false }),
         });
       } catch (err) {
         throw new ProviderError(
-          `OpenAI request failed: ${(err as Error).message}`,
+          `Perplexity request failed: ${(err as Error).message}`,
           'api_error',
-          'openai',
+          'perplexity',
         );
       }
 
       if (!res.ok) {
-        // Attempt to surface the API error message without leaking the key.
         let detail = `HTTP ${res.status}`;
         try {
           const body = (await res.json()) as { error?: { message?: string } };
-          if (typeof body?.error?.message === 'string') {
-            detail = body.error.message;
-          }
-        } catch {
-          // ignore parse failure
-        }
-        throw new ProviderError(
-          `OpenAI API error: ${detail}`,
-          'api_error',
-          'openai',
-        );
+          if (typeof body?.error?.message === 'string') detail = body.error.message;
+        } catch { /* ignore */ }
+        throw new ProviderError(`Perplexity API error: ${detail}`, 'api_error', 'perplexity');
       }
 
-      let data: OpenAIResponse;
+      let data: PerplexityResponse;
       try {
-        data = (await res.json()) as OpenAIResponse;
+        data = (await res.json()) as PerplexityResponse;
       } catch {
-        throw new ProviderError('Failed to parse OpenAI response', 'invalid_response', 'openai');
+        throw new ProviderError('Failed to parse Perplexity response', 'invalid_response', 'perplexity');
       }
 
       const content = data.choices?.[0]?.message?.content;
-      if (typeof content !== 'string') {
-        throw new ProviderError('OpenAI response missing content', 'invalid_response', 'openai');
+      if (typeof content !== 'string' || content.length === 0) {
+        throw new ProviderError('Perplexity response missing content', 'invalid_response', 'perplexity');
       }
 
       return {
@@ -129,25 +137,20 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
     ): AsyncIterable<ChatCompletionStreamChunk> {
       let res: Response;
       try {
-        res = await fetch(OPENAI_CHAT_URL, {
+        res = await fetch(PERPLEXITY_CHAT_URL, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type':  'application/json',
             'Authorization': `Bearer ${apiKey}`,
-            'Accept': 'text/event-stream',
+            'Accept':        'text/event-stream',
           },
-          body: JSON.stringify({
-            model,
-            messages,
-            stream: true,
-            stream_options: { include_usage: true },
-          }),
+          body: JSON.stringify({ model, messages, stream: true }),
         });
       } catch (err) {
         throw new ProviderError(
-          `OpenAI request failed: ${(err as Error).message}`,
+          `Perplexity request failed: ${(err as Error).message}`,
           'api_error',
-          'openai',
+          'perplexity',
         );
       }
 
@@ -157,7 +160,7 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
           const body = (await res.json()) as { error?: { message?: string } };
           if (typeof body?.error?.message === 'string') detail = body.error.message;
         } catch { /* ignore */ }
-        throw new ProviderError(`OpenAI API error: ${detail}`, 'api_error', 'openai');
+        throw new ProviderError(`Perplexity API error: ${detail}`, 'api_error', 'perplexity');
       }
 
       const decoder = new TextDecoder();
@@ -180,23 +183,18 @@ export function createOpenAIClient(apiKey: string): ProviderClient {
             const payload = line.slice(5).trim();
             if (payload === '[DONE]') continue;
 
-            let event: {
-              model?: string;
-              choices?: Array<{ delta?: { content?: string } }>;
-              usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-            };
+            let event: PerplexityResponse;
             try {
-              event = JSON.parse(payload);
+              event = JSON.parse(payload) as PerplexityResponse;
             } catch {
-              throw new ProviderError('Failed to parse OpenAI stream chunk', 'invalid_response', 'openai');
+              throw new ProviderError('Failed to parse Perplexity stream chunk', 'invalid_response', 'perplexity');
             }
-
             if (event.model) finalModel = event.model;
             if (event.usage) {
               usage = {
-                promptTokens:     event.usage.prompt_tokens     ?? 0,
-                completionTokens: event.usage.completion_tokens ?? 0,
-                totalTokens:      event.usage.total_tokens      ?? 0,
+                promptTokens:     event.usage.prompt_tokens     ?? usage.promptTokens,
+                completionTokens: event.usage.completion_tokens ?? usage.completionTokens,
+                totalTokens:      event.usage.total_tokens      ?? usage.totalTokens,
               };
             }
             const delta = event.choices?.[0]?.delta?.content;

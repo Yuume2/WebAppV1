@@ -131,6 +131,7 @@ export type ApiErrorResponse       = Extract<ApiResponse<never>, { ok: false }>;
 
 export const API_HEALTH_PATH       = '/health' as const;
 export const API_VERSION_PATH      = '/v1/version' as const;
+export const API_HEALTH_DEEP_PATH  = '/v1/health/deep' as const;
 export const API_PROJECTS_PATH     = '/v1/projects' as const;
 export const API_WORKSPACES_PATH   = '/v1/workspaces' as const;
 export const API_CHAT_WINDOWS_PATH = '/v1/chat-windows' as const;
