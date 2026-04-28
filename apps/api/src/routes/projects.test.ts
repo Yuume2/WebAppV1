@@ -158,6 +158,10 @@ describe('POST /v1/projects', () => {
     expect(body.ok).toBe(false);
     if (body.ok) throw new Error('expected error envelope');
     expect(body.error.code).toBe('unsupported_media_type');
+    // Even pipeline-level transport errors must ride no-store. A cached
+    // 415 would lock a client into 'unsupported' even after the wrong
+    // content-type was fixed in the deploy that follows.
+    expect(res.headers.get('cache-control')).toBe('no-store');
   });
 
   it('returns 413 for oversized body', async () => {
@@ -172,6 +176,9 @@ describe('POST /v1/projects', () => {
     expect(body.ok).toBe(false);
     if (body.ok) throw new Error('expected error envelope');
     expect(body.error.code).toBe('payload_too_large');
+    // Same logic as 415: a cached 413 would block a legit smaller-payload
+    // retry from the same caller. Pin no-store explicitly.
+    expect(res.headers.get('cache-control')).toBe('no-store');
   });
 
   it('invalid_body envelope carries a fields list with the offending paths', async () => {

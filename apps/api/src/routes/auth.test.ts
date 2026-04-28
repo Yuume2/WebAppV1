@@ -591,6 +591,10 @@ describe('GET /v1/auth/me', () => {
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('unauthenticated');
+    // 401 must ride no-store. A cached 401 would tell a freshly-logged-in
+    // user 'you're not logged in' for the duration of the cache TTL —
+    // worst-possible UX for the auth flow. Pin explicitly.
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 
@@ -600,6 +604,7 @@ describe('GET /v1/auth/me', () => {
       headers: { Cookie: `${SESSION_COOKIE_NAME}=${'b'.repeat(64)}` },
     });
     expect(res.status).toBe(401);
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 

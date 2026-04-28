@@ -94,6 +94,17 @@ describe('dispatch — error envelopes', () => {
     expect(notFound.headers.get('cache-control')).toBe('no-store');
   });
 
+  it('emits Cache-Control: no-store on 405 method-not-allowed', async () => {
+    // A cached 405 would falsely report 'method not allowed' even after
+    // a deploy that added the missing handler. Pin the no-store on the
+    // handleRequest 405 short-circuit (which uses writeJson under the
+    // hood, but a future direct res.writeHead(405) refactor could skip
+    // it).
+    const res = await fetch(`${harness.baseUrl}/health`, { method: 'DELETE' });
+    expect(res.status).toBe(405);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+  });
+
   it('emits Allow header on 405 listing the methods the path actually supports', async () => {
     // /health is a GET-only route; a DELETE must surface Allow: GET (RFC 7231).
     const res = await fetch(`${harness.baseUrl}/health`, { method: 'DELETE' });
@@ -158,6 +169,7 @@ describe('CSRF protection — explicit origin', () => {
     expect(res.headers.get('x-frame-options')).toBe('DENY');
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
     expect(res.headers.get('x-request-id')).toBeTruthy();
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 
