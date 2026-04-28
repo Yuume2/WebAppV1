@@ -297,6 +297,47 @@ describe('GET /v1/auth/me', () => {
     await close();
   });
 
+  it('expired-session cleanup is fire-and-forget (response does not wait for the delete)', async () => {
+    // The opportunistic delete must not add latency to the 401 — the user is
+    // bouncing through an unauth response and shouldn't be slowed down by
+    // hygiene work. Use a deleteSession that never resolves and assert the
+    // 401 still returns within a tight budget.
+    const EXPIRED_TOKEN = '7'.repeat(64);
+    const EXPIRED_HASH  = hashSessionToken(EXPIRED_TOKEN);
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async (h) => h === EXPIRED_HASH
+        ? { id: h, userId: 'user-1', expiresAt: new Date(Date.now() - 60_000), createdAt: new Date() }
+        : null,
+      deleteSession: () => new Promise<void>(() => { /* never resolves */ }),
+    }));
+    const startedAt = Date.now();
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${EXPIRED_TOKEN}` },
+    });
+    expect(res.status).toBe(401);
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    await close();
+  });
+
+  it('expired-session cleanup swallows delete errors (no crash on hygiene failure)', async () => {
+    // The catch in meController is .catch(() => {}). A throwing delete must
+    // not affect the response or surface as an unhandled rejection that
+    // could crash the process.
+    const EXPIRED_TOKEN = '8'.repeat(64);
+    const EXPIRED_HASH  = hashSessionToken(EXPIRED_TOKEN);
+    const { baseUrl, close } = await startServer(makeDeps({
+      findSessionByTokenHash: async (h) => h === EXPIRED_HASH
+        ? { id: h, userId: 'user-1', expiresAt: new Date(Date.now() - 60_000), createdAt: new Date() }
+        : null,
+      deleteSession: async () => { throw new Error('db down on cleanup'); },
+    }));
+    const res = await fetch(`${baseUrl}/v1/auth/me`, {
+      headers: { Cookie: `${SESSION_COOKIE_NAME}=${EXPIRED_TOKEN}` },
+    });
+    expect(res.status).toBe(401);
+    await close();
+  });
+
   it('does NOT call deleteSession when token simply does not match', async () => {
     const calls: string[] = [];
     const { baseUrl, close } = await startServer(makeDeps({
