@@ -56,6 +56,24 @@ describe('GET /v1/health/deep', () => {
     const details = body.error.details as { db: DbStatus; dbLatencyMs: number | null };
     expect(details.db).toBe('down');
     expect(details.dbLatencyMs).toBe(4_999);
+    // 503 from the deep health probe must NOT be cached. A CDN that
+    // briefly cached a 503 would extend the downtime window for every
+    // subsequent client. Pin no-store on this path explicitly because
+    // health responses are an obvious caching candidate for a misconfigured
+    // proxy.
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+    await close();
+  });
+
+  it('returns 200 with cache-control: no-store on the healthy path too', async () => {
+    // Same logic — health checks are a poll target, not a content endpoint.
+    // Even the success response must not be cacheable; otherwise a stale
+    // 'ok' would mask a real outage to anyone behind the cache.
+    const { baseUrl, close } = await startServer(makeDeps('ok'));
+    const res = await fetch(`${baseUrl}/v1/health/deep`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 });
