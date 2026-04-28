@@ -20,6 +20,7 @@ const GROUPS: ShortcutGroup[] = [
       { keys: ['⌘', '/'], description: 'Show this help (also works while typing; Ctrl+/ on Linux/Win)' },
       { keys: ['Esc'], description: 'Close menus, modals, search bar, this help  ·  In composer: clear draft' },
       { keys: ['⌘', 'K'], description: 'Open command palette — switch chat window by title (Ctrl+K on Linux/Win)' },
+      { keys: ['⌥', '↑/↓'], description: 'Cycle active chat window up/down (Alt+↑ / Alt+↓)' },
     ],
   },
   {

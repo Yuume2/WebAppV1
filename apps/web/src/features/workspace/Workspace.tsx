@@ -115,6 +115,28 @@ export function Workspace({
     lastSeenRef.current[state.activeId] = Date.now();
   }, [state.activeId, activeLastActivity]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      const target = e.target;
+      const typing = target instanceof HTMLElement
+        && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (typing) return;
+      const ids = state.visibleWindows.map((w) => w.id);
+      if (ids.length === 0) return;
+      e.preventDefault();
+      const idx = state.activeId ? ids.indexOf(state.activeId) : -1;
+      const dir = e.key === 'ArrowDown' ? 1 : -1;
+      const nextIdx = idx < 0 ? 0 : (idx + dir + ids.length) % ids.length;
+      const target2 = ids[nextIdx];
+      if (target2) state.focus(target2);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [state.visibleWindows, state.activeId, state.focus]);
+
   const unreadByWindow: Record<string, boolean> = {};
   for (const w of [...state.visibleWindows, ...state.closedWindows]) {
     const ts = lastAssistantByWindow[w.id];
