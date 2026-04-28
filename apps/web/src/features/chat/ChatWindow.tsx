@@ -74,6 +74,14 @@ export function ChatWindow({
     if (stickyRef.current) el.scrollTop = el.scrollHeight;
   }, [messagesSignature]);
 
+  useLayoutEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    const next = Math.min(ta.scrollHeight, 160);
+    ta.style.height = `${Math.max(36, next)}px`;
+  }, [draft]);
+
   const commitRename = () => {
     const trimmed = titleDraft.trim();
     if (trimmed && trimmed !== title) onRename?.(id, trimmed);
