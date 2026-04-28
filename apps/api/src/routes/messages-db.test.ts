@@ -383,6 +383,12 @@ describe('POST /v1/messages — openai generation path', () => {
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('provider_not_configured');
     expect(body.error.message).toContain('openai');
+    // 412 is a setup/contract error — must ride the standard pipeline
+    // headers so an oncall can correlate via X-Request-Id and so the
+    // response is never cached.
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
     await close();
   });
 
