@@ -457,6 +457,28 @@ describe('POST /v1/auth/login', () => {
     await close();
   });
 
+  it('500 from createSession crash emits no Set-Cookie + does not reset the rate-limit bucket', async () => {
+    // A login that authenticated correctly but crashed mid-session-create
+    // must NOT ship a cookie (no DB-backed session means a 'logged in'
+    // indicator that fails immediately). Also: the rate-limit reset only
+    // fires AFTER createSession succeeds, so a half-failure must keep the
+    // bucket counted — otherwise an attacker who can crash createSession
+    // (e.g. via a transient DB hiccup) gets to retry without paying the
+    // brute-force tax.
+    const okHash = await hashPassword('rightpw');
+    let resetCalls = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async () => mockUser({ passwordHash: okHash }),
+      createSession:   async () => { throw new Error('session-create-boom'); },
+      resetRateLimit:  () => { resetCalls++; },
+    }));
+    const res = await post(baseUrl, '/v1/auth/login', { email: 'test@example.com', password: 'rightpw' });
+    expect(res.status).toBe(500);
+    expect(res.headers.get('set-cookie')).toBeNull();
+    expect(resetCalls).toBe(0);
+    await close();
+  });
+
   it('returns the same code AND the same message string for unknown email vs wrong password', async () => {
     // The whole point of the unified 'Invalid email or password' string is to
     // be impossible to distinguish from the caller's POV. If a future
