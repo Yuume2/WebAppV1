@@ -47,6 +47,7 @@ export interface AuthDeps {
   findSessionByTokenHash: (tokenHash: string) => Promise<DbSession | null>;
   deleteSession:   (tokenHash: string) => Promise<void>;
   checkRateLimit:  (key: string) => RateLimitResult;
+  resetRateLimit:  (key: string) => void;
 }
 
 // 10 attempts per IP per 15 minutes for both signup and login.
@@ -62,6 +63,7 @@ export function makeAuthDeps(db: Db): AuthDeps {
     findSessionByTokenHash: (tokenHash)                    => sessionsRepo.findSessionByTokenHash(db, tokenHash),
     deleteSession:          (tokenHash)                    => sessionsRepo.deleteSession(db, tokenHash),
     checkRateLimit:         (key)                          => authLimiter.check(key),
+    resetRateLimit:         (key)                          => authLimiter.reset(key),
   };
 }
 
@@ -120,6 +122,10 @@ export async function signupController(ctx: RequestContext, deps: AuthDeps): Pro
   const tokenHash = hashSessionToken(token);
   await deps.createSession(tokenHash, user.id, sessionExpiresAt());
 
+  // Successful signup → clear the bucket so a legit user who fat-fingered
+  // earlier attempts is not still inside the brute-force window.
+  deps.resetRateLimit(getClientIp(ctx.req));
+
   return { httpStatus: 201, body: { ok: true, data: toSafeUser(user) }, headers: cookieHeader(token) };
 }
 
@@ -143,6 +149,10 @@ export async function loginController(ctx: RequestContext, deps: AuthDeps): Prom
   const token     = generateSessionToken();
   const tokenHash = hashSessionToken(token);
   await deps.createSession(tokenHash, user.id, sessionExpiresAt());
+
+  // Successful login → clear the bucket so a legit user who fat-fingered
+  // their password is not still inside the brute-force window.
+  deps.resetRateLimit(getClientIp(ctx.req));
 
   return { httpStatus: 200, body: { ok: true, data: toSafeUser(user) }, headers: cookieHeader(token) };
 }

@@ -48,6 +48,7 @@ function makeDeps(overrides: Partial<AuthDeps> = {}): AuthDeps {
     findSessionByTokenHash: async () => null,
     deleteSession:          async () => {},
     checkRateLimit:         () => ({ ok: true, retryAfterSecs: 0 }),
+    resetRateLimit:         () => {},
     ...overrides,
   };
 }
@@ -368,6 +369,44 @@ describe('rate limiting — login', () => {
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('rate_limited');
     expect(res.headers.get('retry-after')).toBe('120');
+    await close();
+  });
+
+  it('resets the bucket after a successful login (legit user is not penalised)', async () => {
+    const realHash = await hashPassword('validpassword');
+    const resetCalls: string[] = [];
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async () => mockUser({ passwordHash: realHash }),
+      resetRateLimit:  (key) => { resetCalls.push(key); },
+    }));
+    const res = await post(baseUrl, '/v1/auth/login', { email: 'test@example.com', password: 'validpassword' });
+    expect(res.status).toBe(200);
+    expect(resetCalls).toHaveLength(1);
+    await close();
+  });
+
+  it('does NOT reset the bucket after a failed login (brute-force window stays)', async () => {
+    const resetCalls: string[] = [];
+    const { baseUrl, close } = await startServer(makeDeps({
+      findUserByEmail: async () => null,
+      resetRateLimit:  (key) => { resetCalls.push(key); },
+    }));
+    const res = await post(baseUrl, '/v1/auth/login', { email: 'no@one.com', password: 'wrong' });
+    expect(res.status).toBe(401);
+    expect(resetCalls).toHaveLength(0);
+    await close();
+  });
+});
+
+describe('rate limiting — signup', () => {
+  it('resets the bucket after a successful signup', async () => {
+    const resetCalls: string[] = [];
+    const { baseUrl, close } = await startServer(makeDeps({
+      resetRateLimit: (key) => { resetCalls.push(key); },
+    }));
+    const res = await post(baseUrl, '/v1/auth/signup', { email: 'fresh@example.com', password: 'password123' });
+    expect(res.status).toBe(201);
+    expect(resetCalls).toHaveLength(1);
     await close();
   });
 });
