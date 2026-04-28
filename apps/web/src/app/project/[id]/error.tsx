@@ -18,7 +18,7 @@ export default function ProjectError({
 
   return (
     <main style={pageStyle} role="alert">
-      <h1 style={{ margin: 0, fontSize: '1.25rem' }}>Couldn't load this project</h1>
+      <h1 style={{ margin: 0, fontSize: '1.25rem' }}>Couldn&apos;t load this project</h1>
       <p style={{ margin: 0, color: '#c9c9d2', fontSize: '0.9rem' }}>
         {error.message || 'Unknown error'}
       </p>

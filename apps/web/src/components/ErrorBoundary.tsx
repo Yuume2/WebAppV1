@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface ErrorBoundaryProps {
@@ -49,9 +50,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           >
             Reload page
           </button>
-          <a href="/" style={ghostButtonStyle}>
+          <Link href="/" style={ghostButtonStyle}>
             Go home
-          </a>
+          </Link>
         </div>
       </div>
     );
