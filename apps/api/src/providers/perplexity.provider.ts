@@ -20,8 +20,9 @@ const VERIFY_MODEL = 'sonar';
 
 export type PerplexityVerifyResult = 'ok' | 'unauthorized' | 'provider_error';
 
-const VERIFY_TIMEOUT_MS  = 10_000;
-const RUNTIME_TIMEOUT_MS = 60_000;
+const VERIFY_TIMEOUT_MS         = 10_000;
+const RUNTIME_TIMEOUT_MS        = 60_000;
+const STREAM_CONNECT_TIMEOUT_MS = 30_000;
 
 export async function verifyPerplexityKey(apiKey: string): Promise<PerplexityVerifyResult> {
   let res: Response;
@@ -137,6 +138,8 @@ export function createPerplexityClient(apiKey: string): ProviderClient {
       messages: ChatMessage[],
       model: string,
     ): AsyncIterable<ChatCompletionStreamChunk> {
+      const connectController = new AbortController();
+      const connectTimer = setTimeout(() => connectController.abort(), STREAM_CONNECT_TIMEOUT_MS);
       let res: Response;
       try {
         res = await fetch(PERPLEXITY_CHAT_URL, {
@@ -147,6 +150,7 @@ export function createPerplexityClient(apiKey: string): ProviderClient {
             'Accept':        'text/event-stream',
           },
           body: JSON.stringify({ model, messages, stream: true }),
+          signal: connectController.signal,
         });
       } catch (err) {
         throw new ProviderError(
@@ -154,6 +158,8 @@ export function createPerplexityClient(apiKey: string): ProviderClient {
           'api_error',
           'perplexity',
         );
+      } finally {
+        clearTimeout(connectTimer);
       }
 
       if (!res.ok || !res.body) {

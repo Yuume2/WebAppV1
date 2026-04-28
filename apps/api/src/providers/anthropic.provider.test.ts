@@ -149,4 +149,16 @@ describe('createAnthropicClient.createChatCompletionStream', () => {
     const it = createAnthropicClient(API_KEY).createChatCompletionStream(MESSAGES, MODEL)[Symbol.asyncIterator]();
     await expect(it.next()).rejects.toBeInstanceOf(ProviderError);
   });
+
+  it('passes a connect-only AbortSignal to fetch', async () => {
+    vi.mocked(fetch).mockResolvedValue(sse([
+      `data: ${JSON.stringify({ type: 'message_stop' })}\n\n`,
+    ]));
+    const chunks = [];
+    for await (const c of createAnthropicClient(API_KEY).createChatCompletionStream(MESSAGES, MODEL)) {
+      chunks.push(c);
+    }
+    const init = vi.mocked(fetch).mock.calls[0]![1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
 });
