@@ -399,18 +399,23 @@ export function ChatWindow({
     .map((m) => m.content)
     .reverse();
   const historyIdxRef = useRef<number>(-1);
+  const [historyIdx, setHistoryIdx] = useState<number>(-1);
+  const setHistoryIdxBoth = (n: number) => {
+    historyIdxRef.current = n;
+    setHistoryIdx(n);
+  };
 
   const onComposerKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
-      historyIdxRef.current = -1;
+      setHistoryIdxBoth(-1);
       return;
     }
     if (e.key === 'Escape' && draft.length > 0) {
       e.preventDefault();
       setDraft('');
-      historyIdxRef.current = -1;
+      setHistoryIdxBoth(-1);
       return;
     }
     if (e.key === 'ArrowUp' && userPromptHistory.length > 0) {
@@ -428,7 +433,7 @@ export function ChatWindow({
       if ((draft.length === 0 || cyclingActive) && (isAtStart || onFirstLine)) {
         e.preventDefault();
         const nextIdx = Math.min(historyIdxRef.current + 1, userPromptHistory.length - 1);
-        historyIdxRef.current = nextIdx;
+        setHistoryIdxBoth(nextIdx);
         setDraft(userPromptHistory[nextIdx] ?? '');
       }
       return;
@@ -436,7 +441,7 @@ export function ChatWindow({
     if (e.key === 'ArrowDown' && historyIdxRef.current >= 0) {
       e.preventDefault();
       const nextIdx = historyIdxRef.current - 1;
-      historyIdxRef.current = nextIdx;
+      setHistoryIdxBoth(nextIdx);
       setDraft(nextIdx < 0 ? '' : userPromptHistory[nextIdx] ?? '');
       return;
     }
@@ -1021,6 +1026,26 @@ export function ChatWindow({
         </div>
       ) : null}
 
+      {historyIdx >= 0 && userPromptHistory.length > 0 ? (
+        <div
+          aria-live="polite"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '4px 0.85rem',
+            background: '#15203b',
+            borderTop: '1px solid #2a2a30',
+            color: '#9aa6ff',
+            fontSize: '0.7rem',
+          }}
+        >
+          <span aria-hidden>↑</span>
+          <span>
+            Recalling prompt {Math.min(historyIdx + 1, userPromptHistory.length)} of {userPromptHistory.length} · ↓ to step back · Esc to clear
+          </span>
+        </div>
+      ) : null}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -1039,7 +1064,10 @@ export function ChatWindow({
           ref={textareaRef}
           value={draft}
           rows={1}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (historyIdxRef.current >= 0) setHistoryIdxBoth(-1);
+          }}
           onKeyDown={onComposerKeyDown}
           onFocus={() => onFocus?.(id)}
           placeholder={
