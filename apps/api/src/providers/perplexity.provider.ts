@@ -20,6 +20,8 @@ const VERIFY_MODEL = 'sonar';
 
 export type PerplexityVerifyResult = 'ok' | 'unauthorized' | 'provider_error';
 
+const VERIFY_TIMEOUT_MS = 10_000;
+
 export async function verifyPerplexityKey(apiKey: string): Promise<PerplexityVerifyResult> {
   let res: Response;
   try {
@@ -35,6 +37,7 @@ export async function verifyPerplexityKey(apiKey: string): Promise<PerplexityVer
         max_tokens: 1,
         stream: false,
       }),
+      signal: AbortSignal.timeout(VERIFY_TIMEOUT_MS),
     });
   } catch {
     return 'provider_error';

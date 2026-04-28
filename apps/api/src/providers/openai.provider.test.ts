@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createOpenAIClient } from './openai.provider.js';
+import { createOpenAIClient, verifyOpenAIKey } from './openai.provider.js';
 import { ProviderError } from './provider.interface.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -31,6 +31,33 @@ function openAIBody(content: string, model = MODEL) {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe('verifyOpenAIKey', () => {
+  beforeEach(() => { vi.stubGlobal('fetch', vi.fn()); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('returns ok on 200', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 200 }));
+    expect(await verifyOpenAIKey(API_KEY)).toBe('ok');
+  });
+
+  it('returns unauthorized on 401', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 401 }));
+    expect(await verifyOpenAIKey(API_KEY)).toBe('unauthorized');
+  });
+
+  it('returns provider_error on network failure', async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error('boom'));
+    expect(await verifyOpenAIKey(API_KEY)).toBe('provider_error');
+  });
+
+  it('passes an AbortSignal so the call cannot hang forever', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 200 }));
+    await verifyOpenAIKey(API_KEY);
+    const init = vi.mocked(fetch).mock.calls[0]![1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+});
 
 describe('createOpenAIClient', () => {
   beforeEach(() => {
