@@ -22,6 +22,7 @@ interface WorkspaceSidebarProps {
   activeId: string | null;
   lastActivityByWindow?: Record<string, string | undefined>;
   pendingByWindow?: Record<string, boolean>;
+  unreadByWindow?: Record<string, boolean>;
   onFocus: (id: string) => void;
   onClose: (id: string) => void;
   onReopen: (id: string) => void;
@@ -45,6 +46,7 @@ export function WorkspaceSidebar({
   activeId,
   lastActivityByWindow,
   pendingByWindow,
+  unreadByWindow,
   onFocus,
   onClose,
   onReopen,
@@ -176,6 +178,7 @@ export function WorkspaceSidebar({
               pinned={pinnedSet.has(w.id)}
               lastActivity={lastActivityByWindow?.[w.id]}
               pending={pendingByWindow?.[w.id]}
+              unread={unreadByWindow?.[w.id]}
               onClick={() => onFocus(w.id)}
               onAction={() => onClose(w.id)}
               actionLabel="×"
@@ -196,6 +199,7 @@ export function WorkspaceSidebar({
                 active={false}
                 muted
                 lastActivity={lastActivityByWindow?.[w.id]}
+                unread={unreadByWindow?.[w.id]}
                 onClick={() => onReopen(w.id)}
                 onAction={() => onReopen(w.id)}
                 actionLabel="↺"
@@ -660,13 +664,14 @@ interface WindowRowProps {
   pinned?: boolean;
   lastActivity?: string;
   pending?: boolean;
+  unread?: boolean;
   onClick: () => void;
   onAction: () => void;
   actionLabel: string;
   actionAria: string;
 }
 
-function WindowRow({ window, active, muted, pinned, lastActivity, pending, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
+function WindowRow({ window, active, muted, pinned, lastActivity, pending, unread, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
   const stamp = formatRelative(lastActivity ?? window.updatedAt ?? window.createdAt);
   const rowRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -740,6 +745,20 @@ function WindowRow({ window, active, muted, pinned, lastActivity, pending, onCli
             overflow: 'hidden',
           }}
         >
+          {unread ? (
+            <span
+              aria-label="Unread reply"
+              title="New reply since you last viewed this window"
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: '#9aa6ff',
+                boxShadow: '0 0 0 2px rgba(79,107,255,0.25)',
+                flexShrink: 0,
+              }}
+            />
+          ) : null}
           {pinned ? (
             <span
               aria-hidden
