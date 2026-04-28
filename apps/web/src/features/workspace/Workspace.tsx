@@ -8,6 +8,7 @@ import { useWorkspaceState } from '@/features/workspace/useWorkspaceState';
 import { useChatSessions } from '@/features/chat/useChatSessions';
 import { WorkspaceSidebar } from '@/features/workspace/WorkspaceSidebar';
 import { WorkspaceCanvas } from '@/features/workspace/WorkspaceCanvas';
+import { WorkspaceCommandPalette } from '@/features/workspace/WorkspaceCommandPalette';
 import { useToast } from '@/components/ToastHost';
 import type { ApiCallError } from '@/lib/api/client';
 
@@ -123,6 +124,13 @@ export function Workspace({
         onDelete={state.deleteWindow}
         onReset={state.reset}
         onCreate={state.createWindow}
+      />
+      <WorkspaceCommandPalette
+        visibleWindows={state.visibleWindows}
+        closedWindows={state.closedWindows}
+        activeId={state.activeId}
+        onFocus={state.focus}
+        onReopen={state.reopen}
       />
     </div>
   );

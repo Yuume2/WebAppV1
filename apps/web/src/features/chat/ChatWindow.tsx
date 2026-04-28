@@ -198,11 +198,17 @@ export function ChatWindow({
       if ((e.metaKey || e.ctrlKey) && (e.key === 'j' || e.key === 'J')) {
         e.preventDefault();
         textareaRef.current?.focus();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'e' || e.key === 'E') && onRename) {
+        e.preventDefault();
+        setTitleDraft(title);
+        setEditing(true);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active]);
+  }, [active, onRename, title]);
 
   const commitRename = () => {
     const trimmed = titleDraft.trim();
