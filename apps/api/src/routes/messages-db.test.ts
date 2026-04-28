@@ -164,6 +164,10 @@ describe('GET /v1/messages — authenticated', () => {
     if (!body.ok) throw new Error('expected ok');
     expect(body.data).toHaveLength(2);
     expect(body.data.map((m) => m.id)).toEqual(['msg-1', 'msg-2']);
+    // Per-user data — must not be cached. Messages are the highest-
+    // sensitivity surface of the API: a cached chat history broadcast
+    // would leak personal conversations across users.
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 });
@@ -593,6 +597,7 @@ describe('GET /v1/messages/:id — user isolation', () => {
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.id).toBe('own-msg');
     expect(body.data.role).toBe('user');
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 

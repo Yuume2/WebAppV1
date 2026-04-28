@@ -542,6 +542,14 @@ describe('GET /v1/auth/me', () => {
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.id).toBe(USER.id);
     expect('passwordHash' in body.data).toBe(false);
+    // CRITICAL: /me carries per-user identity. A cached /me at a shared
+    // proxy/CDN would return user A's identity to user B on the next cache
+    // hit — instant identity confusion. Pin Cache-Control: no-store
+    // explicitly on the success path; the fact that handleRequest
+    // currently inherits it from writeJson is not enough — a future
+    // explicit caching directive on this route would silently leak.
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('x-request-id')).toBeTruthy();
     await close();
   });
 
@@ -798,6 +806,10 @@ describe('GET /v1/me (alias of /v1/auth/me)', () => {
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.id).toBe(USER.id);
     expect('passwordHash' in body.data).toBe(false);
+    // Same caching catastrophe applies to the alias path — pin no-store
+    // explicitly so a refactor that special-cases the alias for caching
+    // can't ship without failing CI.
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 

@@ -147,6 +147,9 @@ describe('GET /v1/chat-windows — authenticated', () => {
     expect(body.data).toHaveLength(2);
     expect(body.data.map((c) => c.id)).toEqual(['cw-1', 'cw-2']);
     expect(body.data.every((c) => c.provider !== undefined && c.model !== undefined)).toBe(true);
+    // Per-user data must not be cached. Same caching catastrophe as
+    // /me, /v1/state and /v1/projects — pin no-store explicitly.
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 });
@@ -220,6 +223,7 @@ describe('GET /v1/chat-windows/:id — user isolation', () => {
     if (!body.ok) throw new Error('expected ok');
     expect(body.data.id).toBe('own-cw');
     expect(body.data.provider).toBe('openai');
+    expect(res.headers.get('cache-control')).toBe('no-store');
     await close();
   });
 

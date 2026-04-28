@@ -96,6 +96,14 @@ describe('GET /v1/state — authenticated returns user graph', () => {
     expect(body.data.messages).toHaveLength(1);
     expect(body.data.projects[0]!.id).toBe('p1');
     expect(body.data.workspaces[0]!.windowIds).toEqual(['cw1']);
+    // CRITICAL: /v1/state ships the FULL per-user entity graph
+    // (projects + workspaces + chat windows + messages). A cached
+    // response at a shared proxy would broadcast one user's entire
+    // workspace to whoever hits the cache next. Pin no-store
+    // explicitly — this is the single highest-blast-radius caching
+    // bug the system can have.
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('x-request-id')).toBeTruthy();
     await close();
   });
 });
