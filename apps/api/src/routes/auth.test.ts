@@ -155,6 +155,13 @@ describe('POST /v1/auth/signup', () => {
     const body = (await res.json()) as ApiResponse<never>;
     if (body.ok) throw new Error('expected error');
     expect(body.error.code).toBe('conflict');
+    // 409 must not be cacheable either — a cached 409 would falsely tell a
+    // legit signup attempt that their email is taken even after the
+    // conflicting account was deleted upstream.
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    // 409 must NOT emit a Set-Cookie either — there's no session to grant
+    // when the signup failed.
+    expect(res.headers.get('set-cookie')).toBeNull();
     await c();
   });
 });
