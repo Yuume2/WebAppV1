@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AIProvider } from '@webapp/types';
 import { WINDOW_PRESETS, type WindowPreset } from '@/lib/data';
 import { Button } from '@/components/Button';
@@ -21,6 +21,15 @@ export function NewWindowComposer({ onCreate }: NewWindowComposerProps) {
   const [title, setTitle] = useState('');
 
   const preset = WINDOW_PRESETS.find((p) => p.id === presetId) ?? WINDOW_PRESETS[0]!;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
 
   const submit = () => {
     onCreate(preset, title);
