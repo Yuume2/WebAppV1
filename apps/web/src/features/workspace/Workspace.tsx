@@ -31,14 +31,6 @@ export function Workspace({
 }: WorkspaceProps) {
   const toast = useToast();
   const router = useRouter();
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const previous = document.title;
-    document.title = `${projectName} · ${activeWorkspace.name} — AI Workspace V1`;
-    return () => {
-      document.title = previous;
-    };
-  }, [projectName, activeWorkspace.name]);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const initialWindowParam = searchParams?.get('window') ?? null;
@@ -92,12 +84,74 @@ export function Workspace({
 
   const lastActivityByWindow: Record<string, string | undefined> = {};
   const pendingByWindow: Record<string, boolean> = {};
+  const lastAssistantByWindow: Record<string, string | undefined> = {};
   for (const w of [...state.visibleWindows, ...state.closedWindows]) {
     const list = chat.getMessages(w.id);
     const last = list[list.length - 1];
     lastActivityByWindow[w.id] = last?.createdAt;
     pendingByWindow[w.id] = chat.isPending(w.id);
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const m = list[i];
+      if (!m) continue;
+      if (m.role === 'assistant' && (m.status ?? 'ok') === 'ok') {
+        lastAssistantByWindow[w.id] = m.createdAt;
+        break;
+      }
+    }
   }
+
+  const lastSeenRef = useRef<Record<string, number>>({});
+  const initSeenRef = useRef(false);
+  if (!initSeenRef.current) {
+    const now = Date.now();
+    for (const w of [...state.visibleWindows, ...state.closedWindows]) {
+      lastSeenRef.current[w.id] = now;
+    }
+    initSeenRef.current = true;
+  }
+  const activeLastActivity = state.activeId ? lastActivityByWindow[state.activeId] : undefined;
+  useEffect(() => {
+    if (!state.activeId) return;
+    lastSeenRef.current[state.activeId] = Date.now();
+  }, [state.activeId, activeLastActivity]);
+
+  const unreadByWindow: Record<string, boolean> = {};
+  for (const w of [...state.visibleWindows, ...state.closedWindows]) {
+    const ts = lastAssistantByWindow[w.id];
+    const seenAt = lastSeenRef.current[w.id];
+    if (!ts || w.id === state.activeId) {
+      unreadByWindow[w.id] = false;
+      continue;
+    }
+    const messageTime = Date.parse(ts);
+    if (Number.isNaN(messageTime)) {
+      unreadByWindow[w.id] = false;
+      continue;
+    }
+    unreadByWindow[w.id] = seenAt == null ? true : messageTime > seenAt;
+  }
+  const totalUnread = Object.values(unreadByWindow).filter(Boolean).length;
+  const anyPending = Object.values(pendingByWindow).some(Boolean);
+
+  const previousTitleRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (previousTitleRef.current == null) {
+      previousTitleRef.current = document.title;
+    }
+  }, []);
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const base = `${projectName} · ${activeWorkspace.name} — AI Workspace V1`;
+    const prefix = totalUnread > 0 ? `(${totalUnread}) ` : anyPending ? '… ' : '';
+    document.title = `${prefix}${base}`;
+  }, [totalUnread, anyPending, projectName, activeWorkspace.name]);
+  useEffect(() => {
+    return () => {
+      if (typeof document === 'undefined') return;
+      if (previousTitleRef.current != null) document.title = previousTitleRef.current;
+    };
+  }, []);
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -111,6 +165,7 @@ export function Workspace({
         activeId={state.activeId}
         lastActivityByWindow={lastActivityByWindow}
         pendingByWindow={pendingByWindow}
+        unreadByWindow={unreadByWindow}
         onFocus={state.focus}
         onClose={state.close}
         onReopen={state.reopen}
@@ -143,6 +198,7 @@ export function Workspace({
         visibleWindows={state.visibleWindows}
         closedWindows={state.closedWindows}
         activeId={state.activeId}
+        unreadByWindow={unreadByWindow}
         onFocus={state.focus}
         onReopen={state.reopen}
       />
