@@ -339,10 +339,14 @@ export function ChatWindow({
           }
         }
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === '.' && pending && onCancel) {
+        e.preventDefault();
+        onCancel(id);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, onRename, onClose, title, id]);
+  }, [active, onRename, onClose, onCancel, pending, title, id]);
 
   const commitRename = () => {
     const trimmed = titleDraft.trim();

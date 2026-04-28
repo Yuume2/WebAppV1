@@ -2,7 +2,7 @@
 
 import type { ChatWindow, Workspace as WorkspaceType } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useWorkspaceState } from '@/features/workspace/useWorkspaceState';
 import { useChatSessions } from '@/features/chat/useChatSessions';
@@ -141,22 +141,50 @@ export function Workspace({
   }, [visibleWindowsForKey, activeIdForKey, focusForKey]);
 
   const unreadByWindow: Record<string, boolean> = {};
+  const unreadCountByWindow: Record<string, number> = {};
   for (const w of [...state.visibleWindows, ...state.closedWindows]) {
     const ts = lastAssistantByWindow[w.id];
     const seenAt = lastSeenRef.current[w.id];
     if (!ts || w.id === state.activeId) {
       unreadByWindow[w.id] = false;
+      unreadCountByWindow[w.id] = 0;
       continue;
     }
     const messageTime = Date.parse(ts);
     if (Number.isNaN(messageTime)) {
       unreadByWindow[w.id] = false;
+      unreadCountByWindow[w.id] = 0;
       continue;
     }
-    unreadByWindow[w.id] = seenAt == null ? true : messageTime > seenAt;
+    const isUnread = seenAt == null ? true : messageTime > seenAt;
+    unreadByWindow[w.id] = isUnread;
+    if (!isUnread) {
+      unreadCountByWindow[w.id] = 0;
+      continue;
+    }
+    let count = 0;
+    const list = chat.getMessages(w.id);
+    for (const m of list) {
+      if (m.role !== 'assistant') continue;
+      if ((m.status ?? 'ok') !== 'ok') continue;
+      const t = Date.parse(m.createdAt);
+      if (Number.isNaN(t)) continue;
+      if (seenAt == null || t > seenAt) count += 1;
+    }
+    unreadCountByWindow[w.id] = count;
   }
   const totalUnread = Object.values(unreadByWindow).filter(Boolean).length;
+  const totalUnreadMessages = Object.values(unreadCountByWindow).reduce((a, b) => a + b, 0);
   const anyPending = Object.values(pendingByWindow).some(Boolean);
+
+  const [, forceTick] = useState(0);
+  const markAllAsRead = () => {
+    const now = Date.now();
+    for (const id of Object.keys(unreadByWindow)) {
+      if (unreadByWindow[id]) lastSeenRef.current[id] = now;
+    }
+    forceTick((n: number) => n + 1);
+  };
 
   const previousTitleRef = useRef<string | null>(null);
   useEffect(() => {
@@ -168,9 +196,16 @@ export function Workspace({
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const base = `${projectName} · ${activeWorkspace.name} — AI Workspace V1`;
-    const prefix = totalUnread > 0 ? `(${totalUnread}) ` : anyPending ? '… ' : '';
+    const prefix =
+      totalUnreadMessages > 0
+        ? `(${totalUnreadMessages}) `
+        : totalUnread > 0
+          ? `(${totalUnread}) `
+          : anyPending
+            ? '… '
+            : '';
     document.title = `${prefix}${base}`;
-  }, [totalUnread, anyPending, projectName, activeWorkspace.name]);
+  }, [totalUnread, totalUnreadMessages, anyPending, projectName, activeWorkspace.name]);
   useEffect(() => {
     return () => {
       if (typeof document === 'undefined') return;
@@ -191,6 +226,8 @@ export function Workspace({
         lastActivityByWindow={lastActivityByWindow}
         pendingByWindow={pendingByWindow}
         unreadByWindow={unreadByWindow}
+        unreadCountByWindow={unreadCountByWindow}
+        onMarkAllAsRead={totalUnread > 0 ? markAllAsRead : undefined}
         onFocus={state.focus}
         onClose={state.close}
         onReopen={state.reopen}
@@ -224,6 +261,7 @@ export function Workspace({
         closedWindows={state.closedWindows}
         activeId={state.activeId}
         unreadByWindow={unreadByWindow}
+        unreadCountByWindow={unreadCountByWindow}
         onFocus={state.focus}
         onReopen={state.reopen}
       />
