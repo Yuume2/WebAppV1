@@ -17,6 +17,7 @@ const GROUPS: ShortcutGroup[] = [
     label: 'Global',
     items: [
       { keys: ['?'], description: 'Show this help' },
+      { keys: ['⌘', '/'], description: 'Show this help (also works while typing; Ctrl+/ on Linux/Win)' },
       { keys: ['Esc'], description: 'Close menus, modals, search bar, this help' },
       { keys: ['⌘', 'K'], description: 'Open command palette — switch chat window by title (Ctrl+K on Linux/Win)' },
     ],
@@ -57,6 +58,11 @@ export function KeyboardShortcutsOverlay() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         if (isTypingTarget(e.target)) return;
+        e.preventDefault();
+        setOpen((v) => !v);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
         e.preventDefault();
         setOpen((v) => !v);
         return;
