@@ -634,6 +634,22 @@ describe('rate limiting — login', () => {
     await close();
   });
 
+  it('rate-limit gate fires BEFORE the user lookup (no enumeration via timing)', async () => {
+    // Pin the order of operations: when the bucket is full, login must
+    // short-circuit BEFORE calling findUserByEmail. Otherwise a probe
+    // could measure the response time difference between an existing-
+    // user-but-rate-limited path and a non-existing-user-rate-limited
+    // path, which is an account-enumeration oracle.
+    let userLookups = 0;
+    const { baseUrl, close } = await startServer(makeDeps({
+      checkRateLimit:  () => ({ ok: false, retryAfterSecs: 60 }),
+      findUserByEmail: async () => { userLookups++; return null; },
+    }));
+    await post(baseUrl, '/v1/auth/login', { email: 'a@b.com', password: 'whatever' });
+    expect(userLookups).toBe(0);
+    await close();
+  });
+
   it('resets the bucket after a successful login (legit user is not penalised)', async () => {
     const realHash = await hashPassword('validpassword');
     const resetCalls: string[] = [];
