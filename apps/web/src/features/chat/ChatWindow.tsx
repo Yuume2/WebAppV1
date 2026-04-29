@@ -100,6 +100,20 @@ export function ChatWindow({
   useEffect(() => {
     writeBoolFlag(pinStorageKey, pinned);
     if (typeof window !== 'undefined') {
+      try {
+        const orderRaw = window.sessionStorage.getItem('wav.chat.pinned.order');
+        const orderArr: string[] = orderRaw && Array.isArray(JSON.parse(orderRaw))
+          ? (JSON.parse(orderRaw) as unknown[]).filter((x): x is string => typeof x === 'string')
+          : [];
+        let nextOrder = orderArr;
+        if (pinned && !orderArr.includes(id)) nextOrder = [...orderArr, id];
+        if (!pinned && orderArr.includes(id)) nextOrder = orderArr.filter((x) => x !== id);
+        if (nextOrder !== orderArr) {
+          window.sessionStorage.setItem('wav.chat.pinned.order', JSON.stringify(nextOrder));
+        }
+      } catch {
+        // ignore
+      }
       window.dispatchEvent(new CustomEvent('wav:pin-changed', { detail: { id, pinned } }));
     }
     if (!pinInitRef.current) {

@@ -47,6 +47,7 @@ export function WorkspaceCommandPalette({
 }: WorkspaceCommandPaletteProps) {
   const [open, setOpen] = useState(false);
   const [pinnedSet, setPinnedSet] = useState<Set<string>>(() => readPinned());
+  const [pinnedOrder, setPinnedOrder] = useState<string[]>(() => readPinnedOrder());
   const [recentIds, setRecentIds] = useState<string[]>(() => readRecents(activeWorkspaceId));
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -141,10 +142,16 @@ export function WorkspaceCommandPalette({
       ...visibleWindows.map((w) => ({ window: w, open: true })),
       ...closedWindows.map((w) => ({ window: w, open: false })),
     ];
+    const orderIdx = (id: string) => {
+      const i = pinnedOrder.indexOf(id);
+      return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+    };
     return all
       .filter((it) => pinnedSet.has(it.window.id) && it.window.id !== activeId && !recentIdSet.has(it.window.id))
+      .slice()
+      .sort((a, b) => orderIdx(a.window.id) - orderIdx(b.window.id))
       .slice(0, 6);
-  }, [query, pinnedSet, recentEntries, activeId, visibleWindows, closedWindows]);
+  }, [query, pinnedSet, pinnedOrder, recentEntries, activeId, visibleWindows, closedWindows]);
 
   type MessageMatch = typeof messageMatches[number];
   const messageGroups = useMemo(() => {
@@ -222,8 +229,12 @@ export function WorkspaceCommandPalette({
   useEffect(() => {
     if (!open) return;
     setPinnedSet(readPinned());
+    setPinnedOrder(readPinnedOrder());
     setRecentIds(readRecents(activeWorkspaceId));
-    const onChange = () => setPinnedSet(readPinned());
+    const onChange = () => {
+      setPinnedSet(readPinned());
+      setPinnedOrder(readPinnedOrder());
+    };
     const onRecents = () => setRecentIds(readRecents(activeWorkspaceId));
     window.addEventListener('wav:pin-changed', onChange);
     window.addEventListener('wav:recents-changed', onRecents);
@@ -828,6 +839,19 @@ function readPinned(): Set<string> {
     // ignore
   }
   return out;
+}
+
+function readPinnedOrder(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.sessionStorage.getItem('wav.chat.pinned.order');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string');
+  } catch {
+    return [];
+  }
 }
 
 const pinnedBadgeStyle: React.CSSProperties = {
