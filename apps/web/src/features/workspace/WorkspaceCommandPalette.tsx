@@ -179,6 +179,16 @@ export function WorkspaceCommandPalette({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, getMessages, visibleWindows, closedWindows, starredTick]);
 
+  const starredByWindow = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const w of [...visibleWindows, ...closedWindows]) {
+      const ids = readStarredIdsForWindow(w.id);
+      if (ids.length > 0) map.set(w.id, new Set(ids));
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleWindows, closedWindows, starredTick]);
+
   type MessageMatch = typeof messageMatches[number];
   const messageGroups = useMemo(() => {
     const order: string[] = [];
@@ -733,9 +743,17 @@ export function WorkspaceCommandPalette({
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
+                              display: 'flex',
+                              gap: 6,
+                              alignItems: 'center',
                             }}
                           >
-                            {renderHighlighted(m.snippet, query)}
+                            {starredByWindow.get(m.windowId)?.has(m.messageId) ? (
+                              <span aria-label="starred" title="Starred message" style={{ color: '#f0c14b', flexShrink: 0 }}>★</span>
+                            ) : null}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {renderHighlighted(m.snippet, query)}
+                            </span>
                           </div>
                           <div style={{ fontSize: '0.65rem', color: '#8a8a95', marginTop: 2 }}>
                             {m.role}
