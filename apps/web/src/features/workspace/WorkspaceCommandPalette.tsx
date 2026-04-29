@@ -116,7 +116,7 @@ export function WorkspaceCommandPalette({
     | { kind: 'workspace'; key: string; workspace: Workspace }
     | { kind: 'window'; key: string; entry: PaletteWindow }
     | { kind: 'message'; key: string; match: typeof messageMatches[number] }
-    | { kind: 'starred'; key: string; star: { windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string } };
+    | { kind: 'starred'; key: string; star: { windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; fullContent: string } };
 
   const recentEntries: PaletteWindow[] = useMemo(() => {
     if (query.trim()) return [];
@@ -156,9 +156,9 @@ export function WorkspaceCommandPalette({
   }, [query, pinnedSet, pinnedOrder, recentEntries, activeId, visibleWindows, closedWindows]);
 
   const starredEntries = useMemo(() => {
-    if (query.trim()) return [] as Array<{ key: string; windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string }>;
+    if (query.trim()) return [] as Array<{ key: string; windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; fullContent: string }>;
     if (!getMessages) return [];
-    const out: Array<{ key: string; windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string }> = [];
+    const out: Array<{ key: string; windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; fullContent: string }> = [];
     const allWindows = [...visibleWindows, ...closedWindows];
     for (const w of allWindows) {
       const ids = readStarredIdsForWindow(w.id);
@@ -169,7 +169,7 @@ export function WorkspaceCommandPalette({
         if (!idSet.has(m.id)) continue;
         const content = (m.content ?? '').replace(/\s+/g, ' ').trim();
         const snippet = content.length > 90 ? `${content.slice(0, 90)}…` : content;
-        out.push({ key: `${w.id}-${m.id}`, windowId: w.id, window: w, messageId: m.id, role: m.role, snippet });
+        out.push({ key: `${w.id}-${m.id}`, windowId: w.id, window: w, messageId: m.id, role: m.role, snippet, fullContent: m.content ?? '' });
         if (out.length >= 6) break;
       }
       if (out.length >= 6) break;
@@ -542,7 +542,35 @@ export function WorkspaceCommandPalette({
         ) : null}
         {starredEntries.length > 0 ? (
           <div>
-            <div style={sectionLabelStyle}>Starred messages · {starredEntries.length}</div>
+            <div style={{ ...sectionLabelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span>Starred messages · {starredEntries.length}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window === 'undefined') return;
+                  const wins = new Set(starredEntries.map((s) => s.windowId));
+                  for (const wid of wins) {
+                    try { window.localStorage.removeItem(`wav.chat.starred.${wid}`); } catch { /* ignore */ }
+                  }
+                  window.dispatchEvent(new CustomEvent('wav:starred-changed', { detail: { bulk: true } }));
+                }}
+                aria-label="Unstar all messages shown here"
+                title="Unstar all messages currently shown in this section"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#9aa6ff',
+                  cursor: 'pointer',
+                  fontSize: '0.62rem',
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  fontFamily: 'inherit',
+                  padding: '0 0.25rem',
+                }}
+              >
+                Unstar all
+              </button>
+            </div>
             <ul role="list" style={listStyle}>
               {starredEntries.map((s) => {
                 const idx = unifiedItems.findIndex(
@@ -582,8 +610,20 @@ export function WorkspaceCommandPalette({
                     >
                       <span aria-hidden style={{ color: '#f0c14b', flexShrink: 0 }}>★</span>
                       <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-                        <div style={{ fontSize: '0.78rem', color: '#e8e8ef', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {s.snippet || '(empty)'}
+                        <div
+                          title={s.fullContent}
+                          style={{
+                            fontSize: '0.78rem',
+                            color: '#e8e8ef',
+                            overflow: 'hidden',
+                            display: '-webkit-box',
+                            WebkitLineClamp: isHover ? 4 : 1,
+                            WebkitBoxOrient: 'vertical',
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
+                          }}
+                        >
+                          {(isHover ? (s.fullContent || s.snippet) : s.snippet) || '(empty)'}
                         </div>
                         <div style={{ fontSize: '0.65rem', color: '#8a8a95', marginTop: 2 }}>
                           {s.role} · {s.window.title}

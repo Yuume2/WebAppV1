@@ -540,6 +540,24 @@ export function ChatWindow({
   const [starredIds, setStarredIds] = useState<Set<string>>(() => readStarred(starredStorageKey));
   const starredInitRef = useRef(false);
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onExternal = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ bulk?: boolean; windowId?: string }>).detail ?? {};
+      if (!detail.bulk && detail.windowId !== id) return;
+      const next = readStarred(starredStorageKey);
+      setStarredIds((prev) => {
+        if (prev.size === next.size) {
+          let same = true;
+          for (const v of prev) if (!next.has(v)) { same = false; break; }
+          if (same) return prev;
+        }
+        return next;
+      });
+    };
+    window.addEventListener('wav:starred-changed', onExternal);
+    return () => window.removeEventListener('wav:starred-changed', onExternal);
+  }, [id, starredStorageKey]);
+  useEffect(() => {
     writeStarred(starredStorageKey, starredIds);
     if (!starredInitRef.current) {
       starredInitRef.current = true;
