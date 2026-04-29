@@ -318,6 +318,26 @@ export async function streamMessageDbController(
   // sniff content-type can decide to buffer the whole response.
   res.flushHeaders();
 
+  // Keepalive comment ping: the SSE spec ignores any line starting with ":"
+  // — every conformant client lib treats it as a no-op. Many reverse proxies
+  // and load balancers drop "idle" connections after 30-60s of zero bytes,
+  // which kills legitimate slow upstream responses. Sending a comment line
+  // every 25s keeps the socket warm without surfacing anything in the
+  // application-level event stream.
+  const KEEPALIVE_MS = 25_000;
+  const keepaliveTimer = setInterval(() => {
+    // writableEnded guards against a race where the timer fires after we've
+    // already res.end()'d in a terminal branch. write() on an ended response
+    // would throw ERR_STREAM_WRITE_AFTER_END.
+    if (res.writableEnded) return;
+    try { res.write(':keepalive\n\n'); } catch { /* socket gone — close listener will clear */ }
+  }, KEEPALIVE_MS);
+  // unref so a leaked timer can never block process shutdown if a terminal
+  // branch ever forgets to clear (defence in depth — every branch below
+  // also calls clearKeepalive explicitly).
+  keepaliveTimer.unref?.();
+  const clearKeepalive = (): void => { clearInterval(keepaliveTimer); };
+
   const startedAt = Date.now();
   let assistantContent = '';
   let model = cw.model;
@@ -332,6 +352,7 @@ export async function streamMessageDbController(
   // mid-response socket teardown — only the ServerResponse 'close' does.
   const upstreamAbort = new AbortController();
   res.on('close', () => {
+    clearKeepalive();
     if (!res.writableEnded) {
       aborted = true;
       upstreamAbort.abort();
@@ -343,6 +364,7 @@ export async function streamMessageDbController(
   // mark aborted, and swallow — the catch block downstream will see the
   // for-await throw and exit cleanly.
   res.on('error', () => {
+    clearKeepalive();
     aborted = true;
     upstreamAbort.abort();
   });
@@ -363,6 +385,7 @@ export async function streamMessageDbController(
     // throw happens because we asked the upstream to stop. Don't ship an
     // 'error' SSE event (the client is gone anyway) and don't capture it.
     if (aborted) {
+      clearKeepalive();
       logger.info('stream cancelled by client disconnect', {
         requestId: ctx.requestId,
         provider: cw.provider,
@@ -373,6 +396,7 @@ export async function streamMessageDbController(
       try { res.end(); } catch { /* socket already closed */ }
       return respondStreamed(499);
     }
+    clearKeepalive();
     captureException(err, { provider: cw.provider, model: cw.model, route: '/v1/messages/stream' });
     const detail = err instanceof Error ? err.message : 'Unknown provider error';
     sseWrite(res, { error: detail });
@@ -382,6 +406,7 @@ export async function streamMessageDbController(
   }
 
   if (aborted || assistantContent.length === 0) {
+    clearKeepalive();
     // Client gave up or provider produced nothing — do NOT persist a half-baked pair.
     if (!aborted) sseWrite(res, { error: 'empty_response' });
     res.write('data: [DONE]\n\n');
@@ -400,12 +425,14 @@ export async function streamMessageDbController(
 
   const pair = await deps.persistMessagePair(chatWindowId, user.id, content, assistantContent, assistantMetadata);
   if (pair === null) {
+    clearKeepalive();
     sseWrite(res, { error: 'chat_window_not_found' });
     res.write('data: [DONE]\n\n');
     res.end();
     return respondStreamed(404);
   }
 
+  clearKeepalive();
   sseWrite(res, {
     done: true,
     userMessage:      toMessage(pair.userRow),

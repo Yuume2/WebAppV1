@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AIProvider, ApiResponse, GeneratedMessagePair, Message, MessageRole } from '@webapp/types';
 import { Router } from '../lib/router.js';
 import { createApiServer } from '../lib/server.js';
@@ -806,6 +806,84 @@ describe('POST /v1/messages/stream — authenticated', () => {
     await readSseEvents(res); // drain
     expect(receivedSignal).toBeInstanceOf(AbortSignal);
     await close();
+  });
+
+  it('emits SSE comment keepalive lines while the upstream is silent (proxy-idle survival)', async () => {
+    // Reverse proxies often drop "idle" sockets after 30-60s. The controller
+    // sends a `:keepalive\n\n` SSE comment every 25s so the bytes-on-the-wire
+    // counter never goes idle from the proxy's POV. Conformant SSE clients
+    // ignore comment lines (start with ':') so the application-level event
+    // stream is unaffected.
+    //
+    // Fake the interval timer so the test doesn't actually wait 25s. We
+    // narrowly fake only setInterval/clearInterval — leaving setTimeout real
+    // means AbortSignal.timeout, PROVIDER_TIMEOUT_MS and the test's own
+    // backoff loops are unaffected.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    let resumeGenerator!: () => void;
+    const generatorParked = new Promise<void>((resolve) => { resumeGenerator = resolve; });
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-test',
+      listMessages:   async () => [],
+      generateStream: async function* () {
+        // Park until the test releases us — simulates an upstream that's
+        // mid-thinking but hasn't produced any deltas yet.
+        await generatorParked;
+        yield { type: 'done', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 0, totalTokens: 1 } };
+      },
+      persistMessagePair: async () => null,
+    }));
+
+    try {
+      const res = await fetch(`${baseUrl}/v1/messages/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatWindowId: 'cw-1', role: 'user', content: 'hi' }),
+      });
+      expect(res.status).toBe(200);
+      if (!res.body) throw new Error('no body');
+
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      const collectChunks = async (deadlineMs: number): Promise<void> => {
+        const start = Date.now();
+        while (Date.now() - start < deadlineMs) {
+          const { value, done } = await Promise.race([
+            reader.read(),
+            new Promise<{ value: undefined; done: false }>((r) =>
+              setTimeout(() => r({ value: undefined, done: false }), 50),
+            ),
+          ]);
+          if (done) return;
+          if (value) buf += dec.decode(value, { stream: true });
+          if (buf.includes(':keepalive')) return;
+        }
+      };
+
+      // Advance the fake interval clock past two firings (25s * 2 + slack)
+      // BEFORE attempting to read so the writes are queued by the time the
+      // reader pulls.
+      await vi.advanceTimersByTimeAsync(60_000);
+      await collectChunks(2_000);
+
+      // Two keepalive comments should have been written by now (both ticks
+      // of the 25s interval inside the 60s virtual window).
+      const matches = buf.match(/:keepalive\n\n/g) ?? [];
+      expect(matches.length).toBeGreaterThanOrEqual(1);
+
+      // Release the generator so the controller can finish cleanly. Even
+      // though persistMessagePair returns null (404 path), the test only
+      // cares that the keepalive lines were emitted before the terminal
+      // SSE event.
+      resumeGenerator();
+      try { await reader.cancel(); } catch { /* expected */ }
+    } finally {
+      vi.useRealTimers();
+      await close();
+    }
   });
 
   it('aborts the upstream signal when the client disconnects mid-stream', async () => {
