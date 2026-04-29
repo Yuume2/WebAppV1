@@ -117,6 +117,23 @@ export function WorkspaceSidebar({
     writePinnedOrder(next);
     setPinnedOrder(next);
   };
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (!e.altKey || !e.shiftKey || e.metaKey || e.ctrlKey) return;
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      const target = e.target;
+      const typing = target instanceof HTMLElement
+        && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (typing) return;
+      if (!activeId || !pinnedSet.has(activeId)) return;
+      e.preventDefault();
+      movePinned(activeId, e.key === 'ArrowDown' ? 1 : -1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, pinnedSet, pinnedOrder, visibleWindows]);
   const filteredVisible = (filterEnabled ? visibleWindows.filter(matchesFilter) : visibleWindows)
     .filter((w) => (onlyPinned ? pinnedSet.has(w.id) : true))
     .slice()
