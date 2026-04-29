@@ -542,7 +542,35 @@ export function WorkspaceCommandPalette({
         ) : null}
         {starredEntries.length > 0 ? (
           <div>
-            <div style={sectionLabelStyle}>Starred messages · {starredEntries.length}</div>
+            <div style={{ ...sectionLabelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span>Starred messages · {starredEntries.length}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window === 'undefined') return;
+                  const wins = new Set(starredEntries.map((s) => s.windowId));
+                  for (const wid of wins) {
+                    try { window.localStorage.removeItem(`wav.chat.starred.${wid}`); } catch { /* ignore */ }
+                  }
+                  window.dispatchEvent(new CustomEvent('wav:starred-changed', { detail: { bulk: true } }));
+                }}
+                aria-label="Unstar all messages shown here"
+                title="Unstar all messages currently shown in this section"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#9aa6ff',
+                  cursor: 'pointer',
+                  fontSize: '0.62rem',
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  fontFamily: 'inherit',
+                  padding: '0 0.25rem',
+                }}
+              >
+                Unstar all
+              </button>
+            </div>
             <ul role="list" style={listStyle}>
               {starredEntries.map((s) => {
                 const idx = unifiedItems.findIndex(
