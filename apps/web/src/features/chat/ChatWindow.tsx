@@ -264,6 +264,8 @@ export function ChatWindow({
   const wasActiveRef = useRef<boolean>(active);
   const unreadIdsRef = useRef<string[]>([]);
   const unreadCursorRef = useRef<number>(-1);
+  const knownAssistantIdsRef = useRef<Set<string>>(new Set());
+  const [unreadCount, setUnreadCount] = useState(0);
   useEffect(() => {
     if (active && !wasActiveRef.current) {
       const seenAt = lastSeenAtRef.current;
@@ -281,6 +283,10 @@ export function ChatWindow({
       }
       unreadIdsRef.current = collected;
       unreadCursorRef.current = collected.length > 0 ? 0 : -1;
+      setUnreadCount(collected.length);
+      const known = new Set<string>();
+      for (const m of messages) if (m.role === 'assistant') known.add(m.id);
+      knownAssistantIdsRef.current = known;
       if (firstUnread) {
         const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(firstUnread.id)}`);
         if (el && 'scrollIntoView' in el) {
@@ -299,6 +305,23 @@ export function ChatWindow({
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, messagesSignature]);
+
+  useEffect(() => {
+    if (!active) return;
+    const known = knownAssistantIdsRef.current;
+    let appended = false;
+    for (const m of messages) {
+      if (m.role !== 'assistant') continue;
+      if ((m.status ?? 'ok') !== 'ok') continue;
+      if (known.has(m.id)) continue;
+      known.add(m.id);
+      if (stickyRef.current) continue;
+      unreadIdsRef.current.push(m.id);
+      appended = true;
+    }
+    if (appended) setUnreadCount(unreadIdsRef.current.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messagesSignature, active]);
 
   useEffect(() => {
     if (!active) return;
@@ -602,6 +625,46 @@ export function ChatWindow({
             </span>
           )}
           <ProviderBadge provider={provider} model={model} />
+          {active && unreadCount > 0 ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                const ids = unreadIdsRef.current;
+                if (ids.length === 0) return;
+                const targetId = ids[ids.length - 1];
+                if (!targetId) return;
+                const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(targetId)}`);
+                if (el && 'scrollIntoView' in el) {
+                  (el as HTMLElement).scrollIntoView({ block: 'start', behavior: 'smooth' });
+                }
+                stickyRef.current = false;
+                setFlashedMsgId(targetId);
+                setTimeout(() => setFlashedMsgId((prev) => (prev === targetId ? null : prev)), 1500);
+                unreadIdsRef.current = [];
+                unreadCursorRef.current = -1;
+                setUnreadCount(0);
+              }}
+              aria-label={`Jump to ${unreadCount} new repl${unreadCount === 1 ? 'y' : 'ies'} and clear`}
+              title={`${unreadCount} new repl${unreadCount === 1 ? 'y' : 'ies'} arrived while you were scrolled away — click to jump and clear`}
+              style={{
+                marginTop: 4,
+                alignSelf: 'flex-start',
+                fontSize: '0.62rem',
+                color: '#9aa6ff',
+                background: '#15203b',
+                border: '1px solid #3a3f6b',
+                borderRadius: 999,
+                padding: '1px 8px',
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                fontFamily: 'inherit',
+              }}
+            >
+              {unreadCount} new ↓
+            </button>
+          ) : null}
           {pending ? (
             <span
               role="status"
