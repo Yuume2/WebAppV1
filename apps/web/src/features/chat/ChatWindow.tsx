@@ -538,9 +538,17 @@ export function ChatWindow({
 
   const starredStorageKey = `wav.chat.starred.${id}`;
   const [starredIds, setStarredIds] = useState<Set<string>>(() => readStarred(starredStorageKey));
+  const starredInitRef = useRef(false);
   useEffect(() => {
     writeStarred(starredStorageKey, starredIds);
-  }, [starredStorageKey, starredIds]);
+    if (!starredInitRef.current) {
+      starredInitRef.current = true;
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wav:starred-changed', { detail: { windowId: id } }));
+    }
+  }, [starredStorageKey, starredIds, id]);
   const toggleStar = (msgId: string) => {
     setStarredIds((prev) => {
       const next = new Set(prev);
