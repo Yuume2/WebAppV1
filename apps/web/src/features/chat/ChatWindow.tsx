@@ -114,8 +114,14 @@ export function ChatWindow({
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
     const sticky = distanceFromBottom < 64;
+    const wasSticky = stickyRef.current;
     stickyRef.current = sticky;
     setScrolledAway(!sticky);
+    if (sticky && !wasSticky && unreadIdsRef.current.length > 0) {
+      unreadIdsRef.current = [];
+      unreadCursorRef.current = -1;
+      setUnreadCount(0);
+    }
     if (restoredScrollRef.current) {
       if (scrollSaveTimerRef.current != null) {
         window.clearTimeout(scrollSaveTimerRef.current);
