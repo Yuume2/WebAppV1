@@ -326,6 +326,8 @@ export function WorkspaceCommandPalette({
         e.preventDefault();
         if (query.length > 0) {
           setQuery('');
+        } else if (showAllStarred) {
+          setShowAllStarred(false);
         } else {
           setOpen(false);
         }
@@ -333,7 +335,7 @@ export function WorkspaceCommandPalette({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, query, activeWorkspaceId]);
+  }, [open, query, activeWorkspaceId, showAllStarred]);
 
   useEffect(() => {
     if (!open) return;
