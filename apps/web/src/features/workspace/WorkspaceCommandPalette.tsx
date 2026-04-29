@@ -48,6 +48,7 @@ export function WorkspaceCommandPalette({
   const [open, setOpen] = useState(false);
   const [pinnedSet, setPinnedSet] = useState<Set<string>>(() => readPinned());
   const [pinnedOrder, setPinnedOrder] = useState<string[]>(() => readPinnedOrder());
+  const [starredTick, setStarredTick] = useState(0);
   const [recentIds, setRecentIds] = useState<string[]>(() => readRecents(activeWorkspaceId));
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -114,7 +115,8 @@ export function WorkspaceCommandPalette({
   type UnifiedItem =
     | { kind: 'workspace'; key: string; workspace: Workspace }
     | { kind: 'window'; key: string; entry: PaletteWindow }
-    | { kind: 'message'; key: string; match: typeof messageMatches[number] };
+    | { kind: 'message'; key: string; match: typeof messageMatches[number] }
+    | { kind: 'starred'; key: string; star: { windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string } };
 
   const recentEntries: PaletteWindow[] = useMemo(() => {
     if (query.trim()) return [];
@@ -153,6 +155,40 @@ export function WorkspaceCommandPalette({
       .slice(0, 6);
   }, [query, pinnedSet, pinnedOrder, recentEntries, activeId, visibleWindows, closedWindows]);
 
+  const starredEntries = useMemo(() => {
+    if (query.trim()) return [] as Array<{ key: string; windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string }>;
+    if (!getMessages) return [];
+    const out: Array<{ key: string; windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string }> = [];
+    const allWindows = [...visibleWindows, ...closedWindows];
+    for (const w of allWindows) {
+      const ids = readStarredIdsForWindow(w.id);
+      if (ids.length === 0) continue;
+      const idSet = new Set(ids);
+      const list = getMessages(w.id);
+      for (const m of list) {
+        if (!idSet.has(m.id)) continue;
+        const content = (m.content ?? '').replace(/\s+/g, ' ').trim();
+        const snippet = content.length > 90 ? `${content.slice(0, 90)}…` : content;
+        out.push({ key: `${w.id}-${m.id}`, windowId: w.id, window: w, messageId: m.id, role: m.role, snippet });
+        if (out.length >= 6) break;
+      }
+      if (out.length >= 6) break;
+    }
+    return out;
+    // starredTick is intentionally a dep so listener-driven refresh re-runs the memo
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, getMessages, visibleWindows, closedWindows, starredTick]);
+
+  const starredByWindow = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const w of [...visibleWindows, ...closedWindows]) {
+      const ids = readStarredIdsForWindow(w.id);
+      if (ids.length > 0) map.set(w.id, new Set(ids));
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleWindows, closedWindows, starredTick]);
+
   type MessageMatch = typeof messageMatches[number];
   const messageGroups = useMemo(() => {
     const order: string[] = [];
@@ -188,6 +224,9 @@ export function WorkspaceCommandPalette({
     for (const it of pinnedEntries) {
       out.push({ kind: 'window', key: `pinned-${it.window.id}`, entry: it });
     }
+    for (const s of starredEntries) {
+      out.push({ kind: 'starred', key: `star-${s.key}`, star: s });
+    }
     if (filteredWorkspaces.length > 1) {
       for (const w of filteredWorkspaces) {
         out.push({ kind: 'workspace', key: `ws-${w.id}`, workspace: w });
@@ -204,7 +243,7 @@ export function WorkspaceCommandPalette({
       out.push({ kind: 'message', key: `m-${m.windowId}-${m.messageId}-${i}`, match: m });
     }
     return out;
-  }, [recentEntries, pinnedEntries, filteredWorkspaces, filtered, visibleMessageItems]);
+  }, [recentEntries, pinnedEntries, starredEntries, filteredWorkspaces, filtered, visibleMessageItems]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 200);
@@ -236,11 +275,14 @@ export function WorkspaceCommandPalette({
       setPinnedOrder(readPinnedOrder());
     };
     const onRecents = () => setRecentIds(readRecents(activeWorkspaceId));
+    const onStarred = () => setStarredTick((n) => n + 1);
     window.addEventListener('wav:pin-changed', onChange);
     window.addEventListener('wav:recents-changed', onRecents);
+    window.addEventListener('wav:starred-changed', onStarred);
     return () => {
       window.removeEventListener('wav:pin-changed', onChange);
       window.removeEventListener('wav:recents-changed', onRecents);
+      window.removeEventListener('wav:starred-changed', onStarred);
     };
   }, [open, activeWorkspaceId]);
 
@@ -315,6 +357,21 @@ export function WorkspaceCommandPalette({
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href);
         url.hash = `msg-${m.messageId}`;
+        window.history.replaceState(null, '', url.toString());
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      }
+      return;
+    }
+    if (item.kind === 'starred') {
+      const s = item.star;
+      const visible = visibleWindows.some((w) => w.id === s.windowId);
+      if (!visible) onReopen(s.windowId);
+      else onFocus(s.windowId);
+      setOpen(false);
+      setQuery('');
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        url.hash = `msg-${s.messageId}`;
         window.history.replaceState(null, '', url.toString());
         window.dispatchEvent(new HashChangeEvent('hashchange'));
       }
@@ -483,6 +540,62 @@ export function WorkspaceCommandPalette({
             </ul>
           </div>
         ) : null}
+        {starredEntries.length > 0 ? (
+          <div>
+            <div style={sectionLabelStyle}>Starred messages · {starredEntries.length}</div>
+            <ul role="list" style={listStyle}>
+              {starredEntries.map((s) => {
+                const idx = unifiedItems.findIndex(
+                  (u) => u.kind === 'starred' && u.key === `star-${s.key}`,
+                );
+                const isHover = idx === Math.min(hover, unifiedItems.length - 1);
+                return (
+                  <li key={`starred-${s.key}`} style={{ listStyle: 'none' }}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isHover}
+                      onMouseEnter={() => idx >= 0 && setHover(idx)}
+                      onClick={() => {
+                        const visible = visibleWindows.some((w) => w.id === s.windowId);
+                        if (!visible) onReopen(s.windowId);
+                        else onFocus(s.windowId);
+                        setOpen(false);
+                        setQuery('');
+                        if (typeof window !== 'undefined') {
+                          const url = new URL(window.location.href);
+                          url.hash = `msg-${s.messageId}`;
+                          window.history.replaceState(null, '', url.toString());
+                          window.dispatchEvent(new HashChangeEvent('hashchange'));
+                        }
+                      }}
+                      style={{
+                        ...rowStyle,
+                        width: '100%',
+                        background: isHover ? '#1c1c28' : 'transparent',
+                        border: `1px solid ${isHover ? '#3a3f6b' : 'transparent'}`,
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        color: '#cfcfd6',
+                      }}
+                    >
+                      <span aria-hidden style={{ color: '#f0c14b', flexShrink: 0 }}>★</span>
+                      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                        <div style={{ fontSize: '0.78rem', color: '#e8e8ef', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {s.snippet || '(empty)'}
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: '#8a8a95', marginTop: 2 }}>
+                          {s.role} · {s.window.title}
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
         {filteredWorkspaces.length > 1 ? (
           <div>
             <div style={sectionLabelStyle}>Workspaces</div>
@@ -630,9 +743,17 @@ export function WorkspaceCommandPalette({
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
+                              display: 'flex',
+                              gap: 6,
+                              alignItems: 'center',
                             }}
                           >
-                            {renderHighlighted(m.snippet, query)}
+                            {starredByWindow.get(m.windowId)?.has(m.messageId) ? (
+                              <span aria-label="starred" title="Starred message" style={{ color: '#f0c14b', flexShrink: 0 }}>★</span>
+                            ) : null}
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {renderHighlighted(m.snippet, query)}
+                            </span>
                           </div>
                           <div style={{ fontSize: '0.65rem', color: '#8a8a95', marginTop: 2 }}>
                             {m.role}
@@ -702,7 +823,9 @@ export function WorkspaceCommandPalette({
                   ? 'Enter to switch workspace'
                   : sel?.kind === 'message'
                     ? 'Enter to jump to message'
-                    : 'Enter to open';
+                    : sel?.kind === 'starred'
+                      ? 'Enter to jump to starred message'
+                      : 'Enter to open';
               if (query.trim().length > 0) return `↑↓ navigate · ${enterAction} · Esc clears query, again to close`;
               return `↑↓ navigate · ${enterAction} · Esc to close · type ≥2 chars to search messages`;
             })()}
@@ -845,6 +968,19 @@ function readPinnedOrder(): string[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = window.sessionStorage.getItem('wav.chat.pinned.order');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function readStarredIdsForWindow(windowId: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(`wav.chat.starred.${windowId}`);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];

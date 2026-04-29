@@ -19,7 +19,7 @@ const GROUPS: ShortcutGroup[] = [
       { keys: ['?'], description: 'Show this help' },
       { keys: ['⌘', '/'], description: 'Show this help (also works while typing; Ctrl+/ on Linux/Win)' },
       { keys: ['Esc'], description: 'Close menus, modals, search bar, this help  ·  In composer: clear draft  ·  In Cmd-K palette: clear query first, then close' },
-      { keys: ['⌘', 'K'], description: 'Open command palette — search windows, workspaces, and message contents (Ctrl+K on Linux/Win)' },
+      { keys: ['⌘', 'K'], description: 'Open command palette — search windows, workspaces, message contents, recent windows, and starred messages (Ctrl+K on Linux/Win)' },
       { keys: ['⌥', '↑/↓'], description: 'Cycle active chat window up/down (Alt+↑ / Alt+↓)' },
       { keys: ['Click', '▲▼'], description: 'On a pinned sidebar row: reorder pinned windows; order persists per session' },
     ],
