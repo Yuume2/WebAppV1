@@ -652,7 +652,7 @@ export function ChatWindow({
                 setUnreadCount(0);
               }}
               aria-label={`Jump to ${unreadCount} new repl${unreadCount === 1 ? 'y' : 'ies'} and clear`}
-              title={`${unreadCount} new repl${unreadCount === 1 ? 'y' : 'ies'} arrived while you were scrolled away — click to jump and clear`}
+              title={`${unreadCount} new repl${unreadCount === 1 ? 'y' : 'ies'} arrived while you were scrolled away — click to jump, or press n / Shift+n to step through`}
               style={{
                 marginTop: 4,
                 alignSelf: 'flex-start',
