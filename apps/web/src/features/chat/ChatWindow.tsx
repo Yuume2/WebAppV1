@@ -262,20 +262,25 @@ export function ChatWindow({
   // assistant message strictly newer than the previous lastSeen and flash it.
   const lastSeenAtRef = useRef<number>(typeof Date !== 'undefined' ? Date.now() : 0);
   const wasActiveRef = useRef<boolean>(active);
+  const unreadIdsRef = useRef<string[]>([]);
+  const unreadCursorRef = useRef<number>(-1);
   useEffect(() => {
     if (active && !wasActiveRef.current) {
       const seenAt = lastSeenAtRef.current;
       let firstUnread: { id: string; createdAt: string } | null = null;
+      const collected: string[] = [];
       for (const m of messages) {
         if (m.role !== 'assistant') continue;
         if ((m.status ?? 'ok') !== 'ok') continue;
         const t = Date.parse(m.createdAt);
         if (Number.isNaN(t)) continue;
         if (t > seenAt) {
-          firstUnread = { id: m.id, createdAt: m.createdAt };
-          break;
+          if (!firstUnread) firstUnread = { id: m.id, createdAt: m.createdAt };
+          collected.push(m.id);
         }
       }
+      unreadIdsRef.current = collected;
+      unreadCursorRef.current = collected.length > 0 ? 0 : -1;
       if (firstUnread) {
         const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(firstUnread.id)}`);
         if (el && 'scrollIntoView' in el) {
@@ -334,12 +339,31 @@ export function ChatWindow({
         requestAnimationFrame(() => textareaRef.current?.focus());
         return;
       }
-      // Vim-style: G jumps to bottom; g g jumps to top. Only when not typing.
+      // Vim-style: G jumps to bottom; g g jumps to top. n/N jumps unread.
       if (!e.metaKey && !e.ctrlKey && !e.altKey) {
         const target = e.target;
         const typing = target instanceof HTMLElement
           && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
         if (typing) return;
+        if (e.key === 'n' || e.key === 'N') {
+          const ids = unreadIdsRef.current;
+          if (ids.length === 0) return;
+          e.preventDefault();
+          const dir = e.key === 'N' ? -1 : 1;
+          const cur = unreadCursorRef.current;
+          const next = cur < 0 ? 0 : (cur + dir + ids.length) % ids.length;
+          unreadCursorRef.current = next;
+          const targetId = ids[next];
+          if (!targetId) return;
+          const el = scrollRef.current?.querySelector(`#msg-${cssEscapeId(targetId)}`);
+          if (el && 'scrollIntoView' in el) {
+            (el as HTMLElement).scrollIntoView({ block: 'start', behavior: 'smooth' });
+          }
+          stickyRef.current = false;
+          setFlashedMsgId(targetId);
+          setTimeout(() => setFlashedMsgId((prev) => (prev === targetId ? null : prev)), 1500);
+          return;
+        }
         if (e.key === 'G' && e.shiftKey) {
           e.preventDefault();
           scrollToBottom();
