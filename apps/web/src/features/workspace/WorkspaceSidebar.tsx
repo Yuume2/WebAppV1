@@ -75,20 +75,47 @@ export function WorkspaceSidebar({
     );
   };
   const [pinnedSet, setPinnedSet] = useState<Set<string>>(() => readPinnedSet());
+  const [pinnedOrder, setPinnedOrder] = useState<string[]>(() => readPinnedOrder());
   const [onlyPinned, setOnlyPinned] = useState(false);
   useEffect(() => {
     if (onlyPinned && pinnedSet.size === 0) setOnlyPinned(false);
   }, [onlyPinned, pinnedSet.size]);
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const onChange = () => setPinnedSet(readPinnedSet());
+    const onChange = () => {
+      setPinnedSet(readPinnedSet());
+      setPinnedOrder(readPinnedOrder());
+    };
     window.addEventListener('wav:pin-changed', onChange);
     return () => window.removeEventListener('wav:pin-changed', onChange);
   }, []);
+  const orderIndex = (id: string): number => {
+    const i = pinnedOrder.indexOf(id);
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
   const sortPinnedFirst = (a: ChatWindow, b: ChatWindow): number => {
     const pa = pinnedSet.has(a.id) ? 1 : 0;
     const pb = pinnedSet.has(b.id) ? 1 : 0;
-    return pb - pa;
+    if (pa !== pb) return pb - pa;
+    if (pa === 1 && pb === 1) return orderIndex(a.id) - orderIndex(b.id);
+    return 0;
+  };
+  const movePinned = (id: string, dir: -1 | 1) => {
+    const currentPinnedIds = visibleWindows
+      .filter((w) => pinnedSet.has(w.id))
+      .slice()
+      .sort((a, b) => orderIndex(a.id) - orderIndex(b.id))
+      .map((w) => w.id);
+    const idx = currentPinnedIds.indexOf(id);
+    if (idx < 0) return;
+    const target = idx + dir;
+    if (target < 0 || target >= currentPinnedIds.length) return;
+    const next = currentPinnedIds.slice();
+    const tmp = next[idx]!;
+    next[idx] = next[target]!;
+    next[target] = tmp;
+    writePinnedOrder(next);
+    setPinnedOrder(next);
   };
   const filteredVisible = (filterEnabled ? visibleWindows.filter(matchesFilter) : visibleWindows)
     .filter((w) => (onlyPinned ? pinnedSet.has(w.id) : true))
@@ -223,23 +250,40 @@ export function WorkspaceSidebar({
         {filteredVisible.length === 0 ? (
           <EmptyHint>{lowerFilter ? 'No matches' : 'No windows open'}</EmptyHint>
         ) : (
-          filteredVisible.map((w) => (
-            <WindowRow
-              key={w.id}
-              window={w}
-              active={activeId === w.id}
-              pinned={pinnedSet.has(w.id)}
-              lastActivity={lastActivityByWindow?.[w.id]}
-              pending={pendingByWindow?.[w.id]}
-              unread={unreadByWindow?.[w.id]}
-              unreadCount={unreadCountByWindow?.[w.id]}
-              onMarkAsRead={onMarkAsRead}
-              onClick={() => onFocus(w.id)}
-              onAction={() => onClose(w.id)}
-              actionLabel="×"
-              actionAria="Close window"
-            />
-          ))
+          (() => {
+            const pinnedIdsSorted = visibleWindows
+              .filter((vw) => pinnedSet.has(vw.id))
+              .slice()
+              .sort((a, b) => orderIndex(a.id) - orderIndex(b.id))
+              .map((vw) => vw.id);
+            return filteredVisible.map((w) => {
+              const isPinned = pinnedSet.has(w.id);
+              const pinIdx = isPinned ? pinnedIdsSorted.indexOf(w.id) : -1;
+              const canMoveUp = isPinned && pinIdx > 0;
+              const canMoveDown = isPinned && pinIdx >= 0 && pinIdx < pinnedIdsSorted.length - 1;
+              return (
+                <WindowRow
+                  key={w.id}
+                  window={w}
+                  active={activeId === w.id}
+                  pinned={isPinned}
+                  lastActivity={lastActivityByWindow?.[w.id]}
+                  pending={pendingByWindow?.[w.id]}
+                  unread={unreadByWindow?.[w.id]}
+                  unreadCount={unreadCountByWindow?.[w.id]}
+                  onMarkAsRead={onMarkAsRead}
+                  canMoveUp={canMoveUp}
+                  canMoveDown={canMoveDown}
+                  onMoveUp={canMoveUp ? () => movePinned(w.id, -1) : undefined}
+                  onMoveDown={canMoveDown ? () => movePinned(w.id, 1) : undefined}
+                  onClick={() => onFocus(w.id)}
+                  onAction={() => onClose(w.id)}
+                  actionLabel="×"
+                  actionAria="Close window"
+                />
+              );
+            });
+          })()
         )}
 
         {filteredClosed.length > 0 ? (
@@ -724,13 +768,17 @@ interface WindowRowProps {
   unread?: boolean;
   unreadCount?: number;
   onMarkAsRead?: (id: string) => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
   onClick: () => void;
   onAction: () => void;
   actionLabel: string;
   actionAria: string;
 }
 
-function WindowRow({ window, active, muted, pinned, lastActivity, pending, unread, unreadCount, onMarkAsRead, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
+function WindowRow({ window, active, muted, pinned, lastActivity, pending, unread, unreadCount, onMarkAsRead, canMoveUp, canMoveDown, onMoveUp, onMoveDown, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
   const stamp = formatRelative(lastActivity ?? window.updatedAt ?? window.createdAt);
   const rowRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -931,6 +979,54 @@ function WindowRow({ window, active, muted, pinned, lastActivity, pending, unrea
           ) : null}
         </div>
       </div>
+      {pinned && (canMoveUp || canMoveDown) ? (
+        <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 0, alignItems: 'center' }}>
+          <button
+            type="button"
+            disabled={!canMoveUp}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMoveUp?.();
+            }}
+            aria-label={`Move ${window.title} up among pinned`}
+            title="Move pin up"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: canMoveUp ? '#9aa6ff' : '#3a3a45',
+              cursor: canMoveUp ? 'pointer' : 'not-allowed',
+              fontSize: '0.6rem',
+              padding: '0 4px',
+              lineHeight: 1,
+              fontFamily: 'inherit',
+            }}
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            disabled={!canMoveDown}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMoveDown?.();
+            }}
+            aria-label={`Move ${window.title} down among pinned`}
+            title="Move pin down"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: canMoveDown ? '#9aa6ff' : '#3a3a45',
+              cursor: canMoveDown ? 'pointer' : 'not-allowed',
+              fontSize: '0.6rem',
+              padding: '0 4px',
+              lineHeight: 1,
+              fontFamily: 'inherit',
+            }}
+          >
+            ▼
+          </button>
+        </span>
+      ) : null}
       {unread && onMarkAsRead ? (
         <button
           onClick={(e) => {
@@ -1026,4 +1122,29 @@ function readPinnedSet(): Set<string> {
     // ignore
   }
   return out;
+}
+
+const PIN_ORDER_KEY = 'wav.chat.pinned.order';
+
+function readPinnedOrder(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.sessionStorage.getItem(PIN_ORDER_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function writePinnedOrder(order: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(PIN_ORDER_KEY, JSON.stringify(order));
+    window.dispatchEvent(new Event('wav:pin-changed'));
+  } catch {
+    // ignore quota
+  }
 }
