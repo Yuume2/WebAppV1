@@ -147,7 +147,6 @@ export function WorkspaceCommandPalette({
   }, [query, pinnedSet, recentEntries, activeId, visibleWindows, closedWindows]);
 
   type MessageMatch = typeof messageMatches[number];
-  const PER_WINDOW_LIMIT = 3;
   const messageGroups = useMemo(() => {
     const order: string[] = [];
     const map = new Map<string, { windowId: string; window: ChatWindow; items: MessageMatch[] }>();
@@ -160,9 +159,10 @@ export function WorkspaceCommandPalette({
         map.set(m.windowId, { windowId: m.windowId, window: m.window, items: [m] });
       }
     }
+    const perWindowLimit = order.length === 1 ? 6 : 3;
     return order.map((id) => {
       const g = map.get(id)!;
-      const visible = g.items.slice(0, PER_WINDOW_LIMIT);
+      const visible = g.items.slice(0, perWindowLimit);
       const hidden = Math.max(0, g.items.length - visible.length);
       return { windowId: g.windowId, window: g.window, items: visible, total: g.items.length, hiddenCount: hidden };
     });
