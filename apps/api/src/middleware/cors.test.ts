@@ -114,10 +114,14 @@ describe('OPTIONS preflight', () => {
     expect(res.headers.get('referrer-policy')).toBe('no-referrer');
     expect(res.headers.get('x-permitted-cross-domain-policies')).toBe('none');
     expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
-    // Preflight rides the same Vary: Cookie as every other CORS-headered
-    // response (preflight is opted-in to the same buildCorsHeaders call).
-    // Pin so a refactor that special-cases OPTIONS doesn't accidentally
-    // drop the cache-keying signal.
+    // Preflight on a non-user-scoped path (health) must NOT include
+    // Vary: Cookie — only user-scoped routes get cookie-keyed caching.
+    expect(res.headers.get('vary') ?? '').not.toContain('Cookie');
+  });
+
+  it('OPTIONS preflight on a user-scoped path emits Vary: Cookie', async () => {
+    const res = await fetch(`${harness.baseUrl}${API_PROJECTS_PATH}`, { method: 'OPTIONS' });
+    expect(res.status).toBe(204);
     expect(res.headers.get('vary') ?? '').toContain('Cookie');
   });
 });
@@ -144,15 +148,23 @@ describe('CORS with explicit origin — credentialed auth', () => {
     expect(res.headers.get('vary')).toContain('Origin');
   });
 
-  it('emits Vary: Cookie alongside Origin (defence-in-depth on user-scoped responses)', async () => {
+  it('emits Vary: Cookie alongside Origin on user-scoped responses', async () => {
     // Cache-Control: no-store on user-scoped routes is the primary guard
     // (batches 11-12); Vary: Cookie is the secondary signal so any future
     // shared cache that decides to honour private/max-age over no-store
-    // still keys responses by the session cookie. Pin both list members.
-    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`);
+    // still keys responses by the session cookie. Pin both list members
+    // on a user-scoped path; health is NOT user-scoped so no Cookie there.
+    const res = await fetch(`${s.baseUrl}${API_PROJECTS_PATH}`);
     const vary = res.headers.get('vary') ?? '';
     expect(vary).toContain('Origin');
     expect(vary).toContain('Cookie');
+  });
+
+  it('does NOT emit Vary: Cookie on the public health path', async () => {
+    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`);
+    const vary = res.headers.get('vary') ?? '';
+    expect(vary).toContain('Origin');
+    expect(vary).not.toContain('Cookie');
   });
 
   it('preflight also carries credentials + explicit origin', async () => {
@@ -213,12 +225,16 @@ describe('CORS with wildcard — non-credentialed default', () => {
     expect(res.headers.get('access-control-allow-credentials')).toBeNull();
   });
 
-  it('still emits Vary: Cookie even on the wildcard branch', async () => {
-    // The wildcard branch is the dev / open-API path. We don't ship
-    // ACAO=*+credentials (browsers reject the combo) but we do still
-    // want caches to key by Cookie if anyone ever puts a shared cache
-    // in front of an unauthenticated probe path. Pin the header.
-    const res = await fetch(`${harness.baseUrl}${API_HEALTH_PATH}`);
-    expect(res.headers.get('vary')).toContain('Cookie');
+  it('emits Vary: Cookie on the wildcard branch for user-scoped paths only', async () => {
+    // Wildcard branch is the dev / open-API path. We still want caches
+    // to key by Cookie on user-scoped paths but NOT on public health
+    // probes (so a shared cache can coalesce health checks).
+    const userScoped = await fetch(`${harness.baseUrl}${API_PROJECTS_PATH}`);
+    expect(userScoped.headers.get('vary') ?? '').toContain('Cookie');
+    const health = await fetch(`${harness.baseUrl}${API_HEALTH_PATH}`);
+    const healthVary = health.headers.get('vary');
+    if (healthVary !== null) {
+      expect(healthVary).not.toContain('Cookie');
+    }
   });
 });

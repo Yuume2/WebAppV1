@@ -19,19 +19,37 @@ function parseAllowedOrigins(corsOrigin: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-function buildCorsHeaders(corsOrigin: string, requestOrigin: string | null): Record<string, string> {
+// Public, non-user-scoped routes — health probes and version metadata. These
+// responses are identical regardless of the session cookie, so emitting
+// Vary: Cookie on them only adds noise to caches and (worse) prevents
+// shared caches from coalescing public health checks across viewers.
+const NON_USER_SCOPED_EXACT = new Set<string>([
+  '/health',
+  '/v1/health',
+  '/v1/health/deep',
+  '/v1/version',
+]);
+
+export function isUserScopedPath(path: string): boolean {
+  if (NON_USER_SCOPED_EXACT.has(path)) return false;
+  return true;
+}
+
+function buildCorsHeaders(corsOrigin: string, requestOrigin: string | null, userScoped: boolean): Record<string, string> {
   if (corsOrigin === '*') {
-    return {
+    const headers: Record<string, string> = {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
-      // Defence-in-depth: every authenticated response varies by the
-      // session cookie. Cache-Control: no-store on user-scoped routes is
-      // the primary guard; this Vary signal is the secondary guard for
-      // any future shared cache (CDN, corp proxy) that decides to honour
-      // private/max-age over no-store. Harmless on cookieless requests.
-      'Vary': 'Cookie',
     };
+    if (userScoped) {
+      // Defence-in-depth: user-scoped responses vary by the session cookie.
+      // Cache-Control: no-store on user-scoped routes is the primary guard;
+      // this Vary signal is the secondary guard for any shared cache (CDN,
+      // corp proxy) that decides to honour private/max-age over no-store.
+      headers['Vary'] = 'Cookie';
+    }
+    return headers;
   }
   const allowed = parseAllowedOrigins(corsOrigin);
   // ACAO must echo the actual request Origin when credentials are involved.
@@ -47,12 +65,11 @@ function buildCorsHeaders(corsOrigin: string, requestOrigin: string | null): Rec
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Credentials': 'true',
-    // Origin: response varies by the requesting origin (multi-allowlist).
-    // Cookie: response varies by the session cookie — defence-in-depth on
-    // top of the per-route Cache-Control: no-store pins (batches 11-12)
-    // for any shared cache that decides to honour private/max-age over
-    // no-store at some point in the future.
-    'Vary': 'Origin, Cookie',
+    // Origin: always varies by the requesting origin (multi-allowlist).
+    // Cookie: only added on user-scoped routes (defence-in-depth on top of
+    // per-route Cache-Control: no-store). Public health/version responses
+    // get Vary: Origin only so they remain cacheable across viewers.
+    'Vary': userScoped ? 'Origin, Cookie' : 'Origin',
   };
 }
 
@@ -70,7 +87,8 @@ export async function handleRequest(
   const path = url.pathname;
 
   const reqOrigin = typeof req.headers.origin === 'string' ? req.headers.origin : null;
-  for (const [k, v] of Object.entries(buildCorsHeaders(corsOrigin, reqOrigin))) {
+  const userScoped = isUserScopedPath(path);
+  for (const [k, v] of Object.entries(buildCorsHeaders(corsOrigin, reqOrigin, userScoped))) {
     res.setHeader(k, v);
   }
 
