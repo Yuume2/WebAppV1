@@ -689,13 +689,27 @@ export function WorkspaceCommandPalette({
               </span>
             </div>
             <ul role="list" style={showAllStarred ? { ...listStyle, maxHeight: 280, overflowY: 'auto' } : listStyle}>
-              {starredEntries.map((s) => {
+              {starredEntries.map((s, i) => {
                 const idx = unifiedItems.findIndex(
                   (u) => u.kind === 'starred' && u.key === `star-${s.key}`,
                 );
                 const isHover = idx === Math.min(hover, unifiedItems.length - 1);
+                const showGroupHeader = showAllStarred && (i === 0 || starredEntries[i - 1]?.windowId !== s.windowId);
                 return (
                   <li key={`starred-${s.key}`} style={{ listStyle: 'none' }}>
+                    {showGroupHeader ? (
+                      <div
+                        style={{
+                          fontSize: '0.62rem',
+                          color: '#6a6a75',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.06em',
+                          padding: '6px 6px 2px',
+                        }}
+                      >
+                        {s.window.title}
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       role="option"
@@ -743,7 +757,7 @@ export function WorkspaceCommandPalette({
                           {(isHover ? (s.fullContent || s.snippet) : s.snippet) || '(empty)'}
                         </div>
                         <div style={{ fontSize: '0.65rem', color: '#8a8a95', marginTop: 2 }}>
-                          {s.role} · {s.window.title}
+                          {showAllStarred ? s.role : `${s.role} · ${s.window.title}`}
                         </div>
                       </div>
                     </button>

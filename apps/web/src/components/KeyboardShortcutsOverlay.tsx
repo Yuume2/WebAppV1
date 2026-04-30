@@ -22,6 +22,7 @@ const GROUPS: ShortcutGroup[] = [
       { keys: ['⌘', 'K'], description: 'Open command palette — search windows, workspaces, message contents, starred messages, and other projects (Ctrl+K on Linux/Win)' },
       { keys: ['⌥', '↑/↓'], description: 'Cycle active chat window up/down (Alt+↑ / Alt+↓)' },
       { keys: ['Click', '▲▼'], description: 'On a pinned sidebar row: reorder pinned windows; order persists per session' },
+      { keys: ['Drag', '⇅'], description: 'Drag a pinned sidebar row onto another pinned row to insert it at that position' },
       { keys: ['⌥', 'Shift', '↑/↓'], description: 'Reorder the active pinned window up/down (Alt+Shift+↑ / Alt+Shift+↓)' },
     ],
   },
