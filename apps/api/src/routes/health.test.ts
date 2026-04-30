@@ -46,4 +46,40 @@ describe('GET /health', () => {
     expect(body.data.service).toBe('webapp-api');
     expect(body.data.status).toBe('ok');
   });
+
+  it('never emits Set-Cookie on the public health endpoint', async () => {
+    // /health is a public, anonymous probe target. Any Set-Cookie here
+    // would either leak a session into a poller or accidentally pin a
+    // cookie on a probe origin. Mirror of the /v1/version Set-Cookie
+    // absence pin — both endpoints share the same threat profile.
+    const res = await fetch(`${harness.baseUrl}/health`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('does not emit Vary: Cookie on /health (not user-scoped)', async () => {
+    // /health is identical for all viewers. Vary: Cookie would fragment
+    // shared caches by every visitor's cookie state for a response that
+    // never depends on it. Mirror of the /v1/health/deep + /v1/version
+    // Vary absence pins.
+    const res = await fetch(`${harness.baseUrl}/health`);
+    const vary = res.headers.get('vary') ?? '';
+    if (vary) {
+      expect(vary).not.toContain('Cookie');
+    }
+  });
+
+  it('does not emit Vary: Cookie on /v1/health (alias also non-user-scoped)', async () => {
+    const res = await fetch(`${harness.baseUrl}/v1/health`);
+    const vary = res.headers.get('vary') ?? '';
+    if (vary) {
+      expect(vary).not.toContain('Cookie');
+    }
+  });
+
+  it('never emits Set-Cookie on /v1/health alias', async () => {
+    const res = await fetch(`${harness.baseUrl}/v1/health`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
 });
