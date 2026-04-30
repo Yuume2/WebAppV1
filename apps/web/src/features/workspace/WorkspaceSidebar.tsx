@@ -100,6 +100,22 @@ export function WorkspaceSidebar({
     if (pa === 1 && pb === 1) return orderIndex(a.id) - orderIndex(b.id);
     return 0;
   };
+  const reorderPinned = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    const currentPinnedIds = visibleWindows
+      .filter((w) => pinnedSet.has(w.id))
+      .slice()
+      .sort((a, b) => orderIndex(a.id) - orderIndex(b.id))
+      .map((w) => w.id);
+    const fromIdx = currentPinnedIds.indexOf(fromId);
+    const toIdx = currentPinnedIds.indexOf(toId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const next = currentPinnedIds.slice();
+    next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, fromId);
+    writePinnedOrder(next);
+    setPinnedOrder(next);
+  };
   const movePinned = (id: string, dir: -1 | 1) => {
     const currentPinnedIds = visibleWindows
       .filter((w) => pinnedSet.has(w.id))
@@ -293,6 +309,7 @@ export function WorkspaceSidebar({
                   canMoveDown={canMoveDown}
                   onMoveUp={canMoveUp ? () => movePinned(w.id, -1) : undefined}
                   onMoveDown={canMoveDown ? () => movePinned(w.id, 1) : undefined}
+                  onReorderPinned={isPinned ? reorderPinned : undefined}
                   onClick={() => onFocus(w.id)}
                   onAction={() => onClose(w.id)}
                   actionLabel="×"
@@ -789,15 +806,21 @@ interface WindowRowProps {
   canMoveDown?: boolean;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  onReorderPinned?: (fromId: string, toId: string) => void;
   onClick: () => void;
   onAction: () => void;
   actionLabel: string;
   actionAria: string;
 }
 
-function WindowRow({ window, active, muted, pinned, lastActivity, pending, unread, unreadCount, onMarkAsRead, canMoveUp, canMoveDown, onMoveUp, onMoveDown, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
+const DRAG_MIME = 'application/x-wav-pinned-window-id';
+
+function WindowRow({ window, active, muted, pinned, lastActivity, pending, unread, unreadCount, onMarkAsRead, canMoveUp, canMoveDown, onMoveUp, onMoveDown, onReorderPinned, onClick, onAction, actionLabel, actionAria }: WindowRowProps) {
   const stamp = formatRelative(lastActivity ?? window.updatedAt ?? window.createdAt);
   const rowRef = useRef<HTMLDivElement | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const dragEnabled = !!(pinned && onReorderPinned);
   useEffect(() => {
     if (!active) return;
     const el = rowRef.current;
@@ -817,6 +840,37 @@ function WindowRow({ window, active, muted, pinned, lastActivity, pending, unrea
       ref={rowRef}
       role="button"
       tabIndex={0}
+      draggable={dragEnabled}
+      onDragStart={dragEnabled ? (e) => {
+        try {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData(DRAG_MIME, window.id);
+          e.dataTransfer.setData('text/plain', window.id);
+        } catch { /* ignore */ }
+        setDragging(true);
+      } : undefined}
+      onDragEnd={dragEnabled ? () => {
+        setDragging(false);
+        setDragOver(false);
+      } : undefined}
+      onDragEnter={dragEnabled ? (e) => {
+        if (e.dataTransfer.types.includes(DRAG_MIME)) {
+          setDragOver(true);
+        }
+      } : undefined}
+      onDragOver={dragEnabled ? (e) => {
+        if (e.dataTransfer.types.includes(DRAG_MIME)) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }
+      } : undefined}
+      onDragLeave={dragEnabled ? () => setDragOver(false) : undefined}
+      onDrop={dragEnabled ? (e) => {
+        e.preventDefault();
+        const fromId = e.dataTransfer.getData(DRAG_MIME) || e.dataTransfer.getData('text/plain');
+        setDragOver(false);
+        if (fromId && onReorderPinned) onReorderPinned(fromId, window.id);
+      } : undefined}
       onClick={onClick}
       onAuxClick={(e) => {
         if (e.button === 1) {
@@ -831,20 +885,21 @@ function WindowRow({ window, active, muted, pinned, lastActivity, pending, unrea
         }
       }}
       aria-current={active ? 'true' : undefined}
-      aria-label={`${window.title} — ${window.provider} ${window.model}`}
+      aria-grabbed={dragEnabled ? dragging : undefined}
+      aria-label={`${window.title} — ${window.provider} ${window.model}${dragEnabled ? ' (draggable to reorder pinned)' : ''}`}
       style={{
         display: 'flex',
         alignItems: 'center',
         gap: '0.5rem',
         padding: '0.5rem 0.55rem',
         borderRadius: 8,
-        cursor: 'pointer',
-        background: active ? '#1c1c28' : 'transparent',
-        border: `1px solid ${active ? '#4f6bff' : 'transparent'}`,
+        cursor: dragging ? 'grabbing' : dragEnabled ? 'grab' : 'pointer',
+        background: dragOver ? '#1c2436' : active ? '#1c1c28' : 'transparent',
+        border: `1px solid ${dragOver ? '#4f6bff' : active ? '#4f6bff' : 'transparent'}`,
         boxShadow: active ? '0 0 0 1px rgba(79,107,255,0.25)' : 'none',
-        opacity: muted ? 0.55 : 1,
+        opacity: dragging ? 0.5 : muted ? 0.55 : 1,
         marginBottom: 2,
-        transition: 'background 120ms ease, border-color 120ms ease',
+        transition: 'background 120ms ease, border-color 120ms ease, opacity 120ms ease',
       }}
     >
       <span
