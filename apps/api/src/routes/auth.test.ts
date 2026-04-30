@@ -119,6 +119,11 @@ describe('POST /v1/auth/signup', () => {
     // no-store is the only thing keeping that catastrophe from being one
     // misconfigured CDN away.
     expect(res.headers.get('cache-control')).toBe('no-store');
+    // Vary: Cookie is the secondary defence — even if a future shared
+    // cache decided to honour private/max-age over no-store, it would
+    // still key the entry by the session cookie. /v1/auth/signup is a
+    // user-scoped path so the predicate must include it.
+    expect(res.headers.get('vary') ?? '').toContain('Cookie');
   });
 
   it('normalises email to lowercase', async () => {
@@ -358,6 +363,11 @@ describe('POST /v1/auth/signup', () => {
     // 409 must NOT emit a Set-Cookie either — there's no session to grant
     // when the signup failed.
     expect(res.headers.get('set-cookie')).toBeNull();
+    // Vary: Cookie still applies to the 409 path. Two different users
+    // probing the same email could see different states (one signed-in,
+    // one anonymous, one with a stale session) — the cache must key by
+    // cookie even on rejection.
+    expect(res.headers.get('vary') ?? '').toContain('Cookie');
     await c();
   });
 });
@@ -390,6 +400,10 @@ describe('POST /v1/auth/login', () => {
     // shared cache would broadcast one user's session to everyone. Pin
     // Cache-Control: no-store on the success path explicitly.
     expect(res.headers.get('cache-control')).toBe('no-store');
+    // Vary: Cookie defence-in-depth: any cache that decides to honour
+    // private/max-age over no-store still keys this response by the
+    // session cookie. Mirror of the signup 201 pin.
+    expect(res.headers.get('vary') ?? '').toContain('Cookie');
 
     await close();
   });
