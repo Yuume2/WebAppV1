@@ -114,6 +114,11 @@ describe('OPTIONS preflight', () => {
     expect(res.headers.get('referrer-policy')).toBe('no-referrer');
     expect(res.headers.get('x-permitted-cross-domain-policies')).toBe('none');
     expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    // Preflight rides the same Vary: Cookie as every other CORS-headered
+    // response (preflight is opted-in to the same buildCorsHeaders call).
+    // Pin so a refactor that special-cases OPTIONS doesn't accidentally
+    // drop the cache-keying signal.
+    expect(res.headers.get('vary') ?? '').toContain('Cookie');
   });
 });
 
@@ -137,6 +142,17 @@ describe('CORS with explicit origin — credentialed auth', () => {
   it('emits Vary: Origin so caches do not serve the wrong response', async () => {
     const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`);
     expect(res.headers.get('vary')).toContain('Origin');
+  });
+
+  it('emits Vary: Cookie alongside Origin (defence-in-depth on user-scoped responses)', async () => {
+    // Cache-Control: no-store on user-scoped routes is the primary guard
+    // (batches 11-12); Vary: Cookie is the secondary signal so any future
+    // shared cache that decides to honour private/max-age over no-store
+    // still keys responses by the session cookie. Pin both list members.
+    const res = await fetch(`${s.baseUrl}${API_HEALTH_PATH}`);
+    const vary = res.headers.get('vary') ?? '';
+    expect(vary).toContain('Origin');
+    expect(vary).toContain('Cookie');
   });
 
   it('preflight also carries credentials + explicit origin', async () => {
@@ -195,5 +211,14 @@ describe('CORS with wildcard — non-credentialed default', () => {
   it('does NOT emit Access-Control-Allow-Credentials for wildcard', async () => {
     const res = await fetch(`${harness.baseUrl}${API_HEALTH_PATH}`);
     expect(res.headers.get('access-control-allow-credentials')).toBeNull();
+  });
+
+  it('still emits Vary: Cookie even on the wildcard branch', async () => {
+    // The wildcard branch is the dev / open-API path. We don't ship
+    // ACAO=*+credentials (browsers reject the combo) but we do still
+    // want caches to key by Cookie if anyone ever puts a shared cache
+    // in front of an unauthenticated probe path. Pin the header.
+    const res = await fetch(`${harness.baseUrl}${API_HEALTH_PATH}`);
+    expect(res.headers.get('vary')).toContain('Cookie');
   });
 });
