@@ -6,6 +6,36 @@ import { startTestServer, type Harness } from '../test/server-harness.js';
 import { createApiServer } from '../lib/server.js';
 import { Router } from '../lib/router.js';
 import { routes } from '../routes/index.js';
+import { isUserScopedPath } from './handle-request.js';
+
+describe('isUserScopedPath — Vary: Cookie scope', () => {
+  it('returns false for the public health probes', () => {
+    expect(isUserScopedPath('/health')).toBe(false);
+    expect(isUserScopedPath('/v1/health')).toBe(false);
+    expect(isUserScopedPath('/v1/health/deep')).toBe(false);
+  });
+
+  it('returns false for the public version endpoint', () => {
+    expect(isUserScopedPath('/v1/version')).toBe(false);
+  });
+
+  it('returns true for auth, state, projects, workspaces, chat-windows, messages, provider-connections', () => {
+    expect(isUserScopedPath('/v1/auth/login')).toBe(true);
+    expect(isUserScopedPath('/v1/auth/me')).toBe(true);
+    expect(isUserScopedPath('/v1/state')).toBe(true);
+    expect(isUserScopedPath('/v1/projects')).toBe(true);
+    expect(isUserScopedPath('/v1/projects/abc')).toBe(true);
+    expect(isUserScopedPath('/v1/workspaces')).toBe(true);
+    expect(isUserScopedPath('/v1/chat-windows')).toBe(true);
+    expect(isUserScopedPath('/v1/messages')).toBe(true);
+    expect(isUserScopedPath('/v1/provider-connections')).toBe(true);
+  });
+
+  it('returns true for unknown paths (closed by default — safer to over-key than miss a user-scoped route)', () => {
+    expect(isUserScopedPath('/v1/whatever-future-route')).toBe(true);
+    expect(isUserScopedPath('/random-junk')).toBe(true);
+  });
+});
 
 describe('dispatch — error envelopes', () => {
   let harness: Harness;
