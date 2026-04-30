@@ -29,4 +29,20 @@ describe('GET /v1/version', () => {
     // search results). Pin the anti-indexing header.
     expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
   });
+
+  it('does not emit Vary: Cookie — version is identical for all viewers', async () => {
+    // Pin the absence: if /v1/version ever started carrying Vary: Cookie,
+    // a shared cache would fragment by every visitor's cookie state and
+    // multiply storage load for a response that never depends on it.
+    const res = await fetch(`${harness.baseUrl}/v1/version`);
+    const vary = res.headers.get('vary') ?? '';
+    if (vary) {
+      expect(vary).not.toContain('Cookie');
+    }
+  });
+
+  it('never emits Set-Cookie on the public version endpoint', async () => {
+    const res = await fetch(`${harness.baseUrl}/v1/version`);
+    expect(res.headers.get('set-cookie')).toBeNull();
+  });
 });

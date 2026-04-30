@@ -80,4 +80,30 @@ describe('GET /v1/health/deep', () => {
     expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
     await close();
   });
+
+  it('never emits Set-Cookie on the public health probe', async () => {
+    // /v1/health/deep is a public, anonymous endpoint. Any Set-Cookie
+    // here would either leak a session into a poller or accidentally
+    // pin a cookie on a probe origin. Lock the absence so a future
+    // refactor that threads session resolution everywhere doesn't
+    // bleed cookies onto unauthenticated routes.
+    const { baseUrl, close } = await startServer(makeDeps('ok'));
+    const res = await fetch(`${baseUrl}/v1/health/deep`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('set-cookie')).toBeNull();
+    await close();
+  });
+
+  it('emits Vary: Origin only (no Cookie) — health is not user-scoped', async () => {
+    // Deep health is anonymous and identical for all viewers. Vary: Cookie
+    // here only fragments shared caches needlessly; the only legitimate
+    // Vary axis is Origin (so multi-origin CORS deployments key correctly).
+    const { baseUrl, close } = await startServer(makeDeps('ok'));
+    const res = await fetch(`${baseUrl}/v1/health/deep`);
+    const vary = res.headers.get('vary') ?? '';
+    if (vary) {
+      expect(vary).not.toContain('Cookie');
+    }
+    await close();
+  });
 });
