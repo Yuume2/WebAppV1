@@ -114,6 +114,11 @@ describe('OPTIONS preflight', () => {
     expect(res.headers.get('referrer-policy')).toBe('no-referrer');
     expect(res.headers.get('x-permitted-cross-domain-policies')).toBe('none');
     expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    // Preflight rides the same Vary: Cookie as every other CORS-headered
+    // response (preflight is opted-in to the same buildCorsHeaders call).
+    // Pin so a refactor that special-cases OPTIONS doesn't accidentally
+    // drop the cache-keying signal.
+    expect(res.headers.get('vary') ?? '').toContain('Cookie');
   });
 });
 
