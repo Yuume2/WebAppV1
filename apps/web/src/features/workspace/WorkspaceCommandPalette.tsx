@@ -2,8 +2,11 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import type { ChatWindow, Workspace } from '@webapp/types';
+import type { ChatWindow, Project, Workspace } from '@webapp/types';
 import type { MockMessage } from '@/lib/data';
+import { fetchProjects } from '@/lib/api/projects';
+import { getApiBaseUrl } from '@/lib/api/env';
+import { listProjects as listMockProjects } from '@/lib/data';
 
 interface PaletteWindow {
   window: ChatWindow;
@@ -56,6 +59,27 @@ export function WorkspaceCommandPalette({
   const [hover, setHover] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // Other-projects switcher: load lazily on first open and cache for the
+  // life of the palette mount. We don't refetch on subsequent opens
+  // because the palette is mounted once per workspace page; reopening
+  // doesn't justify another network round-trip.
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const projectsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!open) return;
+    if (projectsLoadedRef.current) return;
+    projectsLoadedRef.current = true;
+    if (!getApiBaseUrl()) {
+      setAllProjects(listMockProjects());
+      return;
+    }
+    let cancelled = false;
+    fetchProjects()
+      .then((rows) => { if (!cancelled) setAllProjects(rows); })
+      .catch(() => { /* swallow — palette stays usable without project switcher */ });
+    return () => { cancelled = true; };
+  }, [open]);
+
   const items: PaletteWindow[] = useMemo(() => {
     const open = visibleWindows.map((w) => ({ window: w, open: true }));
     const closed = closedWindows.map((w) => ({ window: w, open: false }));
@@ -76,6 +100,22 @@ export function WorkspaceCommandPalette({
     if (!q) return workspaces;
     return workspaces.filter((w) => w.name.toLowerCase().includes(q));
   }, [workspaces, query]);
+
+  // Other projects (cross-project switcher). The currently-open project is
+  // always excluded — the workspace section above already covers in-project
+  // navigation. With no query we cap at 6 to keep the palette readable.
+  // Sort by name (case-insensitive) for predictable ordering across opens —
+  // server order isn't a stable contract from the palette's POV.
+  const PROJECT_SECTION_CAP = 6;
+  const filteredOtherProjects = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const others = allProjects
+      .filter((p) => p.id !== projectId)
+      .slice()
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    if (!q) return others.slice(0, PROJECT_SECTION_CAP);
+    return others.filter((p) => p.name.toLowerCase().includes(q));
+  }, [allProjects, projectId, query]);
 
   const messageMatches = useMemo(() => {
     const q = debouncedQuery.trim().toLowerCase();
@@ -116,7 +156,8 @@ export function WorkspaceCommandPalette({
     | { kind: 'workspace'; key: string; workspace: Workspace }
     | { kind: 'window'; key: string; entry: PaletteWindow }
     | { kind: 'message'; key: string; match: typeof messageMatches[number] }
-    | { kind: 'starred'; key: string; star: { windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; fullContent: string } };
+    | { kind: 'starred'; key: string; star: { windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; fullContent: string } }
+    | { kind: 'project'; key: string; project: Project };
 
   const recentEntries: PaletteWindow[] = useMemo(() => {
     if (query.trim()) return [];
@@ -255,8 +296,14 @@ export function WorkspaceCommandPalette({
       if (!m) continue;
       out.push({ kind: 'message', key: `m-${m.windowId}-${m.messageId}-${i}`, match: m });
     }
+    // Other projects last in the unified order — within-project navigation
+    // is far more frequent, so cross-project switching shouldn't shadow
+    // window/message items in arrow-key sequencing.
+    for (const p of filteredOtherProjects) {
+      out.push({ kind: 'project', key: `p-${p.id}`, project: p });
+    }
     return out;
-  }, [recentEntries, pinnedEntries, starredEntries, filteredWorkspaces, filtered, visibleMessageItems]);
+  }, [recentEntries, pinnedEntries, starredEntries, filteredWorkspaces, filtered, visibleMessageItems, filteredOtherProjects]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 200);
@@ -389,6 +436,14 @@ export function WorkspaceCommandPalette({
         url.hash = `msg-${s.messageId}`;
         window.history.replaceState(null, '', url.toString());
         window.dispatchEvent(new HashChangeEvent('hashchange'));
+      }
+      return;
+    }
+    if (item.kind === 'project') {
+      setOpen(false);
+      setQuery('');
+      if (typeof window !== 'undefined') {
+        window.location.assign(`/project/${item.project.id}`);
       }
     }
   };
@@ -717,7 +772,7 @@ export function WorkspaceCommandPalette({
           </div>
         ) : null}
         <ul role="listbox" aria-label="Chat windows" style={listStyle}>
-          {filtered.length === 0 && messageMatches.length === 0 && filteredWorkspaces.length <= 1 && recentEntries.length === 0 && pinnedEntries.length === 0 ? (
+          {filtered.length === 0 && messageMatches.length === 0 && filteredWorkspaces.length <= 1 && recentEntries.length === 0 && pinnedEntries.length === 0 && filteredOtherProjects.length === 0 ? (
             <li style={emptyStyle}>
               {query.trim().length === 0
                 ? 'No chat windows yet.'
@@ -876,6 +931,57 @@ export function WorkspaceCommandPalette({
             </ul>
           </>
         ) : null}
+        {filteredOtherProjects.length > 0 ? (
+          <div>
+            <div style={sectionLabelStyle}>
+              Other projects
+              {(() => {
+                // Show overflow count when no query and there are more
+                // unfiltered projects than the cap. Helps the user know
+                // they need to type to find a specific one beyond the
+                // first 6 (alphabetical).
+                if (query.trim().length > 0) return null;
+                const totalOthers = allProjects.filter((p) => p.id !== projectId).length;
+                if (totalOthers <= filteredOtherProjects.length) return null;
+                return (
+                  <span style={{ marginLeft: 6, color: '#6a6a75', fontWeight: 400 }}>
+                    +{totalOthers - filteredOtherProjects.length} more — type to filter
+                  </span>
+                );
+              })()}
+            </div>
+            <ul role="list" style={listStyle}>
+              {filteredOtherProjects.map((p) => {
+                const idx = unifiedItems.findIndex((u) => u.kind === 'project' && u.project.id === p.id);
+                const isHover = idx === Math.min(hover, unifiedItems.length - 1);
+                return (
+                  <li key={p.id} style={{ listStyle: 'none' }}>
+                    <Link
+                      href={`/project/${p.id}`}
+                      onMouseEnter={() => idx >= 0 && setHover(idx)}
+                      onClick={() => {
+                        setOpen(false);
+                        setQuery('');
+                      }}
+                      style={{
+                        ...rowStyle,
+                        textDecoration: 'none',
+                        color: '#cfcfd6',
+                        background: isHover ? '#1c1c28' : 'transparent',
+                        border: `1px solid ${isHover ? '#3a3f6b' : 'transparent'}`,
+                      }}
+                    >
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {renderHighlighted(p.name, query)}
+                      </span>
+                      <span style={badgeStyle} aria-label="project">project</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
         <div
           aria-live="polite"
           aria-atomic="true"
@@ -904,11 +1010,13 @@ export function WorkspaceCommandPalette({
               const enterAction =
                 sel?.kind === 'workspace'
                   ? 'Enter to switch workspace'
-                  : sel?.kind === 'message'
-                    ? 'Enter to jump to message'
-                    : sel?.kind === 'starred'
-                      ? 'Enter to jump to starred message'
-                      : 'Enter to open';
+                  : sel?.kind === 'project'
+                    ? 'Enter to switch project'
+                    : sel?.kind === 'message'
+                      ? 'Enter to jump to message'
+                      : sel?.kind === 'starred'
+                        ? 'Enter to jump to starred message'
+                        : 'Enter to open';
               if (query.trim().length > 0) return `↑↓ navigate · ${enterAction} · Esc clears query, again to close`;
               return `↑↓ navigate · ${enterAction} · Esc to close · type ≥2 chars to search messages`;
             })()}
