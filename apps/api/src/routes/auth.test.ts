@@ -868,6 +868,11 @@ describe('POST /v1/auth/logout', () => {
     const cookie = getSetCookie(res);
     expect(cookie).toBeTruthy();
     expect(cookie).toContain('Max-Age=0');
+    // Logout response is per-user (the Set-Cookie clearing affects only
+    // the calling browser's session). Vary: Cookie is mandatory: a
+    // shared cache must not serve user A's logout response to user B.
+    expect(res.headers.get('vary') ?? '').toContain('Cookie');
+    expect(res.headers.get('cache-control')).toBe('no-store');
 
     await close();
   });
