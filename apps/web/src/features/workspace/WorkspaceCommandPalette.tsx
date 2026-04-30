@@ -772,7 +772,7 @@ export function WorkspaceCommandPalette({
           </div>
         ) : null}
         <ul role="listbox" aria-label="Chat windows" style={listStyle}>
-          {filtered.length === 0 && messageMatches.length === 0 && filteredWorkspaces.length <= 1 && recentEntries.length === 0 && pinnedEntries.length === 0 ? (
+          {filtered.length === 0 && messageMatches.length === 0 && filteredWorkspaces.length <= 1 && recentEntries.length === 0 && pinnedEntries.length === 0 && filteredOtherProjects.length === 0 ? (
             <li style={emptyStyle}>
               {query.trim().length === 0
                 ? 'No chat windows yet.'
