@@ -933,4 +933,133 @@ describe('POST /v1/messages/stream — authenticated', () => {
     expect(persisted).toBe(false);
     await close();
   });
+
+  it('emits an explicit SSE idle_timeout error when no provider delta lands within the idle window', async () => {
+    // Pin the idle-stream timeout: when the upstream goes silent past
+    // idleStreamTimeoutMs the controller must abort upstream, surface a
+    // discriminable SSE error event, and end the stream with [DONE].
+    // We override the deps idle window to a small value so the test
+    // exercises the path in real time without touching node-internal
+    // timers via fake clocks.
+    let aborted = false;
+    let persisted = false;
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-test',
+      listMessages:   async () => [],
+      idleStreamTimeoutMs: 250,
+      generateStream: async function* (_p, _k, _msgs, _model, opts) {
+        yield { type: 'delta', content: 'first ' };
+        // Park forever — the controller must trip its idle timer and abort.
+        await new Promise<void>((resolve) => {
+          if (opts?.signal?.aborted) { aborted = true; return resolve(); }
+          opts?.signal?.addEventListener('abort', () => { aborted = true; resolve(); }, { once: true });
+        });
+      },
+      persistMessagePair: async () => { persisted = true; return null; },
+    }));
+
+    try {
+      const res = await fetch(`${baseUrl}/v1/messages/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatWindowId: 'cw-1', role: 'user', content: 'hi' }),
+      });
+      expect(res.status).toBe(200);
+      const events = await readSseEvents(res);
+      const parsed = events
+        .filter((e) => e !== '[DONE]')
+        .map((e) => { try { return JSON.parse(e) as { delta?: string; error?: string; detail?: string }; } catch { return {}; } });
+      const idleErr = parsed.find((e) => e.error === 'idle_timeout');
+      expect(idleErr).toBeTruthy();
+      expect(idleErr?.detail).toMatch(/No provider activity/i);
+      expect(events).toContain('[DONE]');
+      expect(events[events.length - 1]).toBe('[DONE]');
+      expect(aborted).toBe(true);
+      expect(persisted).toBe(false);
+    } finally {
+      await close();
+    }
+  });
+
+  it('does not trip the idle timeout when deltas keep arriving', async () => {
+    // Sanity counter-test: a generator that yields content deltas back to
+    // back must NOT trigger idle_timeout. Guards against a regression
+    // where the timer arms once and never resets on subsequent deltas.
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-test',
+      listMessages:   async () => [],
+      idleStreamTimeoutMs: 250,
+      generateStream: async function* () {
+        yield { type: 'delta', content: 'a ' };
+        await new Promise((r) => setTimeout(r, 50));
+        yield { type: 'delta', content: 'b ' };
+        await new Promise((r) => setTimeout(r, 50));
+        yield { type: 'delta', content: 'c' };
+        yield { type: 'done', model: 'gpt-4o-mini', usage: { promptTokens: 1, completionTokens: 3, totalTokens: 4 } };
+      },
+      persistMessagePair: async (chatWindowId, _userId, userContent, assistantContent) =>
+        mockPair(chatWindowId, userContent, assistantContent),
+    }));
+
+    try {
+      const res = await fetch(`${baseUrl}/v1/messages/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatWindowId: 'cw-1', role: 'user', content: 'hi' }),
+      });
+      expect(res.status).toBe(200);
+      const events = await readSseEvents(res);
+      const errs = events
+        .filter((e) => e !== '[DONE]')
+        .map((e) => { try { return JSON.parse(e) as { error?: string }; } catch { return {}; } })
+        .filter((e) => typeof e.error === 'string');
+      expect(errs).toHaveLength(0);
+      expect(events[events.length - 1]).toBe('[DONE]');
+    } finally {
+      await close();
+    }
+  });
+
+  it('empty-content deltas do not reset the idle timer (still trips on prolonged silence)', async () => {
+    // Some provider SDKs emit zero-length delta payloads as keepalive-ish
+    // signals. We do NOT consider those useful progress: a stream that
+    // emits only empty deltas must still trip idle_timeout once the
+    // window elapses without a content-bearing delta.
+    const { baseUrl, close } = await startServer(makeDeps({
+      resolveUser:    async () => USER_1,
+      findChatWindow: async () => mockChatWindow('openai', 'gpt-4o-mini'),
+      getApiKey:      async () => 'sk-test',
+      listMessages:   async () => [],
+      idleStreamTimeoutMs: 250,
+      generateStream: async function* (_p, _k, _msgs, _model, opts) {
+        yield { type: 'delta', content: '' };
+        yield { type: 'delta', content: '' };
+        await new Promise<void>((resolve) => {
+          if (opts?.signal?.aborted) return resolve();
+          opts?.signal?.addEventListener('abort', () => resolve(), { once: true });
+        });
+      },
+      persistMessagePair: async () => null,
+    }));
+
+    try {
+      const res = await fetch(`${baseUrl}/v1/messages/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatWindowId: 'cw-1', role: 'user', content: 'hi' }),
+      });
+      expect(res.status).toBe(200);
+      const events = await readSseEvents(res);
+      const parsed = events
+        .filter((e) => e !== '[DONE]')
+        .map((e) => { try { return JSON.parse(e) as { error?: string }; } catch { return {}; } });
+      expect(parsed.some((e) => e.error === 'idle_timeout')).toBe(true);
+    } finally {
+      await close();
+    }
+  });
 });

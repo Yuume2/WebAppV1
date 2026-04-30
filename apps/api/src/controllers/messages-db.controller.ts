@@ -89,6 +89,11 @@ export interface MessagesDeps {
   generateStream:    (provider: AIProvider, apiKey: string, messages: ChatMessage[], model: string, opts?: { signal?: AbortSignal }) => AsyncIterable<ChatCompletionStreamChunk>;
   maxContextMessages: number;
   providerTimeoutMs?: number;
+  // Idle-stream timeout (ms): if no useful provider delta lands within this
+  // window the controller aborts upstream and surfaces an SSE idle_timeout
+  // error. Defaults to 90s in production. Tests override to a small value
+  // so they can exercise the path in real time without faking timers.
+  idleStreamTimeoutMs?: number;
 }
 
 export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps {
@@ -332,7 +337,7 @@ export async function streamMessageDbController(
   // actual delta payloads. The chosen 90s window is wide enough for slow
   // first-tokens on large prompts but tight enough to catch hung sessions
   // before they tie up a reverse-proxy slot for the global request budget.
-  const IDLE_TIMEOUT_MS = 90_000;
+  const IDLE_TIMEOUT_MS = deps.idleStreamTimeoutMs ?? 90_000;
   const keepaliveTimer = setInterval(() => {
     // writableEnded guards against a race where the timer fires after we've
     // already res.end()'d in a terminal branch. write() on an ended response
@@ -477,6 +482,28 @@ export async function streamMessageDbController(
     res.write('data: [DONE]\n\n');
     res.end();
     return respondStreamed(502);
+  }
+
+  if (idleTimedOut) {
+    // Generator exited cleanly after we aborted via idle timer (rather than
+    // throwing) — still surface the explicit SSE error. Mirrors the catch-
+    // block path so the contract is identical regardless of whether the
+    // upstream propagated the abort as a throw or a clean return.
+    cleanup();
+    logger.warn('stream aborted on idle timeout (clean upstream exit)', {
+      requestId: ctx.requestId,
+      provider: cw.provider,
+      model: cw.model,
+      idleMs: IDLE_TIMEOUT_MS,
+      partialBytes: assistantContent.length,
+      durationMs: Date.now() - startedAt,
+    });
+    if (!res.writableEnded) {
+      sseWrite(res, { error: 'idle_timeout', detail: `No provider activity for ${Math.floor(IDLE_TIMEOUT_MS / 1000)}s` });
+      res.write('data: [DONE]\n\n');
+      try { res.end(); } catch { /* socket already closed */ }
+    }
+    return respondStreamed(504);
   }
 
   if (aborted || assistantContent.length === 0) {
