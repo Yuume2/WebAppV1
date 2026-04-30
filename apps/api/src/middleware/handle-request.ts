@@ -25,6 +25,12 @@ function buildCorsHeaders(corsOrigin: string, requestOrigin: string | null): Rec
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
+      // Defence-in-depth: every authenticated response varies by the
+      // session cookie. Cache-Control: no-store on user-scoped routes is
+      // the primary guard; this Vary signal is the secondary guard for
+      // any future shared cache (CDN, corp proxy) that decides to honour
+      // private/max-age over no-store. Harmless on cookieless requests.
+      'Vary': 'Cookie',
     };
   }
   const allowed = parseAllowedOrigins(corsOrigin);
@@ -41,7 +47,12 @@ function buildCorsHeaders(corsOrigin: string, requestOrigin: string | null): Rec
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Allow-Credentials': 'true',
-    'Vary': 'Origin',
+    // Origin: response varies by the requesting origin (multi-allowlist).
+    // Cookie: response varies by the session cookie — defence-in-depth on
+    // top of the per-route Cache-Control: no-store pins (batches 11-12)
+    // for any shared cache that decides to honour private/max-age over
+    // no-store at some point in the future.
+    'Vary': 'Origin, Cookie',
   };
 }
 
