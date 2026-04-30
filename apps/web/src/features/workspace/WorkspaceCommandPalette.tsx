@@ -155,7 +155,9 @@ export function WorkspaceCommandPalette({
       .slice(0, 6);
   }, [query, pinnedSet, pinnedOrder, recentEntries, activeId, visibleWindows, closedWindows]);
 
-  const starredEntries = useMemo(() => {
+  const STARRED_COLLAPSED_LIMIT = 6;
+  const STARRED_HARD_LIMIT = 60;
+  const starredAll = useMemo(() => {
     if (query.trim()) return [] as Array<{ key: string; windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; fullContent: string }>;
     if (!getMessages) return [];
     const out: Array<{ key: string; windowId: string; window: ChatWindow; messageId: string; role: string; snippet: string; fullContent: string }> = [];
@@ -170,14 +172,25 @@ export function WorkspaceCommandPalette({
         const content = (m.content ?? '').replace(/\s+/g, ' ').trim();
         const snippet = content.length > 90 ? `${content.slice(0, 90)}…` : content;
         out.push({ key: `${w.id}-${m.id}`, windowId: w.id, window: w, messageId: m.id, role: m.role, snippet, fullContent: m.content ?? '' });
-        if (out.length >= 6) break;
+        if (out.length >= STARRED_HARD_LIMIT) break;
       }
-      if (out.length >= 6) break;
+      if (out.length >= STARRED_HARD_LIMIT) break;
     }
     return out;
     // starredTick is intentionally a dep so listener-driven refresh re-runs the memo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, getMessages, visibleWindows, closedWindows, starredTick]);
+  const [showAllStarred, setShowAllStarred] = useState(false);
+  useEffect(() => {
+    if (!open) setShowAllStarred(false);
+  }, [open]);
+  useEffect(() => {
+    if (query.trim()) setShowAllStarred(false);
+  }, [query]);
+  const starredEntries = useMemo(() => {
+    if (showAllStarred) return starredAll;
+    return starredAll.slice(0, STARRED_COLLAPSED_LIMIT);
+  }, [starredAll, showAllStarred]);
 
   const starredByWindow = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -313,6 +326,8 @@ export function WorkspaceCommandPalette({
         e.preventDefault();
         if (query.length > 0) {
           setQuery('');
+        } else if (showAllStarred) {
+          setShowAllStarred(false);
         } else {
           setOpen(false);
         }
@@ -320,7 +335,7 @@ export function WorkspaceCommandPalette({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, query, activeWorkspaceId]);
+  }, [open, query, activeWorkspaceId, showAllStarred]);
 
   useEffect(() => {
     if (!open) return;
@@ -540,38 +555,66 @@ export function WorkspaceCommandPalette({
             </ul>
           </div>
         ) : null}
-        {starredEntries.length > 0 ? (
+        {starredAll.length > 0 ? (
           <div>
             <div style={{ ...sectionLabelStyle, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <span>Starred messages · {starredEntries.length}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (typeof window === 'undefined') return;
-                  const wins = new Set(starredEntries.map((s) => s.windowId));
-                  for (const wid of wins) {
-                    try { window.localStorage.removeItem(`wav.chat.starred.${wid}`); } catch { /* ignore */ }
-                  }
-                  window.dispatchEvent(new CustomEvent('wav:starred-changed', { detail: { bulk: true } }));
-                }}
-                aria-label="Unstar all messages shown here"
-                title="Unstar all messages currently shown in this section"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#9aa6ff',
-                  cursor: 'pointer',
-                  fontSize: '0.62rem',
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  fontFamily: 'inherit',
-                  padding: '0 0.25rem',
-                }}
-              >
-                Unstar all
-              </button>
+              <span>
+                Starred messages · {starredEntries.length}
+                {starredAll.length > starredEntries.length ? ` of ${starredAll.length}` : ''}
+                {starredAll.length >= STARRED_HARD_LIMIT ? '+' : ''}
+              </span>
+              <span style={{ display: 'inline-flex', gap: 6 }}>
+                {starredAll.length > STARRED_COLLAPSED_LIMIT ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllStarred((v) => !v)}
+                    aria-pressed={showAllStarred}
+                    aria-label={showAllStarred ? 'Show fewer starred messages' : `Show all ${starredAll.length} starred messages`}
+                    title={showAllStarred ? 'Collapse to top 6' : `Show all ${starredAll.length}`}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#9aa6ff',
+                      cursor: 'pointer',
+                      fontSize: '0.62rem',
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      fontFamily: 'inherit',
+                      padding: '0 0.25rem',
+                    }}
+                  >
+                    {showAllStarred ? 'Show less' : `Show all (${starredAll.length})`}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof window === 'undefined') return;
+                    const wins = new Set(starredAll.map((s) => s.windowId));
+                    for (const wid of wins) {
+                      try { window.localStorage.removeItem(`wav.chat.starred.${wid}`); } catch { /* ignore */ }
+                    }
+                    window.dispatchEvent(new CustomEvent('wav:starred-changed', { detail: { bulk: true } }));
+                  }}
+                  aria-label={`Unstar all ${starredAll.length} starred messages`}
+                  title={`Unstar all ${starredAll.length} starred messages across all windows`}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#9aa6ff',
+                    cursor: 'pointer',
+                    fontSize: '0.62rem',
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    fontFamily: 'inherit',
+                    padding: '0 0.25rem',
+                  }}
+                >
+                  Unstar all
+                </button>
+              </span>
             </div>
-            <ul role="list" style={listStyle}>
+            <ul role="list" style={showAllStarred ? { ...listStyle, maxHeight: 280, overflowY: 'auto' } : listStyle}>
               {starredEntries.map((s) => {
                 const idx = unifiedItems.findIndex(
                   (u) => u.kind === 'starred' && u.key === `star-${s.key}`,
