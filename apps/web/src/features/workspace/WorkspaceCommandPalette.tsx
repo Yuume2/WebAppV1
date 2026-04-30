@@ -104,10 +104,15 @@ export function WorkspaceCommandPalette({
   // Other projects (cross-project switcher). The currently-open project is
   // always excluded — the workspace section above already covers in-project
   // navigation. With no query we cap at 6 to keep the palette readable.
+  // Sort by name (case-insensitive) for predictable ordering across opens —
+  // server order isn't a stable contract from the palette's POV.
   const PROJECT_SECTION_CAP = 6;
   const filteredOtherProjects = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const others = allProjects.filter((p) => p.id !== projectId);
+    const others = allProjects
+      .filter((p) => p.id !== projectId)
+      .slice()
+      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
     if (!q) return others.slice(0, PROJECT_SECTION_CAP);
     return others.filter((p) => p.name.toLowerCase().includes(q));
   }, [allProjects, projectId, query]);
