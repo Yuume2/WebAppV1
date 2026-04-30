@@ -31,7 +31,7 @@ const GROUPS: ShortcutGroup[] = [
       { keys: ['⌘', 'F'], description: 'Find inside the active chat window (Ctrl+F on Linux/Win)' },
       { keys: ['⌘', 'J'], description: 'Focus the composer (Ctrl+J on Linux/Win)' },
       { keys: ['⌘', 'E'], description: 'Rename the active chat window (Ctrl+E on Linux/Win)' },
-      { keys: ['⌘', 'Shift', 'W'], description: 'Close the active chat window (hides locally; Ctrl+Shift+W on Linux/Win)' },
+      { keys: ['⌘', 'Shift', 'W'], description: 'Close the active chat window (hides locally; draft is preserved and announced via toast; Ctrl+Shift+W on Linux/Win)' },
       { keys: ['⌘', 'Shift', '⌫'], description: 'Clear the composer draft (Ctrl+Shift+Backspace)' },
       { keys: ['⌘', 'Shift', 'T'], description: 'Open the prompt template menu in the active composer (Ctrl+Shift+T)' },
       { keys: ['⌘', '.'], description: 'Stop the in-flight reply in the active chat window (Ctrl+. on Linux/Win)' },
