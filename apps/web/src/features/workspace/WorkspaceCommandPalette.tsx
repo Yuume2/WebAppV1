@@ -953,7 +953,9 @@ export function WorkspaceCommandPalette({
         {filteredOtherProjects.length > 0 ? (
           <div>
             <div style={sectionLabelStyle}>
-              Other projects
+              {query.trim().length === 0 && filteredOtherProjects.some((p) => recentProjectIds.includes(p.id))
+                ? 'Projects (recent first)'
+                : 'Other projects'}
               {(() => {
                 // Show overflow count when no query and there are more
                 // unfiltered projects than the cap. Helps the user know
