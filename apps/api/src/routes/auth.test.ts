@@ -550,6 +550,10 @@ describe('GET /v1/auth/me', () => {
     // explicit caching directive on this route would silently leak.
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(res.headers.get('x-request-id')).toBeTruthy();
+    // Defence-in-depth: Vary: Cookie tells any future shared cache that
+    // /me responses are session-cookie-keyed. Cache-Control: no-store is
+    // the primary guard; this is the secondary one.
+    expect(res.headers.get('vary') ?? '').toContain('Cookie');
     await close();
   });
 
@@ -595,6 +599,11 @@ describe('GET /v1/auth/me', () => {
     // user 'you're not logged in' for the duration of the cache TTL —
     // worst-possible UX for the auth flow. Pin explicitly.
     expect(res.headers.get('cache-control')).toBe('no-store');
+    // Vary: Cookie applies to the 401 path too — without it, a cache
+    // could legitimately serve a 'no cookie' 401 to a request that
+    // DOES have a cookie (matching path, both lacking the Vary signal
+    // appears coincidentally identical to the cache).
+    expect(res.headers.get('vary') ?? '').toContain('Cookie');
     await close();
   });
 
