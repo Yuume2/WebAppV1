@@ -65,6 +65,17 @@ export function WorkspaceCommandPalette({
   // doesn't justify another network round-trip.
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const projectsLoadedRef = useRef(false);
+  const [recentProjectIds, setRecentProjectIds] = useState<string[]>(() => readRecentProjects());
+  useEffect(() => {
+    pushRecentProject(projectId);
+    setRecentProjectIds(readRecentProjects());
+  }, [projectId]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onChange = () => setRecentProjectIds(readRecentProjects());
+    window.addEventListener('wav:projects-recents-changed', onChange);
+    return () => window.removeEventListener('wav:projects-recents-changed', onChange);
+  }, []);
   useEffect(() => {
     if (!open) return;
     if (projectsLoadedRef.current) return;
@@ -109,13 +120,20 @@ export function WorkspaceCommandPalette({
   const PROJECT_SECTION_CAP = 6;
   const filteredOtherProjects = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const recentRank = new Map<string, number>();
+    recentProjectIds.forEach((id, i) => recentRank.set(id, i));
     const others = allProjects
       .filter((p) => p.id !== projectId)
       .slice()
-      .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+      .sort((a, b) => {
+        const ra = recentRank.has(a.id) ? recentRank.get(a.id)! : Number.MAX_SAFE_INTEGER;
+        const rb = recentRank.has(b.id) ? recentRank.get(b.id)! : Number.MAX_SAFE_INTEGER;
+        if (ra !== rb) return ra - rb;
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      });
     if (!q) return others.slice(0, PROJECT_SECTION_CAP);
     return others.filter((p) => p.name.toLowerCase().includes(q));
-  }, [allProjects, projectId, query]);
+  }, [allProjects, projectId, query, recentProjectIds]);
 
   const messageMatches = useMemo(() => {
     const q = debouncedQuery.trim().toLowerCase();
@@ -440,6 +458,7 @@ export function WorkspaceCommandPalette({
       return;
     }
     if (item.kind === 'project') {
+      pushRecentProject(item.project.id);
       setOpen(false);
       setQuery('');
       if (typeof window !== 'undefined') {
@@ -934,7 +953,9 @@ export function WorkspaceCommandPalette({
         {filteredOtherProjects.length > 0 ? (
           <div>
             <div style={sectionLabelStyle}>
-              Other projects
+              {query.trim().length === 0 && filteredOtherProjects.some((p) => recentProjectIds.includes(p.id))
+                ? 'Projects (recent first)'
+                : 'Other projects'}
               {(() => {
                 // Show overflow count when no query and there are more
                 // unfiltered projects than the cap. Helps the user know
@@ -960,6 +981,7 @@ export function WorkspaceCommandPalette({
                       href={`/project/${p.id}`}
                       onMouseEnter={() => idx >= 0 && setHover(idx)}
                       onClick={() => {
+                        pushRecentProject(p.id);
                         setOpen(false);
                         setQuery('');
                       }}
@@ -974,6 +996,15 @@ export function WorkspaceCommandPalette({
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {renderHighlighted(p.name, query)}
                       </span>
+                      {recentProjectIds.includes(p.id) ? (
+                        <span
+                          aria-label="recently visited project"
+                          title="Recently visited"
+                          style={{ ...badgeStyle, color: '#9aa6ff', borderColor: '#3a3f6b' }}
+                        >
+                          recent
+                        </span>
+                      ) : null}
                       <span style={badgeStyle} aria-label="project">project</span>
                     </Link>
                   </li>
@@ -1248,6 +1279,34 @@ function readRecents(workspaceId: string): string[] {
     return parsed.filter((x): x is string => typeof x === 'string').slice(0, 8);
   } catch {
     return [];
+  }
+}
+
+const PROJECTS_RECENT_KEY = 'wav.projects.recent';
+const PROJECTS_RECENT_LIMIT = 4;
+
+function readRecentProjects(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.sessionStorage.getItem(PROJECTS_RECENT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string').slice(0, PROJECTS_RECENT_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+function pushRecentProject(projectId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const current = readRecentProjects();
+    const next = [projectId, ...current.filter((x) => x !== projectId)].slice(0, PROJECTS_RECENT_LIMIT);
+    window.sessionStorage.setItem(PROJECTS_RECENT_KEY, JSON.stringify(next));
+    window.dispatchEvent(new Event('wav:projects-recents-changed'));
+  } catch {
+    // ignore quota
   }
 }
 
