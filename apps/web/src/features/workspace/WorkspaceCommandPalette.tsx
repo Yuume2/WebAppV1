@@ -933,7 +933,23 @@ export function WorkspaceCommandPalette({
         ) : null}
         {filteredOtherProjects.length > 0 ? (
           <div>
-            <div style={sectionLabelStyle}>Other projects</div>
+            <div style={sectionLabelStyle}>
+              Other projects
+              {(() => {
+                // Show overflow count when no query and there are more
+                // unfiltered projects than the cap. Helps the user know
+                // they need to type to find a specific one beyond the
+                // first 6 (alphabetical).
+                if (query.trim().length > 0) return null;
+                const totalOthers = allProjects.filter((p) => p.id !== projectId).length;
+                if (totalOthers <= filteredOtherProjects.length) return null;
+                return (
+                  <span style={{ marginLeft: 6, color: '#6a6a75', fontWeight: 400 }}>
+                    +{totalOthers - filteredOtherProjects.length} more — type to filter
+                  </span>
+                );
+              })()}
+            </div>
             <ul role="list" style={listStyle}>
               {filteredOtherProjects.map((p) => {
                 const idx = unifiedItems.findIndex((u) => u.kind === 'project' && u.project.id === p.id);
