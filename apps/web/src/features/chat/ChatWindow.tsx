@@ -368,6 +368,9 @@ export function ChatWindow({
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'w' || e.key === 'W') && onClose) {
         e.preventDefault();
+        if (draft.trim().length > 0) {
+          toast.push('info', 'Draft preserved — reopen to continue');
+        }
         onClose(id);
         return;
       }
@@ -434,7 +437,7 @@ export function ChatWindow({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [active, onRename, onClose, onCancel, pending, title, id]);
+  }, [active, onRename, onClose, onCancel, pending, title, id, draft, toast]);
 
   const commitRename = () => {
     const trimmed = titleDraft.trim();
