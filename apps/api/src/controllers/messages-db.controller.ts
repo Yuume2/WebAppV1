@@ -89,6 +89,11 @@ export interface MessagesDeps {
   generateStream:    (provider: AIProvider, apiKey: string, messages: ChatMessage[], model: string, opts?: { signal?: AbortSignal }) => AsyncIterable<ChatCompletionStreamChunk>;
   maxContextMessages: number;
   providerTimeoutMs?: number;
+  // Idle-stream timeout (ms): if no useful provider delta lands within this
+  // window the controller aborts upstream and surfaces an SSE idle_timeout
+  // error. Defaults to 90s in production. Tests override to a small value
+  // so they can exercise the path in real time without faking timers.
+  idleStreamTimeoutMs?: number;
 }
 
 export function makeMessagesDeps(db: Db, sessionDeps: SessionDeps): MessagesDeps {
@@ -325,6 +330,14 @@ export async function streamMessageDbController(
   // every 25s keeps the socket warm without surfacing anything in the
   // application-level event stream.
   const KEEPALIVE_MS = 25_000;
+  // Idle-stream timeout: if the upstream provider hasn't produced a useful
+  // delta in this many ms, we abort the call and surface an explicit SSE
+  // error so the client can show a real failure instead of waiting forever
+  // on a dead provider session. Keepalive bytes do NOT reset this — only
+  // actual delta payloads. The chosen 90s window is wide enough for slow
+  // first-tokens on large prompts but tight enough to catch hung sessions
+  // before they tie up a reverse-proxy slot for the global request budget.
+  const IDLE_TIMEOUT_MS = deps.idleStreamTimeoutMs ?? 90_000;
   const keepaliveTimer = setInterval(() => {
     // writableEnded guards against a race where the timer fires after we've
     // already res.end()'d in a terminal branch. write() on an ended response
@@ -334,15 +347,57 @@ export async function streamMessageDbController(
   }, KEEPALIVE_MS);
   // unref so a leaked timer can never block process shutdown if a terminal
   // branch ever forgets to clear (defence in depth — every branch below
-  // also calls clearKeepalive explicitly).
+  // also calls cleanup() explicitly).
   keepaliveTimer.unref?.();
-  const clearKeepalive = (): void => { clearInterval(keepaliveTimer); };
 
   const startedAt = Date.now();
   let assistantContent = '';
   let model = cw.model;
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   let aborted = false;
+  let idleTimedOut = false;
+
+  const upstreamAbort = new AbortController();
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  const armIdleTimer = (): void => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      // Provider went silent past IDLE_TIMEOUT_MS. Mark idle, kill the
+      // upstream call so we stop paying for a hung session, and let the
+      // for-await loop throw — the catch block will see idleTimedOut=true
+      // and emit the explicit SSE error.
+      if (res.writableEnded) return;
+      idleTimedOut = true;
+      aborted = true;
+      upstreamAbort.abort();
+    }, IDLE_TIMEOUT_MS);
+    idleTimer.unref?.();
+  };
+  // Centralised cleanup: every terminal branch (success / abort / error /
+  // idle timeout) calls this exactly once. Listeners are removed so a late
+  // 'close' or 'error' event after we've already ended the response can't
+  // double-fire any of the cleanup logic.
+  const onClose = (): void => {
+    cleanup();
+    if (!res.writableEnded) {
+      aborted = true;
+      upstreamAbort.abort();
+    }
+  };
+  const onError = (): void => {
+    cleanup();
+    aborted = true;
+    upstreamAbort.abort();
+  };
+  const cleanup = (): void => {
+    clearInterval(keepaliveTimer);
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = null;
+    }
+    res.off('close', onClose);
+    res.off('error', onError);
+  };
 
   // Cancel the upstream provider call when the downstream client drops the
   // connection — stops billing for tokens nobody will read. The for-await
@@ -350,42 +405,66 @@ export async function streamMessageDbController(
   // We listen on `res` (not `req`) because once the request body has been
   // fully read, Node's IncomingMessage 'close' event does not fire on
   // mid-response socket teardown — only the ServerResponse 'close' does.
-  const upstreamAbort = new AbortController();
-  res.on('close', () => {
-    clearKeepalive();
-    if (!res.writableEnded) {
-      aborted = true;
-      upstreamAbort.abort();
-    }
-  });
+  res.on('close', onClose);
   // A mid-stream socket error (ECONNRESET, EPIPE) emits 'error' on the
   // ServerResponse. With no listener, Node treats it as unhandled and the
   // process can crash. Treat it like a client disconnect: cancel upstream,
   // mark aborted, and swallow — the catch block downstream will see the
   // for-await throw and exit cleanly.
-  res.on('error', () => {
-    clearKeepalive();
-    aborted = true;
-    upstreamAbort.abort();
-  });
+  res.on('error', onError);
+
+  // Arm the idle timer before the first read. The provider may take a while
+  // to produce its first token; 90s of total silence (no deltas, only our
+  // keepalive bytes) is the threshold beyond which we treat the session as
+  // hung and surface an explicit error.
+  armIdleTimer();
 
   try {
     for await (const chunk of deps.generateStream(cw.provider, apiKey, contextMessages, cw.model, { signal: upstreamAbort.signal })) {
       if (aborted) break;
       if (chunk.type === 'delta') {
-        assistantContent += chunk.content;
-        sseWrite(res, { delta: chunk.content });
+        // A useful delta only counts as activity if it carries content.
+        // An empty-string delta is a provider quirk (some SDKs emit them as
+        // "still alive" placeholders); we don't treat it as progress so a
+        // provider that emits empty deltas indefinitely still trips the
+        // idle timeout.
+        if (chunk.content.length > 0) {
+          assistantContent += chunk.content;
+          sseWrite(res, { delta: chunk.content });
+          armIdleTimer();
+        }
       } else {
         model = chunk.model;
         usage = chunk.usage;
       }
     }
   } catch (err) {
+    // Idle-timeout path: the upstream was aborted by us because no useful
+    // delta had landed in IDLE_TIMEOUT_MS. Surface an explicit SSE error
+    // so the client can distinguish this from a generic provider failure
+    // or a client-side disconnect.
+    if (idleTimedOut) {
+      cleanup();
+      logger.warn('stream aborted on idle timeout', {
+        requestId: ctx.requestId,
+        provider: cw.provider,
+        model: cw.model,
+        idleMs: IDLE_TIMEOUT_MS,
+        partialBytes: assistantContent.length,
+        durationMs: Date.now() - startedAt,
+      });
+      if (!res.writableEnded) {
+        sseWrite(res, { error: 'idle_timeout', detail: `No provider activity for ${Math.floor(IDLE_TIMEOUT_MS / 1000)}s` });
+        res.write('data: [DONE]\n\n');
+        try { res.end(); } catch { /* socket already closed */ }
+      }
+      return respondStreamed(504);
+    }
     // Aborted-by-us (client disconnected) is not a real error — the for-await
     // throw happens because we asked the upstream to stop. Don't ship an
     // 'error' SSE event (the client is gone anyway) and don't capture it.
     if (aborted) {
-      clearKeepalive();
+      cleanup();
       logger.info('stream cancelled by client disconnect', {
         requestId: ctx.requestId,
         provider: cw.provider,
@@ -396,7 +475,7 @@ export async function streamMessageDbController(
       try { res.end(); } catch { /* socket already closed */ }
       return respondStreamed(499);
     }
-    clearKeepalive();
+    cleanup();
     captureException(err, { provider: cw.provider, model: cw.model, route: '/v1/messages/stream' });
     const detail = err instanceof Error ? err.message : 'Unknown provider error';
     sseWrite(res, { error: detail });
@@ -405,8 +484,30 @@ export async function streamMessageDbController(
     return respondStreamed(502);
   }
 
+  if (idleTimedOut) {
+    // Generator exited cleanly after we aborted via idle timer (rather than
+    // throwing) — still surface the explicit SSE error. Mirrors the catch-
+    // block path so the contract is identical regardless of whether the
+    // upstream propagated the abort as a throw or a clean return.
+    cleanup();
+    logger.warn('stream aborted on idle timeout (clean upstream exit)', {
+      requestId: ctx.requestId,
+      provider: cw.provider,
+      model: cw.model,
+      idleMs: IDLE_TIMEOUT_MS,
+      partialBytes: assistantContent.length,
+      durationMs: Date.now() - startedAt,
+    });
+    if (!res.writableEnded) {
+      sseWrite(res, { error: 'idle_timeout', detail: `No provider activity for ${Math.floor(IDLE_TIMEOUT_MS / 1000)}s` });
+      res.write('data: [DONE]\n\n');
+      try { res.end(); } catch { /* socket already closed */ }
+    }
+    return respondStreamed(504);
+  }
+
   if (aborted || assistantContent.length === 0) {
-    clearKeepalive();
+    cleanup();
     // Client gave up or provider produced nothing — do NOT persist a half-baked pair.
     if (!aborted) sseWrite(res, { error: 'empty_response' });
     res.write('data: [DONE]\n\n');
@@ -425,14 +526,14 @@ export async function streamMessageDbController(
 
   const pair = await deps.persistMessagePair(chatWindowId, user.id, content, assistantContent, assistantMetadata);
   if (pair === null) {
-    clearKeepalive();
+    cleanup();
     sseWrite(res, { error: 'chat_window_not_found' });
     res.write('data: [DONE]\n\n');
     res.end();
     return respondStreamed(404);
   }
 
-  clearKeepalive();
+  cleanup();
   sseWrite(res, {
     done: true,
     userMessage:      toMessage(pair.userRow),
