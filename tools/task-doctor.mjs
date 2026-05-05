@@ -113,13 +113,46 @@ function checkGit() {
   };
 }
 
+export function rulesetTargetsMain(ruleset) {
+  if (!ruleset || ruleset.enforcement !== 'active') return false;
+  if (ruleset.target !== 'branch') return false;
+  const include = ruleset.conditions?.ref_name?.include ?? [];
+  const exclude = ruleset.conditions?.ref_name?.exclude ?? [];
+  const targetsMain = include.some((p) => p === '~DEFAULT_BRANCH' || p === '~ALL' || p === 'refs/heads/main' || p === 'main');
+  const explicitlyExcluded = exclude.some((p) => p === 'refs/heads/main' || p === 'main');
+  return targetsMain && !explicitlyExcluded;
+}
+
 function checkBranchProtection() {
-  const r = run('gh', ['api', 'repos/Yuume2/WebAppV1/branches/main/protection']);
-  if (r.code === 0) return { status: status.OK, detail: 'main is protected' };
-  if (/Branch not protected/i.test(r.stderr) || /404/.test(r.stderr)) {
-    return { status: status.WARN, detail: 'main NOT protected — required before Phase 2 --exec is active' };
+  const classic = run('gh', ['api', 'repos/Yuume2/WebAppV1/branches/main/protection']);
+  if (classic.code === 0) return { status: status.OK, detail: 'main is protected (classic branch protection)' };
+
+  // Fall back to repository rulesets — required for repos using the new ruleset model.
+  // The list endpoint omits `conditions`, so candidate rulesets must be re-fetched
+  // individually via /rulesets/{id} to inspect ref_name include/exclude.
+  const list = run('gh', ['api', 'repos/Yuume2/WebAppV1/rulesets']);
+  if (list.code === 0) {
+    let parsed = [];
+    try { parsed = JSON.parse(list.stdout); } catch { parsed = []; }
+    const candidates = parsed.filter((r) => r.enforcement === 'active' && r.target === 'branch');
+    const matched = [];
+    for (const c of candidates) {
+      const detail = run('gh', ['api', `repos/Yuume2/WebAppV1/rulesets/${c.id}`]);
+      if (detail.code !== 0) continue;
+      let full;
+      try { full = JSON.parse(detail.stdout); } catch { continue; }
+      if (rulesetTargetsMain(full)) matched.push(full);
+    }
+    if (matched.length > 0) {
+      const names = matched.map((r) => `"${r.name}"`).join(', ');
+      return { status: status.OK, detail: `active via ruleset ${names}` };
+    }
   }
-  return { status: status.WARN, detail: `cannot read protection: ${r.stderr.split('\n')[0]}` };
+
+  if (/Branch not protected/i.test(classic.stderr) || /404/.test(classic.stderr)) {
+    return { status: status.WARN, detail: 'main NOT protected — no classic protection and no active ruleset targets main' };
+  }
+  return { status: status.WARN, detail: `cannot read protection: ${classic.stderr.split('\n')[0]}` };
 }
 
 function checkGhAuth() {
