@@ -15,6 +15,27 @@ export const AUTOPILOT_STOP_REASONS = Object.freeze({
   SECRET_MISSING: 'secret-missing',
   CLAUDE_UNAVAILABLE: 'claude-unavailable',
   EXEC_DISABLED: 'exec-disabled',
+  CLAUDE_FAILED: 'claude-failed',
+  NO_PR_PRODUCED: 'no-pr-produced',
+});
+
+export const AUTOPILOT_PROGRESS = Object.freeze({
+  preflight: 5,
+  'preflight-ok': 10,
+  'task-selected': 15,
+  'reset-to-main': 18,
+  'create-branch': 22,
+  'launching-claude': 35,
+  'claude-running': 50,
+  'claude-exited': 60,
+  'task-guard': 80,
+  'guard-block': 80,
+  'check-pr': 92,
+  'pr-created': 98,
+  'no-pr-no-question': 75,
+  'plan-only-ready': 100,
+  'preflight-failed': 0,
+  'resumed': 50,
 });
 
 export const AUTOPILOT_BLOCK_LABELS = Object.freeze([
@@ -95,24 +116,32 @@ export function shouldStopRun({ run, settings, now = Date.now() }) {
   return { stop: false, reason: null };
 }
 
-export function buildAutopilotState({ id, mode, issue, branch, settingsSnapshot }) {
+export function buildAutopilotState({ id, mode, issue, branch, settingsSnapshot, issueTitle }) {
+  const now = new Date().toISOString();
   return {
     id: id ?? randomUUID(),
     kind: 'autopilot',
     mode,
     issue: issue ?? null,
+    issueTitle: issueTitle ?? null,
     branch: branch ?? null,
     status: 'running',
     currentStep: 'preflight',
-    startedAt: new Date().toISOString(),
+    startedAt: now,
+    updatedAt: now,
     stoppedAt: null,
+    completedAt: null,
     stopReason: null,
     pendingQuestionId: null,
     prsCreated: 0,
+    prUrl: null,
+    prNumber: null,
     issuesProcessed: [],
     errors: 0,
+    lastError: null,
     nextAction: 'select-task',
     lastPR: null,
+    lastPrompt: null,
     resumeAvailable: false,
     settingsSnapshot: settingsSnapshot ?? null,
     log: [],
@@ -122,28 +151,52 @@ export function buildAutopilotState({ id, mode, issue, branch, settingsSnapshot 
 
 export function runStep(run, step, info = {}) {
   run.currentStep = step;
-  run.log.push({ at: new Date().toISOString(), step, ...info });
+  run.updatedAt = new Date().toISOString();
+  run.log.push({ at: run.updatedAt, step, ...info });
   if (run.log.length > 200) run.log.splice(0, run.log.length - 200);
   return run;
 }
 
 export function recordError(run, err) {
   run.errors = (run.errors ?? 0) + 1;
-  run.log.push({ at: new Date().toISOString(), step: run.currentStep, error: redactSecrets(err?.message ?? String(err), []) });
+  const msg = redactSecrets(err?.message ?? String(err), []);
+  run.lastError = msg;
+  run.log.push({ at: new Date().toISOString(), step: run.currentStep, error: msg });
   return run;
 }
 
 export function recordPR({ run, pr }) {
   run.prsCreated = (run.prsCreated ?? 0) + 1;
   run.lastPR = pr;
+  if (pr?.url) run.prUrl = pr.url;
+  if (pr?.number) run.prNumber = pr.number;
   return run;
 }
 
+const FAILURE_REASONS = new Set([
+  AUTOPILOT_STOP_REASONS.REPO_DIRTY,
+  AUTOPILOT_STOP_REASONS.GUARD_BLOCK,
+  AUTOPILOT_STOP_REASONS.ERROR_BUDGET,
+  AUTOPILOT_STOP_REASONS.SECRET_MISSING,
+  AUTOPILOT_STOP_REASONS.CLAUDE_UNAVAILABLE,
+  AUTOPILOT_STOP_REASONS.CLAUDE_FAILED,
+  AUTOPILOT_STOP_REASONS.NO_PR_PRODUCED,
+]);
+
 export function markStopped(run, reason) {
-  run.status = reason === AUTOPILOT_STOP_REASONS.COMPLETED ? 'completed' : 'stopped';
+  if (reason === AUTOPILOT_STOP_REASONS.COMPLETED) {
+    run.status = 'completed';
+    run.nextAction = run.prUrl ? 'review-pr' : 'idle';
+  } else if (FAILURE_REASONS.has(reason)) {
+    run.status = 'failed';
+    run.nextAction = 'retry-or-inspect';
+  } else {
+    run.status = 'stopped';
+    run.nextAction = 'idle';
+  }
   run.stopReason = reason;
   run.stoppedAt = new Date().toISOString();
-  run.nextAction = 'idle';
+  run.completedAt = run.stoppedAt;
   return run;
 }
 
@@ -157,24 +210,39 @@ export function markWaitingOnQuestion(run, qid) {
 
 export function exportRunSummary(run) {
   if (!run) return null;
+  const progress = AUTOPILOT_PROGRESS[run.currentStep] ?? 0;
+  const finalProgress =
+    run.status === 'completed' ? 100 :
+    run.status === 'failed' || run.status === 'stopped' ? Math.max(progress, 0) :
+    progress;
   return {
     id: run.id,
+    kind: run.kind,
     mode: run.mode,
     status: run.status,
     issue: run.issue,
+    issueTitle: run.issueTitle,
     branch: run.branch,
     currentStep: run.currentStep,
+    progressPercent: finalProgress,
     startedAt: run.startedAt,
+    updatedAt: run.updatedAt,
     stoppedAt: run.stoppedAt,
+    completedAt: run.completedAt,
     stopReason: run.stopReason,
     pendingQuestionId: run.pendingQuestionId,
     prsCreated: run.prsCreated,
+    prUrl: run.prUrl ?? run.lastPR?.url ?? null,
+    prNumber: run.prNumber ?? run.lastPR?.number ?? null,
     issuesProcessed: run.issuesProcessed,
     errors: run.errors,
+    lastError: run.lastError ?? null,
     nextAction: run.nextAction,
     lastPR: run.lastPR,
+    lastPrompt: run.lastPrompt ?? null,
     resumeAvailable: run.resumeAvailable,
-    log: run.log.slice(-30),
+    logsCount: (run.log ?? []).length,
+    log: (run.log ?? []).slice(-30),
   };
 }
 
@@ -350,7 +418,8 @@ export class AutopilotEngine {
       return null;
     }
     run.issue = safe.number;
-    runStep(run, 'task-selected', { issue: safe.number, branch: `feat/issue-${safe.number}-autopilot` });
+    run.issueTitle = safe.title ?? null;
+    runStep(run, 'task-selected', { issue: safe.number, title: safe.title ?? null, branch: `feat/issue-${safe.number}-autopilot` });
     return safe.number;
   }
 
@@ -389,6 +458,7 @@ export class AutopilotEngine {
     const reset = resetToMain(this.repoRoot);
     if (!reset.ok) {
       recordError(run, new Error('reset to main failed: ' + (reset.reason ?? '?')));
+      markStopped(run, AUTOPILOT_STOP_REASONS.REPO_DIRTY);
       this._persist(); this._emit('state', exportRunSummary(run));
       return false;
     }
@@ -397,6 +467,7 @@ export class AutopilotEngine {
     const br = createBranch(this.repoRoot, branch);
     if (!br.ok) {
       recordError(run, new Error('create-branch failed: ' + (br.reason ?? '?')));
+      markStopped(run, AUTOPILOT_STOP_REASONS.REPO_DIRTY);
       this._persist(); this._emit('state', exportRunSummary(run));
       return false;
     }
@@ -440,8 +511,9 @@ export class AutopilotEngine {
 
     if (exitCode !== 0) {
       recordError(run, new Error(`claude exit=${exitCode}`));
+      markStopped(run, AUTOPILOT_STOP_REASONS.CLAUDE_FAILED);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return true; // continue loop, error budget will eventually trigger stop
+      return false;
     }
 
     runStep(run, 'task-guard');
@@ -458,19 +530,20 @@ export class AutopilotEngine {
     if (pr) {
       recordPR({ run, pr });
       runStep(run, 'pr-created', pr);
-    } else {
-      const q = findClaudeQuestionOnIssue(this.repoRoot, issueNum);
-      if (q) {
-        markWaitingOnQuestion(run, q.id);
-        this._persist(); this._emit('state', exportRunSummary(run));
-        return false;
-      }
-      runStep(run, 'no-pr-no-question');
-      recordError(run, new Error('claude did not open PR and posted no question'));
+      this._persist(); this._emit('state', exportRunSummary(run));
+      return true;
     }
-
+    const q = findClaudeQuestionOnIssue(this.repoRoot, issueNum);
+    if (q) {
+      markWaitingOnQuestion(run, q.id);
+      this._persist(); this._emit('state', exportRunSummary(run));
+      return false;
+    }
+    runStep(run, 'no-pr-no-question');
+    recordError(run, new Error('claude did not open PR and posted no question'));
+    markStopped(run, AUTOPILOT_STOP_REASONS.NO_PR_PRODUCED);
     this._persist(); this._emit('state', exportRunSummary(run));
-    return true;
+    return false;
   }
 
   stop() {
@@ -500,6 +573,32 @@ export class AutopilotEngine {
   }
 
   current() { return this.activeRun ? exportRunSummary(this.activeRun) : null; }
+
+  history({ limit = 20 } = {}) {
+    if (!this.store) return [];
+    try {
+      const items = this.store.list({ limit });
+      return items.map((it) => exportRunSummary(it)).filter(Boolean);
+    } catch { return []; }
+  }
+
+  getRun(runId) {
+    if (this.activeRun?.id === runId) return exportRunSummary(this.activeRun);
+    if (!this.store) return null;
+    try {
+      const r = this.store.load(runId);
+      return r ? exportRunSummary(r) : null;
+    } catch { return null; }
+  }
+
+  reset() {
+    if (this.activeRun && (this.activeRun.status === 'running' || this.activeRun.status === 'waiting')) {
+      return { ok: false, reason: 'cannot reset while a run is active' };
+    }
+    this.activeRun = null;
+    this.activeRunId = null;
+    return { ok: true };
+  }
 
   _persist() {
     if (!this.activeRun || !this.store) return;

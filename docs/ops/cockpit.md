@@ -55,6 +55,25 @@ Chaque étape passe de `gris → violet (active, glow) → vert (done)` au fur e
 
 Les logs techniques sont disponibles dans le **drawer collapsé** sous l'activité ; clique pour ouvrir, filtrer, copier ou vider.
 
+## Que faire si la mission s'arrête à 50%
+
+C'est le scénario "Claude lancé mais sortie sans PR". L'UI **ne fait plus disparaître** ce cas. Tu vois maintenant :
+
+- Le hero passe en rouge avec le titre `Échec sur #X`.
+- La progress bar reste visible avec la couleur danger et `failed` sur l'étape Claude.
+- Une carte **Mission result** apparaît juste en dessous avec :
+  - Issue traitée
+  - Étape où ça a échoué
+  - Raison humaine (`claude-failed`, `no-pr-produced`, `guard-block`, etc.)
+  - Boutons **Retry** / **Copy diagnostic** / **Open logs** / **Reset**
+
+Procédure de récupération :
+
+1. Clique **Copy diagnostic** → résumé compact (runId, issue, branche, dernière erreur, 10 dernières lignes de log).
+2. Vérifie l'issue sur GitHub : Claude a-t-il posté un commentaire `claude-question` ? Si oui le state passe en `waiting_human`.
+3. Sinon clique **Retry** — l'engine fait `reset` puis relance `start` sur la même issue.
+4. **Reset** seul nettoie le runtime sans relancer.
+
 ## Stopper / Reprendre
 
 - **Stop** dans le hero ou via `pnpm autopilot:loop` Ctrl+C → SIGTERM propre.

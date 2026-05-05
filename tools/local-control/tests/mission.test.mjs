@@ -93,10 +93,22 @@ test('buildMissionState shows completed PR count', () => {
     mode: 'auto5',
     settings: { allowExec: true, allowLoop: true },
     v5: { claudeAvailable: true },
-    ap: { status: 'completed', prsCreated: 3, lastPR: { number: 42, url: 'http://x/42' } },
+    ap: { status: 'completed', prsCreated: 3, prUrl: 'http://x/42', prNumber: 42 },
   });
   assert.match(s.title, /3 PR/);
   assert.equal(s.ctaLabel, 'Review PR');
+});
+
+test('buildMissionState renders failed status with reason', () => {
+  const s = buildMissionState({
+    mode: 'auto5',
+    settings: { allowExec: true, allowLoop: true },
+    v5: { claudeAvailable: true },
+    ap: { status: 'failed', issue: 41, stopReason: 'claude-failed', lastError: 'exit=1' },
+  });
+  assert.match(s.title, /Échec/);
+  assert.equal(s.orbClass, 'err');
+  assert.equal(s.ctaLabel, 'Retry');
 });
 
 test('buildMissionState full mode triggers checklist message when readiness not ready', () => {

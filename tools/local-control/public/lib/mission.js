@@ -76,10 +76,16 @@ export function buildMissionState({ mode, settings, v5, ap, fullReadiness, custo
   } else if (apStatus === 'completed') {
     const prs = ap?.prsCreated ?? 0;
     title = prs ? `Mission terminée · ${prs} PR créée${prs > 1 ? 's' : ''}` : 'Mission terminée';
-    subtitle = ap?.lastPR ? `Dernière PR : ${ap.lastPR.url ?? `#${ap.lastPR.number}`}` : 'Tu peux relancer une nouvelle mission.';
-    ctaLabel = ap?.lastPR ? 'Review PR' : 'Start mission';
+    subtitle = ap?.prUrl ? `PR : ${ap.prUrl}` : 'Tu peux relancer une nouvelle mission.';
+    ctaLabel = ap?.prUrl ? 'Review PR' : 'Start mission';
     orbClass = 'ok';
     eyebrow = 'Mission complète';
+  } else if (apStatus === 'failed') {
+    title = ap?.issue ? `Échec sur #${ap.issue}` : 'Mission en échec';
+    subtitle = humanFailureReason(ap);
+    ctaLabel = 'Retry';
+    orbClass = 'err';
+    eyebrow = 'Échec';
   } else if (apStatus === 'stopped') {
     title = 'Mission stoppée';
     subtitle = ap?.stopReason ? `Raison : ${ap.stopReason}` : 'Stoppée manuellement.';
@@ -150,30 +156,46 @@ export function renderMissionHero(state) {
 export function renderMissionProgress(ap) {
   const wrap = document.getElementById('mission-progress');
   if (!wrap) return;
-  if (!ap || (ap.status !== 'running' && ap.status !== 'waiting')) {
+  if (!ap || ap.status === 'idle') {
     wrap.classList.add('hidden-step');
     return;
   }
   wrap.classList.remove('hidden-step');
   const step = mapStep(ap.currentStep);
-  const pct = ap.status === 'completed' ? 100 : (STEP_PERCENT[step] ?? 5);
+  const pct = ap.progressPercent != null ? ap.progressPercent : (ap.status === 'completed' ? 100 : (STEP_PERCENT[step] ?? 5));
   setText('progress-percent', `${pct}%`);
   const fill = document.getElementById('progress-fill');
-  if (fill) fill.style.width = `${pct}%`;
-  setText('progress-status-text', humanStep(step, ap));
+  if (fill) {
+    fill.style.width = `${pct}%`;
+    fill.classList.toggle('shimmer', ap.status === 'running');
+    fill.classList.toggle('failed', ap.status === 'failed');
+  }
+  let statusText;
+  if (ap.status === 'completed') statusText = ap.prUrl ? `PR #${ap.prNumber} ouverte.` : 'Mission terminée.';
+  else if (ap.status === 'failed') statusText = humanFailureReason(ap);
+  else if (ap.status === 'stopped') statusText = `Stoppé · ${ap.stopReason || 'manuel'}`;
+  else if (ap.status === 'waiting') statusText = `Question en attente${ap.pendingQuestionId ? ' · ' + ap.pendingQuestionId : ''}.`;
+  else statusText = humanStep(step, ap);
+  setText('progress-status-text', statusText);
+  const isFailed = ap.status === 'failed' || ap.status === 'stopped';
   for (const li of document.querySelectorAll('.timeline-step')) {
     li.classList.remove('done', 'active', 'failed');
     const s = li.dataset.step;
     const idx = ['select', 'branch', 'claude', 'tests', 'guard', 'pr', 'done'].indexOf(s);
     const cur = ['select', 'branch', 'claude', 'tests', 'guard', 'pr', 'done'].indexOf(step);
     if (cur < 0) continue;
-    if (idx < cur) li.classList.add('done');
-    else if (idx === cur) li.classList.add(ap.status === 'stopped' ? 'failed' : 'active');
+    if (ap.status === 'completed' && idx <= cur) li.classList.add('done');
+    else if (idx < cur) li.classList.add('done');
+    else if (idx === cur) li.classList.add(isFailed ? 'failed' : 'active');
   }
   const orb = document.getElementById('progress-orb');
   if (orb) {
     orb.classList.remove('ok', 'running', 'warn', 'err');
-    orb.classList.add(ap.status === 'waiting' ? 'warn' : 'running');
+    if (ap.status === 'completed') orb.classList.add('ok');
+    else if (ap.status === 'failed') orb.classList.add('err');
+    else if (ap.status === 'waiting') orb.classList.add('warn');
+    else if (ap.status === 'stopped') orb.classList.add('warn');
+    else orb.classList.add('running');
   }
 }
 
@@ -314,3 +336,102 @@ export function clearLogs() {
 }
 
 function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val ?? ''; }
+
+export function humanFailureReason(ap) {
+  if (!ap) return '—';
+  const r = ap.stopReason || '';
+  const map = {
+    'claude-failed': `Claude a quitté avec un code d'erreur. ${ap.lastError ?? ''}`.trim(),
+    'no-pr-produced': 'Claude n\'a pas créé de PR ni posté de question.',
+    'guard-block': 'Task guard a refusé le diff (changements interdits).',
+    'claude-unavailable': 'Claude CLI introuvable ou non lancable.',
+    'repo-dirty': 'Repo dirty ou git switch impossible.',
+    'error-budget-exceeded': '3 erreurs accumulées — stop sécurité.',
+    'no-safe-task': 'Aucune issue ne passe les filtres autopilot.',
+    'time-budget-exceeded': 'Temps maximum dépassé.',
+  };
+  return map[r] || (ap.lastError ?? r ?? 'raison inconnue');
+}
+
+const STATUS_LABEL = {
+  running: 'En cours',
+  waiting: 'Attente humaine',
+  completed: 'Complété',
+  failed: 'Échec',
+  stopped: 'Stoppé',
+  idle: 'Idle',
+};
+const STATUS_TONE = {
+  running: 'running', waiting: 'warn', completed: 'ok', failed: 'err', stopped: 'warn', idle: '',
+};
+
+function escapeHtml2(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+export function renderMissionResult(ap) {
+  const host = document.getElementById('mission-result');
+  if (!host) return;
+  if (!ap || ap.status === 'idle' || ap.status === 'running' || ap.status === 'waiting') {
+    host.classList.add('hidden');
+    return;
+  }
+  const tone = STATUS_TONE[ap.status] || '';
+  const label = STATUS_LABEL[ap.status] || ap.status;
+  const issue = ap.issue ? `#${ap.issue}` : '—';
+  let body = '';
+  if (ap.status === 'completed' && ap.prUrl) {
+    body = `<div class="result-row"><span class="result-label">PR</span><a href="${escapeHtml2(ap.prUrl)}" target="_blank" rel="noopener" class="result-link">PR #${ap.prNumber ?? '?'}</a></div>`;
+  } else if (ap.status === 'completed') {
+    body = `<div class="result-row"><span class="result-label">Issue</span><span class="result-value">${issue}</span></div>
+            <div class="result-row"><span class="result-label">Note</span><span class="result-value">Aucune PR détectée — vérifie l'issue ou relance.</span></div>`;
+  } else if (ap.status === 'failed') {
+    body = `<div class="result-row"><span class="result-label">Issue</span><span class="result-value">${issue}</span></div>
+            <div class="result-row"><span class="result-label">Étape</span><span class="result-value">${escapeHtml2(ap.currentStep || '?')}</span></div>
+            <div class="result-row"><span class="result-label">Raison</span><span class="result-value">${escapeHtml2(humanFailureReason(ap))}</span></div>`;
+  } else if (ap.status === 'stopped') {
+    body = `<div class="result-row"><span class="result-label">Issue</span><span class="result-value">${issue}</span></div>
+            <div class="result-row"><span class="result-label">Raison</span><span class="result-value">${escapeHtml2(ap.stopReason || 'arrêt manuel')}</span></div>`;
+  }
+  host.classList.remove('hidden');
+  host.innerHTML = `
+    <div class="result-head">
+      <span class="badge ${tone}">${escapeHtml2(label)}</span>
+      <span class="muted small">${ap.completedAt ? new Date(ap.completedAt).toLocaleTimeString() : ''}</span>
+    </div>
+    <h3>${escapeHtml2(ap.issueTitle || `Mission ${issue}`)}</h3>
+    <div class="result-body">${body}</div>
+    <div class="result-actions">
+      ${ap.status === 'completed' && ap.prUrl ? `<button data-result-action="open-pr" class="primary">Open PR</button>` : ''}
+      ${ap.status === 'failed' ? `<button data-result-action="retry" class="primary">Retry</button>` : ''}
+      <button data-result-action="copy-diagnostic">Copy diagnostic</button>
+      <button data-result-action="open-logs" class="ghost">Open logs</button>
+      <button data-result-action="reset" class="ghost">Reset</button>
+    </div>
+  `;
+}
+
+export function buildDiagnostic(ap) {
+  if (!ap) return '(no run)';
+  const lines = [
+    `# Autopilot diagnostic`,
+    `runId: ${ap.id}`,
+    `status: ${ap.status}`,
+    `issue: ${ap.issue ?? '—'}`,
+    `branch: ${ap.branch ?? '—'}`,
+    `currentStep: ${ap.currentStep ?? '—'}`,
+    `progress: ${ap.progressPercent ?? '?'}%`,
+    `prUrl: ${ap.prUrl ?? '—'}`,
+    `prNumber: ${ap.prNumber ?? '—'}`,
+    `errors: ${ap.errors ?? 0}`,
+    `lastError: ${ap.lastError ?? '—'}`,
+    `stopReason: ${ap.stopReason ?? '—'}`,
+    `startedAt: ${ap.startedAt ?? '—'}`,
+    `updatedAt: ${ap.updatedAt ?? '—'}`,
+    `completedAt: ${ap.completedAt ?? '—'}`,
+    ``,
+    `## Last log entries`,
+    ...(ap.log ?? []).slice(-10).map((l) => `- ${l.at} · ${l.step}${l.error ? ' · ERR: ' + l.error : ''}`),
+  ];
+  return lines.join('\n');
+}

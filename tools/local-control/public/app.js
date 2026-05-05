@@ -19,6 +19,7 @@ import {
   renderModeRail, buildMissionState, renderMissionHero, renderMissionProgress,
   renderFullChecklist, renderNextTask, renderTaskBoard,
   renderLogSummary, appendLogLine, clearLogs,
+  renderMissionResult, buildDiagnostic,
 } from "./lib/mission.js";
 import { startAutopilot, stopAutopilot, resumeAutopilot } from "./lib/autopilot.js";
 
@@ -96,6 +97,11 @@ async function refreshAll() {
     lastNetwork = network;
     lastV5 = v5;
     lastReadiness = readiness;
+    try {
+      const apStatus = await api.get("/api/autopilot/status");
+      lastLatestRun = apStatus?.latest ?? null;
+      if (apStatus?.autopilot) lastV5 = { ...(lastV5 || {}), autopilot: apStatus.autopilot };
+    } catch {}
     setConnState(ConnState.CONNECTED);
     renderStatusGrid({ conn: "connected", settings, v5, network });
     if (dash) renderStatusBranch(dash);
@@ -129,10 +135,14 @@ function rerenderMission() {
     customMax,
   });
   renderMissionHero(state);
-  renderMissionProgress(lastV5?.autopilot ?? null);
+  const ap = lastV5?.autopilot ?? lastLatestRun ?? null;
+  renderMissionProgress(ap);
+  renderMissionResult(ap);
   if (m.full) renderFullChecklist(lastReadiness, openChecklistAction);
   else document.getElementById("full-checklist-card")?.classList.add("hidden");
 }
+
+let lastLatestRun = null;
 
 function openChecklistAction(action) {
   if (action === "open-settings-safety") return openSettingsSection("safety");
@@ -291,8 +301,43 @@ document.getElementById("autopilot-resume")?.addEventListener("click", async (ev
   }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
 });
 
-// Best task actions
+// Mission result actions
 document.body.addEventListener("click", async (ev) => {
+  const rb = ev.target.closest("[data-result-action]");
+  if (rb) {
+    ev.preventDefault();
+    const ap = lastV5?.autopilot ?? lastLatestRun ?? null;
+    const action = rb.dataset.resultAction;
+    if (action === "open-pr" && ap?.prUrl) { window.open(ap.prUrl, "_blank", "noopener"); return; }
+    if (action === "copy-diagnostic") {
+      navigator.clipboard?.writeText(buildDiagnostic(ap)).then(() => showToast("Diagnostic copié", "ok")).catch(() => {});
+      return;
+    }
+    if (action === "open-logs") {
+      document.querySelector('[data-tab="workspace"]')?.click();
+      return;
+    }
+    if (action === "reset") {
+      await runWithState(rb, async () => {
+        const r = await api.post("/api/autopilot/reset", {});
+        showToast(r?.ok ? "Run reset" : (r?.reason ?? "—"), r?.ok ? "ok" : "warn");
+        await refreshAll();
+      }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
+      return;
+    }
+    if (action === "retry") {
+      await runWithState(rb, async () => {
+        const issue = ap?.issue ?? null;
+        await api.post("/api/autopilot/reset", {}).catch(() => {});
+        const r = await startAutopilot(api, { mode: "exec", issue });
+        showToast(r?.ok ? "Retry lancé" : (r?.reason ?? "—"), r?.ok ? "ok" : "warn");
+        await refreshAll();
+      }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
+      return;
+    }
+    return;
+  }
+  // Best task actions
   const btn = ev.target.closest("[data-best-action]");
   if (!btn) return;
   if (!lastBestTask?.best?.number) return;

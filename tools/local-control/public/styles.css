@@ -963,3 +963,16 @@ body::before {
   .mission-progress-fill { animation: none; }
   .brand .logo { animation: none; }
 }
+
+/* Mission result */
+.mission-result { margin-top: 16px; }
+.mission-result .result-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.mission-result h3 { color: var(--fg); text-transform: none; letter-spacing: -0.01em; font-size: 16px; margin-bottom: 12px; }
+.mission-result .result-body { display: flex; flex-direction: column; gap: 6px; }
+.mission-result .result-row { display: flex; gap: 12px; align-items: center; font-size: 12px; padding: 8px 12px; background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--r-md); }
+.mission-result .result-label { color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; width: 80px; flex-shrink: 0; }
+.mission-result .result-value { color: var(--fg); font-weight: 500; word-break: break-word; }
+.mission-result .result-link { color: var(--accent-2); font-weight: 600; text-decoration: none; }
+.mission-result .result-link:hover { text-decoration: underline; }
+.mission-result .result-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.mission-progress-fill.failed { background: linear-gradient(90deg, var(--danger), #ff6b6b); animation: none; }
