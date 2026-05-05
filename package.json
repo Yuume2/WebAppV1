@@ -38,7 +38,14 @@
     "task:meta": "node tools/task-meta.mjs",
     "task:meta:check": "node tools/task-meta.mjs --json",
     "task:meta:backfill": "node tools/task-meta-backfill.mjs",
+    "task:guard": "node tools/task-guard.mjs",
+    "task:questions": "node tools/task-questions.mjs",
+    "task:questions:list": "node tools/task-questions.mjs list",
+    "task:run": "node tools/task-runner.mjs",
+    "task:run:plan": "node tools/task-runner.mjs --plan-only",
     "task:doctor": "node tools/task-doctor.mjs",
+    "task:test": "node --test tools/task-meta.test.mjs tools/task-deps.test.mjs tools/task-guard.test.mjs tools/task-questions.test.mjs tools/task-runner.test.mjs tools/task-doctor.test.mjs tools/apply-issue-delta.test.mjs tools/issue-status.test.mjs",
+    "task:lint:test": "node --test tools/apply-issue-delta.test.mjs",
     "task:deps:test": "node --test tools/task-deps.test.mjs"
   },
   "devDependencies": {
