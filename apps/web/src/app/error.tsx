@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect } from 'react';
+import { captureException } from '@/lib/sentry';
 
 export default function GlobalError({
   error,
@@ -14,6 +15,7 @@ export default function GlobalError({
     if (typeof console !== 'undefined') {
       console.error('[GlobalError]', error);
     }
+    captureException(error, error.digest ? { digest: error.digest } : undefined);
   }, [error]);
 
   return (

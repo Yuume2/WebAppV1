@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { captureException } from '@/lib/sentry';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -23,6 +24,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (typeof console !== 'undefined') {
       console.error('[ErrorBoundary]', error, info.componentStack);
     }
+    captureException(error, { componentStack: info.componentStack });
   }
 
   reset = (): void => {
