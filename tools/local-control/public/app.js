@@ -1,29 +1,25 @@
-// WebAppV1 Local Control — UI app
+// WebAppV1 Cockpit V5
 // Talks to backend at same origin. Backend = tools/local-control/server.mjs.
 
 import { ApiClient, AuthError, NetworkError } from "./lib/api.js";
 import { redact } from "./lib/redact.js";
-import { setMode, setLan, setAutoMerge } from "./lib/state.js";
 import { mountTabs } from "./lib/tabs.js";
-import { renderDashboard } from "./lib/dashboard.js";
 import { renderTasks } from "./lib/tasks.js";
 import { mountRunner } from "./lib/runner.js";
 import { mountPrompt } from "./lib/prompt.js";
 import { mountLogs } from "./lib/logs.js";
 import { renderQuestions } from "./lib/questions.js";
-import { mountSettings } from "./lib/settings.js";
 import { confirmDanger } from "./lib/confirm.js";
-import { renderOnboarding } from "./lib/onboarding.js";
 import { runWithState } from "./lib/buttonState.js";
-import { renderV5Card } from "./lib/v5.js";
-import { renderAutopilotState, startAutopilot, stopAutopilot, resumeAutopilot, fetchAutopilotStatus } from "./lib/autopilot.js";
 import {
   TokenStore, ConnState, readTokenFromUrl,
   classifyError, badgeLabel, badgeClass, shouldKeepPolling,
 } from "./lib/auth-ui.js";
-
-let lastSettings = null;
-let lastNetwork = null;
+import {
+  renderTopbar, renderStatusGrid, renderMetrics, renderAutopilot,
+  renderPhone, showToast, bindToggles,
+} from "./lib/cockpit.js";
+import { startAutopilot, stopAutopilot, resumeAutopilot } from "./lib/autopilot.js";
 
 const REFRESH_MS = 15000;
 const tokenStore = new TokenStore(typeof localStorage !== "undefined" ? localStorage : null);
@@ -43,141 +39,135 @@ window.__api = api;
 
 let connState = ConnState.UNKNOWN;
 let pollTimer = null;
-let lastLoggedState = null;
+let lastSettings = null;
+let lastNetwork = null;
+let lastV5 = null;
 
+// Tabs + secondary mounts
 mountTabs();
 mountLogs(api);
 mountRunner(api, { confirmDanger });
 mountPrompt(api);
-mountSettings(api, { onChange: applySettingsToBadges });
+bindSettingsForm();
 
 function setConnState(next, errMsg) {
   connState = next;
-  const dot = document.getElementById("conn-dot");
-  dot.classList.toggle("ok", next === ConnState.CONNECTED);
-  dot.classList.toggle("err", next === ConnState.OFFLINE || next === ConnState.AUTH_REQUIRED);
-  const badge = document.getElementById("conn-badge");
-  badge.textContent = badgeLabel(next);
-  badge.classList.remove("ok", "err", "warn");
-  const cls = badgeClass(next);
-  if (cls) badge.classList.add(cls);
-
+  renderTopbar({ conn: connStateToString(next), settings: lastSettings, lan: lastNetwork?.lan });
   const authPanel = document.getElementById("auth-panel");
   authPanel.classList.toggle("hidden", next !== ConnState.AUTH_REQUIRED);
   setActionsDisabled(next !== ConnState.CONNECTED);
 
   if (next === ConnState.AUTH_REQUIRED) {
     const title = document.getElementById("auth-title");
-    title.textContent = api.token ? "Auth token invalide" : "Auth token required";
+    title.textContent = api.token ? "Token invalide" : "Auth requise";
     const errEl = document.getElementById("auth-error");
-    if (errMsg) { errEl.textContent = errMsg; errEl.classList.remove("hidden"); }
-    else errEl.classList.add("hidden");
-  }
-
-  if (lastLoggedState !== next) {
-    lastLoggedState = next;
-    if (next === ConnState.AUTH_REQUIRED) log("⚠ auth required — paste your token");
-    else if (next === ConnState.OFFLINE) log("⚠ backend offline — relancer `pnpm local:control`");
-    else if (next === ConnState.CONNECTED) log("✓ connected");
+    if (errMsg) { errEl.textContent = errMsg; errEl.style.display = "block"; }
+    else errEl.style.display = "none";
   }
 
   if (shouldKeepPolling(next)) startPolling();
   else stopPolling();
 }
 
-function setActionsDisabled(disabled) {
-  document.querySelectorAll('main button[data-needs="auth"], main button[type="submit"], main button[data-preset]')
-    .forEach((b) => {
-      b.disabled = !!disabled;
-      if (disabled) b.setAttribute("data-disabled-reason", "Auth requise — colle ton token.");
-      else b.removeAttribute("data-disabled-reason");
-    });
+function connStateToString(s) {
+  if (s === ConnState.CONNECTED) return "connected";
+  if (s === ConnState.AUTH_REQUIRED) return "auth-required";
+  if (s === ConnState.OFFLINE) return "offline";
+  return "unknown";
 }
 
-function startPolling() {
-  if (pollTimer) return;
-  pollTimer = setInterval(() => { refreshAll().catch(() => {}); }, REFRESH_MS);
+function setActionsDisabled(disabled) {
+  document.querySelectorAll('button[data-needs="auth"]').forEach((b) => {
+    b.disabled = !!disabled;
+    if (disabled) b.setAttribute("data-disabled-reason", "Auth requise.");
+    else b.removeAttribute("data-disabled-reason");
+  });
 }
-function stopPolling() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-}
+
+function startPolling() { if (!pollTimer) pollTimer = setInterval(() => { refreshAll().catch(() => {}); }, REFRESH_MS); }
+function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
 async function refreshAll() {
   if (!api.token) {
     setConnState(ConnState.AUTH_REQUIRED);
-    renderOnboarding({ conn: "auth-required", settings: lastSettings, network: lastNetwork });
     return;
   }
   try {
     const [dash, tasks, questions, settings, network, v5] = await Promise.all([
       api.get("/api/dashboard"),
-      api.get("/api/tasks?limit=50"),
-      api.get("/api/questions"),
+      api.get("/api/tasks").catch(() => ({ items: [] })),
+      api.get("/api/questions").catch(() => ({ items: [] })),
       api.get("/api/settings"),
       api.get("/api/network").catch(() => null),
       api.get("/api/v5/status").catch(() => null),
     ]);
     lastSettings = settings;
     lastNetwork = network;
-    renderDashboard(dash);
-    renderTasks(tasks.items || [], { api, confirmDanger, settings, conn: "connected" });
-    renderQuestions(questions.items || [], { api });
-    applySettingsToBadges(settings);
-    renderOnboarding({ conn: "connected", settings, network });
-    if (v5) renderV5Card(document.getElementById("v5-card"), v5);
-    renderAutopilotState(document.getElementById("autopilot-card"), v5?.autopilot ?? null, v5);
+    lastV5 = v5;
     setConnState(ConnState.CONNECTED);
+    renderStatusGrid({ conn: "connected", settings, v5, network, dashboard: dash });
+    renderMetrics(dash);
+    renderAutopilot({ ap: v5?.autopilot ?? null, v5, settings });
+    renderPhone(network);
+    renderTasks(tasks.items || tasks || [], { api, confirmDanger, settings, conn: "connected" });
+    renderQuestions(questions.items || questions || [], { api });
+    syncSettingsForm(settings);
+    const empty = document.getElementById("questions-empty");
+    if (empty) empty.style.display = (questions.items ?? questions ?? []).length ? "none" : "block";
   } catch (e) {
     const next = classifyError(e);
     setConnState(next, redact(String(e?.message || e)));
-    const simple = next === ConnState.AUTH_REQUIRED ? "auth-required" : next === ConnState.OFFLINE ? "offline" : "connected";
-    renderOnboarding({ conn: simple, settings: lastSettings, network: lastNetwork });
   }
 }
 
-function applySettingsToBadges(s) {
-  if (!s) return;
-  setMode(s.dryRunDefault ? "dry" : "live");
-  setLan(!!s.lanEnabled);
-  setAutoMerge(!!s.allowAutoMerge);
-  const modeBadge = document.getElementById("mode-badge");
-  modeBadge.textContent = s.dryRunDefault ? "DRY-RUN" : "LIVE";
-  modeBadge.classList.toggle("dry", s.dryRunDefault);
-  modeBadge.classList.toggle("live", !s.dryRunDefault);
-  document.getElementById("lan-badge").classList.toggle("hidden", !s.lanEnabled);
-  document.getElementById("automerge-badge").classList.toggle("hidden", !s.allowAutoMerge);
+// Settings form binding
+function bindSettingsForm() {
+  const form = document.getElementById("settings-form");
+  if (!form) return;
+  bindToggles(form);
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const data = new FormData(form);
+    const body = {};
+    for (const k of ["maxPrsPerRun", "maxMinutes", "staleDays"]) {
+      const v = data.get(k);
+      if (v != null && v !== "") body[k] = Number(v);
+    }
+    const pi = data.get("preferredIssue");
+    body.preferredIssue = pi == null || pi === "" ? null : Number(pi);
+    for (const k of ["dryRunDefault", "allowExec", "allowLoop", "allowAutoMerge", "lanEnabled"]) {
+      body[k] = !!data.get(k);
+    }
+    for (const k of ["allowedRisk", "allowedAutonomy"]) {
+      const v = String(data.get(k) ?? "").trim();
+      if (v) body[k] = v.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    try {
+      await api.put("/api/settings", body);
+      showToast("Settings enregistrés", "ok");
+      await refreshAll();
+    } catch (e) {
+      showToast("Erreur : " + redact(String(e?.message || e)), "err");
+    }
+  });
 }
 
-function log(line) {
-  const view = document.getElementById("log-view");
-  if (!view) return;
-  view.textContent += line + "\n";
-  if (document.getElementById("log-autoscroll")?.checked) view.scrollTop = view.scrollHeight;
+function syncSettingsForm(settings) {
+  if (!settings) return;
+  const form = document.getElementById("settings-form");
+  if (!form) return;
+  for (const [k, v] of Object.entries(settings)) {
+    const el = form.elements[k];
+    if (!el) continue;
+    if (el.type === "checkbox") el.checked = !!v;
+    else if (Array.isArray(v)) el.value = v.join(", ");
+    else el.value = v ?? "";
+  }
+  bindToggles(form);
 }
 
-const refreshBtn = document.querySelector('[data-action="refresh"]');
-refreshBtn.addEventListener("click", () => runWithState(refreshBtn, refreshAll).catch(() => {}));
-
-const doctorBtn = document.querySelector('[data-action="doctor"]');
-doctorBtn.addEventListener("click", () => runWithState(doctorBtn, async () => {
-  const r = await api.post("/api/doctor/run", {});
-  if (r?.runId) document.getElementById("log-run-select").dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
-}).catch((e) => setConnState(classifyError(e), redact(String(e?.message || e)))));
-
-const scoreBtn = document.querySelector('[data-action="score"]');
-scoreBtn.addEventListener("click", () => runWithState(scoreBtn, () => api.post("/api/tasks/score", {})).catch(() => {}));
-
-const queueBtn = document.querySelector('[data-action="queue"]');
-queueBtn.addEventListener("click", () => runWithState(queueBtn, refreshAll).catch(() => {}));
-
-const planNextBtn = document.querySelector('[data-action="plan-next"]');
-planNextBtn.addEventListener("click", () => runWithState(planNextBtn, async () => {
-  const r = await api.post("/api/runner/start", { mode: "plan", dryRun: true });
-  if (r?.runId) document.getElementById("log-run-select").dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
-}).catch((e) => setConnState(classifyError(e), redact(String(e?.message || e)))));
-document.querySelector('[data-action="reload-tasks"]').addEventListener("click", () => refreshAll());
-
-document.getElementById("auth-form").addEventListener("submit", (ev) => {
+// Auth form
+document.getElementById("auth-form")?.addEventListener("submit", (ev) => {
   ev.preventDefault();
   const input = document.getElementById("auth-token-input");
   const t = (input.value || "").trim();
@@ -187,74 +177,117 @@ document.getElementById("auth-form").addEventListener("submit", (ev) => {
   setConnState(ConnState.UNKNOWN);
   refreshAll();
 });
-document.getElementById("auth-retry").addEventListener("click", () => {
+document.getElementById("auth-retry")?.addEventListener("click", () => {
   setConnState(ConnState.UNKNOWN);
   refreshAll();
 });
 
-let lastV5Prompt = null;
+// Workflow step buttons → existing endpoints
+async function callStep(action, payload = {}) {
+  const map = {
+    "doctor": () => api.post("/api/doctor/run", {}),
+    "score": () => api.post("/api/tasks/score", {}).catch(() => api.get("/api/tasks")),
+    "queue": () => refreshAll(),
+    "plan-next": () => api.post("/api/runner/start", { mode: "plan", dryRun: true }),
+    "reload-tasks": () => refreshAll(),
+  };
+  const fn = map[action];
+  if (!fn) return;
+  return fn();
+}
 
-document.querySelector('[data-action="v5-prepare"]')?.addEventListener("click", async () => {
-  const issue = Number(document.getElementById("v5-issue").value);
-  if (!Number.isInteger(issue) || issue <= 0) { log("⚠ v5: enter an issue number first"); return; }
-  try {
+document.querySelectorAll('[data-action="doctor"]').forEach((b) => {
+  b.addEventListener("click", () => runWithState(b, async () => {
+    const r = await callStep("doctor");
+    if (r?.runId) document.getElementById("log-run-select")?.dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
+    showToast("Doctor lancé", "ok");
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
+});
+
+document.querySelectorAll('[data-action="score"]').forEach((b) => {
+  b.addEventListener("click", () => runWithState(b, async () => { await callStep("score"); showToast("Tâches rechargées", "ok"); }).catch(() => {}));
+});
+document.querySelectorAll('[data-action="queue"]').forEach((b) => {
+  b.addEventListener("click", () => runWithState(b, refreshAll).catch(() => {}));
+});
+document.querySelectorAll('[data-action="reload-tasks"]').forEach((b) => {
+  b.addEventListener("click", () => runWithState(b, refreshAll).catch(() => {}));
+});
+document.querySelectorAll('[data-action="plan-next"]').forEach((b) => {
+  b.addEventListener("click", () => runWithState(b, async () => {
+    const r = await callStep("plan-next");
+    if (r?.runId) document.getElementById("log-run-select")?.dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
+    showToast("Plan next lancé", "ok");
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
+});
+
+document.querySelectorAll('[data-action="scroll-logs"]').forEach((b) => {
+  b.addEventListener("click", () => {
+    document.querySelector('[data-tab="workspace"]')?.click();
+    document.getElementById("logs-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+});
+
+// V5 prompt block
+let lastV5Prompt = null;
+document.querySelector('[data-action="v5-prepare"]')?.addEventListener("click", async (ev) => {
+  const btn = ev.currentTarget;
+  await runWithState(btn, async () => {
+    const issue = Number(document.getElementById("v5-issue-prepare")?.value);
+    if (!Number.isInteger(issue) || issue <= 0) { showToast("Numéro d'issue invalide", "warn"); return; }
     const r = await api.post("/api/v5/prepare-run", { issue, mode: "plan" });
     lastV5Prompt = r?.prompt ?? null;
     const view = document.getElementById("v5-prompt-view");
-    view.textContent = lastV5Prompt ?? "";
-    view.classList.toggle("hidden", !lastV5Prompt);
-    log(`✓ v5: prepared run ${r?.runId ?? "?"} for issue #${issue} (ready=${r?.ready})`);
-  } catch (e) { log(`⚠ v5 prepare failed: ${redact(String(e?.message || e))}`); }
+    if (view) {
+      view.textContent = lastV5Prompt ?? "";
+      view.classList.toggle("hidden", !lastV5Prompt);
+    }
+    showToast(`Prepared #${issue}`, "ok");
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
 });
-
 document.querySelector('[data-action="v5-copy-prompt"]')?.addEventListener("click", () => {
-  if (!lastV5Prompt) { log("⚠ v5: prepare a run first"); return; }
-  navigator.clipboard?.writeText(lastV5Prompt).then(() => log("✓ v5 prompt copied")).catch(() => {});
+  if (!lastV5Prompt) return showToast("Prepare d'abord", "warn");
+  navigator.clipboard?.writeText(lastV5Prompt).then(() => showToast("Prompt copié", "ok")).catch(() => {});
 });
-
-document.querySelector('[data-action="v5-resume"]')?.addEventListener("click", async () => {
-  try {
+document.querySelector('[data-action="v5-resume"]')?.addEventListener("click", async (ev) => {
+  await runWithState(ev.currentTarget, async () => {
     const r = await api.post("/api/resume", {});
-    if (r?.canResume) log(`✓ v5: can resume run ${r.runId} for issue #${r.issue}`);
-    else log(`⚠ v5: resume blocked — ${r?.reason ?? "unknown"}`);
-  } catch (e) { log(`⚠ v5 resume failed: ${redact(String(e?.message || e))}`); }
+    showToast(r?.canResume ? `Resume OK pour #${r.issue}` : `Bloqué : ${r?.reason ?? "?"}`, r?.canResume ? "ok" : "warn");
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
 });
 
+// Autopilot CTAs
 document.getElementById("autopilot-start")?.addEventListener("click", async (ev) => {
-  const btn = ev.currentTarget;
-  await runWithState(btn, async () => {
+  await runWithState(ev.currentTarget, async () => {
     const issueRaw = document.getElementById("v5-issue")?.value;
     const issue = issueRaw ? Number(issueRaw) : null;
-    const mode = (lastSettings?.allowExec) ? "exec" : "plan";
+    const mode = lastSettings?.allowExec ? "exec" : "plan";
     const r = await startAutopilot(api, { mode, issue: Number.isInteger(issue) && issue > 0 ? issue : null });
     if (r?.run) {
-      const card = document.getElementById("autopilot-card");
-      const promptEl = card.querySelector("#autopilot-prompt");
+      const promptEl = document.getElementById("autopilot-prompt");
       if (r.prompt && promptEl) { promptEl.textContent = r.prompt; promptEl.classList.remove("hidden"); }
-      log(`✓ autopilot started — issue=${r.run.issue ?? "?"} mode=${r.run.mode}`);
+      showToast(r.ok ? `Autopilot · #${r.run.issue ?? "?"}` : `${r.reason}`, r.ok ? "ok" : "warn");
     } else {
-      log(`⚠ autopilot: ${r?.reason ?? "failed to start"}`);
+      showToast(r?.reason ?? "Échec", "err");
     }
     refreshAll().catch(() => {});
-  }).catch((e) => log(`⚠ autopilot start failed: ${redact(String(e?.message || e))}`));
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
 });
 
 document.getElementById("autopilot-stop")?.addEventListener("click", async (ev) => {
-  const btn = ev.currentTarget;
-  await runWithState(btn, async () => {
+  await runWithState(ev.currentTarget, async () => {
     const r = await stopAutopilot(api);
-    log(r?.ok ? "✓ autopilot stopped" : `⚠ autopilot: ${r?.reason ?? "stop failed"}`);
+    showToast(r?.ok ? "Autopilot arrêté" : (r?.reason ?? "—"), r?.ok ? "ok" : "warn");
     refreshAll().catch(() => {});
-  }).catch((e) => log(`⚠ autopilot stop failed: ${redact(String(e?.message || e))}`));
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
 });
 
 document.getElementById("autopilot-resume")?.addEventListener("click", async (ev) => {
-  const btn = ev.currentTarget;
-  await runWithState(btn, async () => {
+  await runWithState(ev.currentTarget, async () => {
     const r = await resumeAutopilot(api);
-    log(r?.ok ? "✓ autopilot resumed" : `⚠ autopilot: ${r?.reason ?? "resume failed"}`);
+    showToast(r?.ok ? "Autopilot relancé" : (r?.reason ?? "—"), r?.ok ? "ok" : "warn");
     refreshAll().catch(() => {});
-  }).catch((e) => log(`⚠ autopilot resume failed: ${redact(String(e?.message || e))}`));
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
 });
 
 setConnState(api.token ? ConnState.UNKNOWN : ConnState.AUTH_REQUIRED);
