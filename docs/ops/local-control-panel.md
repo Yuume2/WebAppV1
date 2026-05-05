@@ -2,6 +2,9 @@
 
 Cockpit web local pour piloter Claude Code en mode semi-autonome sur WebAppV1.
 
+> V5 (Phase 5) : prompt-driven Claude Code runs, env readiness, state/resume.
+> Voir `docs/ops/local-control-v5.md` pour le détail V5.
+
 ## Architecture
 
 - **Backend** : `tools/local-control/server.mjs` (responsabilité de Claude A — non inclus dans cette PR).

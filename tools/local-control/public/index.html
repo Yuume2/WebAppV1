@@ -117,6 +117,30 @@
       </div>
     </div>
 
+    <div class="card v5-card" id="v5-card">
+      <h3>V5 readiness</h3>
+      <ul class="v5-list" id="v5-list">
+        <li data-key="claude"><span class="label">Claude CLI</span><span class="value" data-value>—</span></li>
+        <li data-key="exec"><span class="label">Exec</span><span class="value" data-value>—</span></li>
+        <li data-key="loop"><span class="label">Loop</span><span class="value" data-value>—</span></li>
+        <li data-key="automerge"><span class="label">Auto-merge</span><span class="value" data-value>—</span></li>
+        <li data-key="notion"><span class="label">Notion</span><span class="value" data-value>—</span></li>
+        <li data-key="n8n"><span class="label">n8n</span><span class="value" data-value>—</span></li>
+        <li data-key="whatsapp"><span class="label">WhatsApp</span><span class="value" data-value>—</span></li>
+      </ul>
+      <details class="v5-actions">
+        <summary>Next human actions</summary>
+        <ul class="small" id="v5-next-actions"><li class="muted">—</li></ul>
+      </details>
+      <div class="actions">
+        <label>Issue # <input id="v5-issue" type="number" min="1" placeholder="ex: 41" /></label>
+        <button data-action="v5-prepare" data-needs="auth">Prepare Claude run</button>
+        <button data-action="v5-copy-prompt" data-needs="auth">Copy prompt</button>
+        <button data-action="v5-resume" data-needs="auth">Resume</button>
+      </div>
+      <pre id="v5-prompt-view" class="log-view hidden" aria-live="polite"></pre>
+    </div>
+
     <div class="actions">
       <button data-action="refresh">Refresh</button>
       <button data-action="doctor" data-needs="auth">Run doctor</button>
