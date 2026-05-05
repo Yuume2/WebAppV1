@@ -24,15 +24,56 @@
     <button data-tab="settings">Settings</button>
   </nav>
   <div class="topbar-right">
+    <span id="conn-badge" class="badge">…</span>
     <span id="mode-badge" class="badge dry">DRY-RUN</span>
     <span id="lan-badge" class="badge hidden warn">LAN</span>
     <span id="automerge-badge" class="badge hidden danger">AUTO-MERGE</span>
   </div>
 </header>
 
+<section id="auth-panel" class="auth-panel hidden" aria-live="polite">
+  <div class="auth-card">
+    <h2 id="auth-title">Auth token required</h2>
+    <p id="auth-message" class="muted small">
+      Colle ton token Local Control. Tu le trouves dans
+      <code>.local-control/settings.json</code> → champ <code>authToken</code>.
+    </p>
+    <form id="auth-form">
+      <input id="auth-token-input" type="password" autocomplete="off" spellcheck="false" placeholder="auth token" />
+      <div class="actions">
+        <button type="submit" class="primary" id="auth-save">Save token</button>
+        <button type="button" id="auth-retry">Retry connection</button>
+      </div>
+    </form>
+    <p id="auth-error" class="warn-line hidden"></p>
+  </div>
+</section>
+
 <main>
   <!-- DASHBOARD -->
   <section data-pane="dashboard" class="pane active">
+    <div class="card onboarding" id="onboarding-card">
+      <h3>Démarrage rapide</h3>
+      <ul class="onboarding-list" id="onboarding-list">
+        <li data-key="server"><span class="dot"></span><span class="label">Serveur</span><span class="value" data-value>—</span></li>
+        <li data-key="auth"><span class="dot"></span><span class="label">Auth</span><span class="value" data-value>—</span></li>
+        <li data-key="mode"><span class="dot"></span><span class="label">Mode</span><span class="value" data-value>—</span></li>
+        <li data-key="dryrun"><span class="dot"></span><span class="label">Run mode</span><span class="value" data-value>—</span></li>
+      </ul>
+      <ol class="onboarding-steps">
+        <li>Clique <strong>Run doctor</strong> pour vérifier l'état du repo.</li>
+        <li>Clique <strong>Score tasks</strong> pour classer les issues.</li>
+        <li>Clique <strong>Queue</strong> pour voir la file.</li>
+        <li>Clique <strong>Plan next task</strong> pour préparer la prochaine action.</li>
+      </ol>
+    </div>
+    <div class="card phone-url" id="phone-card">
+      <h3>Accès téléphone</h3>
+      <p class="small">Local: <code id="phone-local">—</code></p>
+      <p class="small">LAN: <code id="phone-lan">—</code></p>
+      <p class="small muted" id="phone-hint">Active LAN dans Settings + relance avec <code>pnpm local:control:lan</code>. IP non détectée ? <code>ipconfig getifaddr en0</code>.</p>
+      <p class="small warn-line">⚠ Utilise <code>?token=...</code> seulement sur Wi-Fi privé.</p>
+    </div>
     <div class="grid">
       <div class="card">
         <h3>Branche</h3>
@@ -78,10 +119,10 @@
 
     <div class="actions">
       <button data-action="refresh">Refresh</button>
-      <button data-action="doctor">Run doctor</button>
-      <button data-action="score">Score tasks</button>
-      <button data-action="queue">Queue</button>
-      <button data-action="plan-next" class="primary">Plan next task</button>
+      <button data-action="doctor" data-needs="auth">Run doctor</button>
+      <button data-action="score" data-needs="auth">Score tasks</button>
+      <button data-action="queue" data-needs="auth">Queue</button>
+      <button data-action="plan-next" class="primary" data-needs="auth">Plan next task</button>
     </div>
   </section>
 
@@ -175,11 +216,26 @@
       <label>Max minutes <input type="number" name="maxMinutes" min="1" max="240" /></label>
       <label>Stale days <input type="number" name="staleDays" min="0" max="365" /></label>
       <label>Issue préférée <input type="number" name="preferredIssue" min="1" placeholder="ex: 41" /></label>
-      <label class="check"><input type="checkbox" name="dryRunDefault"> Dry-run par défaut</label>
-      <label class="check"><input type="checkbox" name="allowExec"> Autoriser exec</label>
-      <label class="check"><input type="checkbox" name="allowLoop"> Autoriser loop</label>
-      <label class="check danger"><input type="checkbox" name="allowAutoMerge"> Autoriser auto-merge</label>
-      <label class="check"><input type="checkbox" name="lanEnabled"> Activer LAN</label>
+      <label class="check setting-row">
+        <input type="checkbox" name="dryRunDefault">
+        <span><strong>Dry-run par défaut</strong><span class="setting-desc">Plan only, aucune action réelle.</span></span>
+      </label>
+      <label class="check setting-row">
+        <input type="checkbox" name="allowExec">
+        <span><strong>Autoriser exec</strong><span class="setting-desc">Autorise une vraie exécution task, pas juste plan.</span></span>
+      </label>
+      <label class="check setting-row">
+        <input type="checkbox" name="allowLoop">
+        <span><strong>Autoriser loop</strong><span class="setting-desc">Autorise plusieurs tasks consécutives jusqu'à maxPRs.</span></span>
+      </label>
+      <label class="check danger setting-row">
+        <input type="checkbox" name="allowAutoMerge">
+        <span><strong>Autoriser auto-merge</strong><span class="setting-desc">Autorise la capacité auto-merge ultra safe (safe+CI green+protection OK).</span></span>
+      </label>
+      <label class="check setting-row">
+        <input type="checkbox" name="lanEnabled">
+        <span><strong>Activer LAN</strong><span class="setting-desc">Rend le serveur accessible au téléphone si lancé avec <code>local:control:lan</code>.</span></span>
+      </label>
 
       <label>Risk autorisés <input type="text" name="allowedRisk" placeholder="safe" /></label>
       <label>Autonomy autorisés <input type="text" name="allowedAutonomy" placeholder="autonomous" /></label>

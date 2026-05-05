@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ApiClient } from "../public/lib/api.js";
+import { ApiClient, AuthError, NetworkError } from "../public/lib/api.js";
 
 function mockFetch(handler) {
   return (url, init = {}) => {
@@ -47,8 +47,31 @@ test("throws on non-ok response", async () => {
   await assert.rejects(() => api.get("/x"), /500/);
 });
 
-test("401 without prompt rejects (no window in node)", async () => {
-  globalThis.fetch = mockFetch(() => ({ ok: false, status: 401, statusText: "Unauthorized", headers: { "content-type": "text/plain" }, text: "no" }));
+test("401 throws typed AuthError without retry/prompt", async () => {
+  let calls = 0;
+  globalThis.fetch = mockFetch(() => { calls++; return { ok: false, status: 401, statusText: "Unauthorized", headers: { "content-type": "text/plain" }, text: "no" }; });
   const api = new ApiClient({ baseUrl: "" });
-  await assert.rejects(() => api.get("/x"), /401/);
+  await assert.rejects(() => api.get("/x"), (err) => err instanceof AuthError && err.status === 401);
+  assert.equal(calls, 1, "must not retry on 401");
+});
+
+test("network failure throws typed NetworkError", async () => {
+  globalThis.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
+  const api = new ApiClient({ baseUrl: "" });
+  await assert.rejects(() => api.get("/x"), (err) => err instanceof NetworkError);
+});
+
+test("setToken persists in localStorage when available", async () => {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => store.get(k) ?? null,
+    setItem: (k, v) => store.set(k, v),
+    removeItem: (k) => store.delete(k),
+  };
+  const api = new ApiClient({ baseUrl: "" });
+  api.setToken("xyz");
+  assert.equal(store.get("localControlToken"), "xyz");
+  api.clearToken();
+  assert.equal(store.has("localControlToken"), false);
+  delete globalThis.localStorage;
 });

@@ -1,3 +1,10 @@
+export class AuthError extends Error {
+  constructor(msg = "401 unauthorized") { super(msg); this.name = "AuthError"; this.status = 401; }
+}
+export class NetworkError extends Error {
+  constructor(msg = "backend unreachable") { super(msg); this.name = "NetworkError"; }
+}
+
 export class ApiClient {
   constructor({ baseUrl = "", token = null } = {}) {
     this.baseUrl = baseUrl;
@@ -8,17 +15,23 @@ export class ApiClient {
     if (this.token) h["authorization"] = `Bearer ${this.token}`;
     return h;
   }
-  setToken(t) { this.token = t || null; try { if (t) localStorage.setItem("localControlToken", t); } catch {} }
+  setToken(t) {
+    this.token = t || null;
+    try { if (t) localStorage.setItem("localControlToken", t); } catch {}
+  }
+  clearToken() {
+    this.token = null;
+    try { localStorage.removeItem("localControlToken"); } catch {}
+  }
   async _fetch(path, opts = {}) {
-    const res = await fetch(this.baseUrl + path, opts);
+    let res;
+    try {
+      res = await fetch(this.baseUrl + path, opts);
+    } catch (e) {
+      throw new NetworkError(String(e?.message || e));
+    }
     if (res.status === 401) {
-      const t = (typeof window !== "undefined" && window.prompt) ? window.prompt("Token Local Control requis (cf. .local-control/settings.json) :") : null;
-      if (t) {
-        this.setToken(t);
-        const next = { ...opts, headers: this._headers(opts.headers || {}) };
-        return this._fetch(path, next);
-      }
-      throw new Error("401 unauthorized");
+      throw new AuthError("401 unauthorized");
     }
     if (!res.ok) {
       let msg = `${res.status} ${res.statusText}`;
