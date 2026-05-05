@@ -52,6 +52,36 @@
 <main>
   <!-- DASHBOARD -->
   <section data-pane="dashboard" class="pane active">
+    <div class="card autopilot-card" id="autopilot-card">
+      <div class="autopilot-header">
+        <h3>Autopilot</h3>
+        <span id="autopilot-status-badge" class="badge">idle</span>
+      </div>
+      <p class="muted small" id="autopilot-summary">Pick the safest open task and hand it to Claude. Stays in dry-run until you flip <code>allowExec</code>.</p>
+      <div class="autopilot-actions">
+        <button id="autopilot-start" class="primary big" data-needs="auth">Start Autopilot</button>
+        <button id="autopilot-stop" data-needs="auth">Stop</button>
+        <button id="autopilot-resume" data-needs="auth">Resume</button>
+      </div>
+      <ul class="autopilot-stats" id="autopilot-stats">
+        <li><span class="label">Mode</span><span class="value" data-key="mode">—</span></li>
+        <li><span class="label">Issue</span><span class="value" data-key="issue">—</span></li>
+        <li><span class="label">PRs</span><span class="value" data-key="prs">0</span></li>
+        <li><span class="label">Errors</span><span class="value" data-key="errors">0</span></li>
+        <li><span class="label">Next</span><span class="value" data-key="next">—</span></li>
+        <li><span class="label">Auto-merge</span><span class="value" data-key="automerge">OFF</span></li>
+      </ul>
+      <pre id="autopilot-prompt" class="log-view hidden" aria-live="polite"></pre>
+      <details class="advanced-controls">
+        <summary>Advanced controls</summary>
+        <div class="actions">
+          <button data-action="doctor" data-needs="auth">Run doctor</button>
+          <button data-action="score" data-needs="auth">Score tasks</button>
+          <button data-action="queue" data-needs="auth">Queue</button>
+          <button data-action="plan-next" data-needs="auth">Plan next task</button>
+        </div>
+      </details>
+    </div>
     <div class="card onboarding" id="onboarding-card">
       <h3>Démarrage rapide</h3>
       <ul class="onboarding-list" id="onboarding-list">

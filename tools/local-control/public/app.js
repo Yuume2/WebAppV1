@@ -16,6 +16,7 @@ import { confirmDanger } from "./lib/confirm.js";
 import { renderOnboarding } from "./lib/onboarding.js";
 import { runWithState } from "./lib/buttonState.js";
 import { renderV5Card } from "./lib/v5.js";
+import { renderAutopilotState, startAutopilot, stopAutopilot, resumeAutopilot, fetchAutopilotStatus } from "./lib/autopilot.js";
 import {
   TokenStore, ConnState, readTokenFromUrl,
   classifyError, badgeLabel, badgeClass, shouldKeepPolling,
@@ -124,6 +125,7 @@ async function refreshAll() {
     applySettingsToBadges(settings);
     renderOnboarding({ conn: "connected", settings, network });
     if (v5) renderV5Card(document.getElementById("v5-card"), v5);
+    renderAutopilotState(document.getElementById("autopilot-card"), v5?.autopilot ?? null, v5);
     setConnState(ConnState.CONNECTED);
   } catch (e) {
     const next = classifyError(e);
@@ -216,6 +218,43 @@ document.querySelector('[data-action="v5-resume"]')?.addEventListener("click", a
     if (r?.canResume) log(`✓ v5: can resume run ${r.runId} for issue #${r.issue}`);
     else log(`⚠ v5: resume blocked — ${r?.reason ?? "unknown"}`);
   } catch (e) { log(`⚠ v5 resume failed: ${redact(String(e?.message || e))}`); }
+});
+
+document.getElementById("autopilot-start")?.addEventListener("click", async (ev) => {
+  const btn = ev.currentTarget;
+  await runWithState(btn, async () => {
+    const issueRaw = document.getElementById("v5-issue")?.value;
+    const issue = issueRaw ? Number(issueRaw) : null;
+    const mode = (lastSettings?.allowExec) ? "exec" : "plan";
+    const r = await startAutopilot(api, { mode, issue: Number.isInteger(issue) && issue > 0 ? issue : null });
+    if (r?.run) {
+      const card = document.getElementById("autopilot-card");
+      const promptEl = card.querySelector("#autopilot-prompt");
+      if (r.prompt && promptEl) { promptEl.textContent = r.prompt; promptEl.classList.remove("hidden"); }
+      log(`✓ autopilot started — issue=${r.run.issue ?? "?"} mode=${r.run.mode}`);
+    } else {
+      log(`⚠ autopilot: ${r?.reason ?? "failed to start"}`);
+    }
+    refreshAll().catch(() => {});
+  }).catch((e) => log(`⚠ autopilot start failed: ${redact(String(e?.message || e))}`));
+});
+
+document.getElementById("autopilot-stop")?.addEventListener("click", async (ev) => {
+  const btn = ev.currentTarget;
+  await runWithState(btn, async () => {
+    const r = await stopAutopilot(api);
+    log(r?.ok ? "✓ autopilot stopped" : `⚠ autopilot: ${r?.reason ?? "stop failed"}`);
+    refreshAll().catch(() => {});
+  }).catch((e) => log(`⚠ autopilot stop failed: ${redact(String(e?.message || e))}`));
+});
+
+document.getElementById("autopilot-resume")?.addEventListener("click", async (ev) => {
+  const btn = ev.currentTarget;
+  await runWithState(btn, async () => {
+    const r = await resumeAutopilot(api);
+    log(r?.ok ? "✓ autopilot resumed" : `⚠ autopilot: ${r?.reason ?? "resume failed"}`);
+    refreshAll().catch(() => {});
+  }).catch((e) => log(`⚠ autopilot resume failed: ${redact(String(e?.message || e))}`));
 });
 
 setConnState(api.token ? ConnState.UNKNOWN : ConnState.AUTH_REQUIRED);

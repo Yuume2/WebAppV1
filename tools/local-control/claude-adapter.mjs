@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { loadV5Env } from './v5-env.mjs';
@@ -94,4 +94,43 @@ export function v5StatusFromEnv({ env, repoRoot }) {
 export function loadAdapterContext(repoRoot) {
   const { values, file, exists } = loadV5Env(repoRoot);
   return { env: values, envFile: file, envExists: exists, envFileExists: exists && existsSync(file) };
+}
+
+const SAFE_PROMPT_RE = /^[\s\S]{1,32000}$/;
+
+export function launchClaude({ prompt, command, repoRoot, env = {}, allowExec = false }) {
+  if (!allowExec) return { ok: false, reason: 'exec not allowed' };
+  if (!command || !SAFE_COMMAND_RE.test(command)) return { ok: false, reason: 'unsafe command' };
+  if (!prompt || !SAFE_PROMPT_RE.test(prompt)) return { ok: false, reason: 'invalid prompt' };
+  if (!resolve(repoRoot)) return { ok: false, reason: 'invalid repoRoot' };
+  const childEnv = { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' };
+  for (const [k, v] of Object.entries(env)) {
+    if (typeof v === 'string' && v.length) childEnv[k] = v;
+  }
+  const escaped = prompt.replace(/'/g, `'\\''`);
+  const shellCmd = `${command} -p '${escaped}'`;
+  let child;
+  try {
+    child = spawn('/bin/zsh', ['-i', '-c', shellCmd], {
+      cwd: repoRoot,
+      env: childEnv,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    return { ok: false, reason: `spawn failed: ${err.message}` };
+  }
+  return { ok: true, child };
+}
+
+export function buildAdapter({ env = {}, repoRoot }) {
+  const resolved = resolveClaudeCommand(env);
+  const probe = resolved.ok ? probeClaudeAvailability({ command: resolved.command }) : { available: false, version: null, reason: resolved.reason };
+  return {
+    available: !!probe.available,
+    command: resolved.ok ? resolved.command : null,
+    version: probe.version,
+    reason: probe.reason,
+    prepare(args) { return prepareClaudeRun({ ...args, repoRoot, env }); },
+    launch(args) { return launchClaude({ ...args, env, allowExec: true }); },
+  };
 }

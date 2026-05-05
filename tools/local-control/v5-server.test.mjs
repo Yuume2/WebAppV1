@@ -120,3 +120,50 @@ test('POST /api/resume returns canResume=false when no state', async () => {
     assert.equal(r.data.canResume, false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('GET /api/autopilot/status without auth returns 401', async () => {
+  const root = tmpRepo();
+  try {
+    const app = buildApp({ repoRoot: root });
+    const r = await call(app, 'GET', '/api/autopilot/status');
+    assert.equal(r.status, 401);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('GET /api/autopilot/status returns idle autopilot=null initially', async () => {
+  const root = tmpRepo();
+  try {
+    const app = buildApp({ repoRoot: root });
+    const tok = app.settings.get().authToken;
+    const r = await call(app, 'GET', '/api/autopilot/status', { token: tok });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.autopilot, null);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('POST /api/autopilot/stop returns ok=false when no run', async () => {
+  const root = tmpRepo();
+  try {
+    const app = buildApp({ repoRoot: root });
+    const tok = app.settings.get().authToken;
+    const r = await call(app, 'POST', '/api/autopilot/stop', { token: tok, body: JSON.stringify({}) });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.ok, false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('GET /api/v5/status surfaces autoMergeMode and notion/n8n flags', async () => {
+  const root = tmpRepo();
+  writeFileSync(join(root, '.local-control', 'v5.env'),
+    'CLAUDE_CODE_COMMAND=yu\nNOTION_TOKEN=x\nNOTION_QUESTIONS_DATABASE_ID=db\nN8N_BASE_URL=https://n8n\nN8N_WEBHOOK_SECRET=s\n');
+  try {
+    const app = buildApp({ repoRoot: root });
+    const tok = app.settings.get().authToken;
+    const r = await call(app, 'GET', '/api/v5/status', { token: tok });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.notionConfigured, true);
+    assert.equal(r.data.n8nConfigured, true);
+    assert.equal(r.data.autoMergeMode, 'OFF');
+    assert.deepEqual(r.data.n8nMissingWebhooks.sort(), ['N8N_NOTION_ANSWER_WEBHOOK', 'N8N_QUESTION_NOTIFY_WEBHOOK'].sort());
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
