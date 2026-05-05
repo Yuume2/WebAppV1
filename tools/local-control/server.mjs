@@ -15,9 +15,13 @@ import {
   runTaskGuard, evaluateAutoMerge, applyAutoMerge,
 } from './automerge.mjs';
 import { loadV5Env, evaluateV5Env } from './v5-env.mjs';
-import { v5StatusFromEnv, prepareClaudeRun } from './claude-adapter.mjs';
+import { v5StatusFromEnv, prepareClaudeRun, buildAdapter } from './claude-adapter.mjs';
 import { V5StateStore } from './state.mjs';
 import { evaluateResume } from './resume.mjs';
+import { evaluateNotionConfig, validateNotionDatabase } from './integrations/notion-questions.mjs';
+import { evaluateN8nConfig } from './integrations/n8n-webhooks.mjs';
+import { evaluateWhatsappConfig } from './integrations/whatsapp.mjs';
+import { AutopilotEngine, exportRunSummary } from './autopilot.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT_DEFAULT = resolve(__dirname, '..', '..');
@@ -67,6 +71,18 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
   const startedAt = Date.now();
   const network = { host: '127.0.0.1', port: 8787, lan: false };
   const v5Store = new V5StateStore(repoRoot);
+  const autopilotStore = new V5StateStore(repoRoot);
+  let autopilot = null;
+  function getAutopilot() {
+    if (autopilot) return autopilot;
+    const { values: env } = loadV5Env(repoRoot);
+    autopilot = new AutopilotEngine({
+      repoRoot, settings, store: autopilotStore, logs, env,
+      claudeAdapter: buildAdapter({ env, repoRoot }),
+      dryRun: !settings.get().allowExec,
+    });
+    return autopilot;
+  }
 
   function authOk(req) { return isAuthenticated(req, settings.get().authToken); }
   function send(res, code, body, extraHeaders = {}) {
@@ -356,19 +372,24 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       const { values: env } = loadV5Env(repoRoot);
       const envEval = evaluateV5Env(env);
       const claude = v5StatusFromEnv({ env, repoRoot });
+      const notionCfg = evaluateNotionConfig(env);
+      const n8nCfg = evaluateN8nConfig(env);
+      const whatsappCfg = evaluateWhatsappConfig(env);
       const phaseStatus = {
         phase1: 'ready',
         phase2: claude.claudeAvailable ? 'ready' : 'pending',
-        phase3: envEval.notionConfigured && envEval.n8nConfigured && envEval.whatsappConfigured ? 'ready' : 'pending',
+        phase3: notionCfg.configured && n8nCfg.baseConfigured ? 'ready' : 'pending',
         phase4: 'pending',
       };
       const nextHumanActions = [];
       if (!claude.claudeAvailable) nextHumanActions.push(`Install/expose Claude Code CLI: ${claude.claudeReason ?? 'set CLAUDE_CODE_COMMAND'}`);
-      if (!envEval.notionConfigured) nextHumanActions.push(`Fill Notion env: ${envEval.missingByGroup.notion.join(', ')}`);
-      if (!envEval.n8nConfigured) nextHumanActions.push(`Fill n8n env: ${envEval.missingByGroup.n8n.join(', ')}`);
-      if (!envEval.whatsappConfigured) nextHumanActions.push(`Fill WhatsApp env: ${envEval.missingByGroup.whatsapp.join(', ')}`);
+      if (!notionCfg.configured) nextHumanActions.push(`Fill Notion env: ${notionCfg.missing.join(', ')}`);
+      if (!n8nCfg.baseConfigured) nextHumanActions.push(`Fill n8n env: ${n8nCfg.missing.join(', ')}`);
+      if (n8nCfg.baseConfigured && n8nCfg.missingWebhooks.length) nextHumanActions.push(`Create/import n8n workflows then fill: ${n8nCfg.missingWebhooks.join(', ')}`);
+      if (!whatsappCfg.configured) nextHumanActions.push(`Optional: configure WhatsApp (${whatsappCfg.missing.join(', ') || 'WHATSAPP_PROVIDER'})`);
       if (!s.allowExec) nextHumanActions.push('Enable allowExec in Settings to run real exec');
       if (!s.allowAutoMerge) nextHumanActions.push('Auto-merge stays OFF until explicitly enabled');
+      const ap = autopilot?.current?.() ?? null;
       return send(res, 200, {
         claudeCommand: claude.claudeCommand,
         claudeAvailable: claude.claudeAvailable,
@@ -377,14 +398,55 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
         execAllowed: !!s.allowExec,
         loopAllowed: !!s.allowLoop,
         autoMergeAllowed: !!s.allowAutoMerge,
-        notionConfigured: envEval.notionConfigured,
-        n8nConfigured: envEval.n8nConfigured,
-        whatsappConfigured: envEval.whatsappConfigured,
+        autoMergeMode: s.allowAutoMerge ? 'ENABLED' : 'OFF',
+        notionConfigured: notionCfg.configured,
+        n8nConfigured: n8nCfg.baseConfigured,
+        n8nWebhooksConfigured: n8nCfg.questionWebhookConfigured && n8nCfg.answerWebhookConfigured,
+        n8nMissingWebhooks: n8nCfg.missingWebhooks,
+        whatsappConfigured: whatsappCfg.configured,
+        whatsappVia: whatsappCfg.via,
         missingEnv: envEval.missingEnv,
         missingByGroup: envEval.missingByGroup,
         phaseStatus,
         nextHumanActions,
+        autopilot: ap,
       });
+    }
+
+    if (method === 'GET' && path === '/api/v5/notion/validate') {
+      const { values: env } = loadV5Env(repoRoot);
+      const cfg = evaluateNotionConfig(env);
+      if (!cfg.configured) return send(res, 200, { ok: false, configured: false, reason: `missing: ${cfg.missing.join(', ')}` });
+      try {
+        const out = await validateNotionDatabase({ token: cfg.token, databaseId: cfg.databaseId });
+        return send(res, 200, { configured: true, ...out });
+      } catch (e) { return send(res, 200, { configured: true, ok: false, reason: e.message }); }
+    }
+
+    if (method === 'POST' && path === '/api/autopilot/start') {
+      let body; try { body = await readBody(req); } catch (e) { return sendErr(res, 422, e.message); }
+      const mode = ['plan', 'exec', 'loop'].includes(body?.mode) ? body.mode : 'plan';
+      const issue = body?.issue == null ? null : Number(body.issue);
+      if (issue != null && (!Number.isInteger(issue) || issue <= 0)) return sendErr(res, 422, 'invalid issue');
+      const ap = getAutopilot();
+      ap.dryRun = !settings.get().allowExec || mode === 'plan';
+      const result = await ap.start({ mode, issue });
+      return send(res, result.ok ? 200 : 409, result);
+    }
+    if (method === 'POST' && path === '/api/autopilot/stop') {
+      const ap = getAutopilot();
+      const result = ap.stop();
+      return send(res, 200, result);
+    }
+    if (method === 'POST' && path === '/api/autopilot/resume') {
+      let body; try { body = await readBody(req); } catch (e) { return sendErr(res, 422, e.message); }
+      const ap = getAutopilot();
+      const result = ap.resume({ answeredQid: body?.answeredQid ?? null });
+      return send(res, result.ok ? 200 : 409, result);
+    }
+    if (method === 'GET' && path === '/api/autopilot/status') {
+      const ap = getAutopilot();
+      return send(res, 200, { autopilot: ap.current() });
     }
 
     if (method === 'POST' && path === '/api/v5/prepare-run') {

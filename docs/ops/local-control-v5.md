@@ -2,7 +2,13 @@
 
 This is the V5 (Phase 5) layer on top of the local-control cockpit. It wires
 Claude Code (the `yu` shell function) into the runner, persists per-run state,
-and exposes a readiness card in the UI.
+and exposes a readiness card and an **Autopilot** card in the UI.
+
+See also:
+- `docs/ops/autopilot.md` — what the Autopilot button does.
+- `docs/ops/automerge-policy.md` — when auto-merge will/won't run.
+- `docs/ops/notion-whatsapp-live.md` — Notion + WhatsApp live wiring.
+- `docs/ops/local-control-phone.md` — LAN/phone access.
 
 ## Lancer V5
 
