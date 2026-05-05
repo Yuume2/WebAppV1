@@ -3,8 +3,9 @@ import { dirname, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
 export const DEFAULT_SETTINGS = Object.freeze({
-  maxPrsPerRun: 3,
+  maxPrsPerRun: 2,
   maxMinutes: 60,
+  maxErrors: 3,
   dryRunDefault: true,
   allowExec: false,
   allowLoop: false,
@@ -19,6 +20,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
 const VALIDATORS = {
   maxPrsPerRun: (v) => Number.isInteger(v) && v >= 1 && v <= 10,
   maxMinutes: (v) => Number.isInteger(v) && v >= 1 && v <= 240,
+  maxErrors: (v) => Number.isInteger(v) && v >= 1 && v <= 20,
   dryRunDefault: (v) => typeof v === 'boolean',
   allowExec: (v) => typeof v === 'boolean',
   allowLoop: (v) => typeof v === 'boolean',

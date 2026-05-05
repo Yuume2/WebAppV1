@@ -51,6 +51,46 @@ work to Claude (via `yu`), and stops as soon as a guard fails.
 - `maxMinutes` — 60 default, capped at 240.
 - `maxPrsPerRun` — 3 default, capped at 10.
 
+## Background lifecycle (V5 réel)
+
+L'engine tourne en arrière-plan dans le serveur cockpit tant qu'il est
+ouvert. Le state est persisté dans `.local-control/runs/<id>.json`.
+L'UI se reconnecte automatiquement via SSE (`/api/autopilot/events`)
+quand un run est actif.
+
+Cycle d'une itération autopilot en mode exec :
+
+1. `git switch main && git pull --ff-only`
+2. `git switch -c feat/issue-<n>-autopilot`
+3. lance `claude -p "<prompt>"` via la commande `yu` configurée
+4. attend la fin du process en streamant stdout/stderr
+5. lance `task-guard --json` — abandonne si BLOCK
+6. cherche la PR ouverte sur la branche (`gh pr list --head ...`)
+7. si PR créée → enregistre + budget PR++ + boucle si `allowLoop=true`
+8. si pas de PR mais commentaire `claude-question` → état `waiting`
+9. si rien des deux → comptabilise comme erreur
+
+Stop conditions :
+- `stopRequested` (bouton Stop)
+- `errors >= maxErrors`
+- `prsCreated >= maxPrsPerRun`
+- `Date.now() - startedAt > maxMinutes * 60_000`
+- `guard-block`
+- `human-question` (state waiting, requiert Resume)
+- `no-safe-task`
+
+## Lancer en CLI
+
+```bash
+pnpm autopilot          # run-one (refuse si allowExec=false)
+pnpm autopilot:loop     # loop (refuse si allowLoop=false)
+pnpm autopilot --issue=41   # forcer une issue précise
+```
+
+Le CLI lit `.local-control/settings.json`, démarre le serveur cockpit
+en headless, puis appelle `/api/autopilot/start`. Ctrl+C envoie un
+`stop` propre.
+
 ## First safe run (recipe)
 
 1. Verify `pnpm task:doctor` is fully green (no PENDING blockers you can fix).

@@ -26,15 +26,15 @@ test('buildIssuePrompt rejects invalid issue', () => {
 test('buildIssuePrompt embeds issue number and respects mode', () => {
   const p = buildIssuePrompt({ issue: 42, mode: 'plan', repoRoot: '/repo' });
   assert.match(p, /#42/);
-  assert.match(p, /Mode: plan/);
-  assert.match(p, /Ne push rien\./);
+  assert.match(p, /Mode demandé : plan/);
+  assert.match(p, /PLAN-ONLY/);
 });
 
 test('prepareClaudeRun returns reason when command missing', () => {
   const r = prepareClaudeRun({ issue: 1, repoRoot: '/repo', env: {} });
   assert.equal(r.ready, false);
   assert.ok(r.prompt.length > 0);
-  assert.equal(r.branch, 'feat/issue-1-claude-plan');
+  assert.equal(r.branch, 'feat/issue-1-autopilot');
 });
 
 test('prepareClaudeRun ready when CLAUDE_CODE_COMMAND set', () => {

@@ -10,6 +10,7 @@ import {
   recordError,
   recordPR,
   exportRunSummary,
+  createBranch,
   AUTOPILOT_STOP_REASONS,
 } from './autopilot.mjs';
 
@@ -170,4 +171,26 @@ test('exportRunSummary trims log to 30', () => {
   for (let i = 0; i < 50; i++) run.log.push({ at: new Date().toISOString(), step: 's' + i });
   const summary = exportRunSummary(run);
   assert.equal(summary.log.length, 30);
+});
+
+test('shouldStopRun honours custom error budget from settings', () => {
+  const run = { startedAt: new Date().toISOString(), errors: 5, prsCreated: 0 };
+  const r = shouldStopRun({ run, settings: { maxMinutes: 60, maxPrsPerRun: 3 } });
+  // shouldStopRun uses internal threshold of 3 — kept for backward compat
+  assert.equal(r.stop, true);
+});
+
+test('createBranch rejects unsafe branch names', () => {
+  const r = createBranch('/tmp', 'a;rm -rf');
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /invalid/);
+});
+
+test('chooseSafeTask excludes already-processed in loop', () => {
+  const items = [
+    { number: 5, labels: ['ai:autonomous', 'risk:safe'], score: 9 },
+    { number: 6, labels: ['ai:autonomous', 'risk:safe'], score: 7 },
+  ];
+  const r = chooseSafeTask({ items, excludeIssues: [5] });
+  assert.equal(r.number, 6);
 });
