@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0d10" />
+<title>WebAppV1 — Local Control</title>
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="dot" id="conn-dot" title="connection"></span>
+    <strong>WebAppV1</strong>
+    <span class="muted">Local Control</span>
+  </div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="dashboard" class="active">Dashboard</button>
+    <button data-tab="tasks">Tasks</button>
+    <button data-tab="runner">Runner</button>
+    <button data-tab="prompt">Prompt</button>
+    <button data-tab="logs">Logs</button>
+    <button data-tab="questions">Questions</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+  <div class="topbar-right">
+    <span id="mode-badge" class="badge dry">DRY-RUN</span>
+    <span id="lan-badge" class="badge hidden warn">LAN</span>
+    <span id="automerge-badge" class="badge hidden danger">AUTO-MERGE</span>
+  </div>
+</header>
+
+<main>
+  <!-- DASHBOARD -->
+  <section data-pane="dashboard" class="pane active">
+    <div class="grid">
+      <div class="card">
+        <h3>Branche</h3>
+        <div id="dash-branch" class="big">—</div>
+        <div id="dash-git" class="muted small">—</div>
+      </div>
+      <div class="card">
+        <h3>Doctor</h3>
+        <div id="dash-doctor" class="big">—</div>
+        <ul id="dash-doctor-blockers" class="small"></ul>
+      </div>
+      <div class="card">
+        <h3>Main protection</h3>
+        <div id="dash-protection" class="big">—</div>
+        <div id="dash-protection-checks" class="small muted">—</div>
+      </div>
+      <div class="card">
+        <h3>Phase gates</h3>
+        <div class="row">
+          <span class="chip" id="gate-1">P1</span>
+          <span class="chip" id="gate-2">P2</span>
+          <span class="chip" id="gate-3">P3</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Issues ouverts</h3>
+        <div id="dash-issues" class="big">—</div>
+      </div>
+      <div class="card">
+        <h3>Tâches autonomes</h3>
+        <div id="dash-auto" class="big">—</div>
+      </div>
+      <div class="card">
+        <h3>Questions humaines</h3>
+        <div id="dash-questions" class="big">—</div>
+      </div>
+      <div class="card">
+        <h3>Dernier run</h3>
+        <div id="dash-latest" class="big">—</div>
+        <div id="dash-latest-time" class="small muted">—</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button data-action="refresh">Refresh</button>
+      <button data-action="doctor">Run doctor</button>
+      <button data-action="score">Score tasks</button>
+      <button data-action="queue">Queue</button>
+      <button data-action="plan-next" class="primary">Plan next task</button>
+    </div>
+  </section>
+
+  <!-- TASKS -->
+  <section data-pane="tasks" class="pane">
+    <div class="filters">
+      <input id="task-filter" type="search" placeholder="Filtrer titre / labels…" />
+      <select id="task-class">
+        <option value="">Toutes classifications</option>
+        <option>trivial</option><option>safe</option><option>review</option><option>risky</option><option>blocked</option>
+      </select>
+      <button data-action="reload-tasks">Recharger</button>
+    </div>
+    <div class="table-wrap">
+      <table id="tasks-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Titre</th><th>Score</th><th>Classif.</th>
+            <th>Labels</th><th>Risk</th><th>Autonomy</th><th>Raison</th><th>Action</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- RUNNER -->
+  <section data-pane="runner" class="pane">
+    <form id="runner-form" class="form">
+      <fieldset>
+        <legend>Mode</legend>
+        <label><input type="radio" name="mode" value="plan" checked> Plan</label>
+        <label><input type="radio" name="mode" value="exec"> Exec</label>
+        <label><input type="radio" name="mode" value="loop"> Loop</label>
+      </fieldset>
+
+      <label>Issue # <input type="number" name="issue" min="1" placeholder="ex: 41" /></label>
+      <label>Max PRs <input type="number" name="maxPRs" min="1" max="10" value="3" /></label>
+      <label>Max minutes <input type="number" name="maxMinutes" min="1" max="240" value="20" /></label>
+
+      <label class="check"><input type="checkbox" name="dryRun" checked> Dry-run</label>
+      <label class="check"><input type="checkbox" name="allowExec"> Autoriser exec</label>
+      <label class="check"><input type="checkbox" name="allowLoop"> Autoriser loop</label>
+      <label class="check danger"><input type="checkbox" name="allowAutoMerge"> Autoriser auto-merge</label>
+
+      <div class="actions">
+        <button type="submit" class="primary">Démarrer</button>
+        <button type="button" data-action="stop-runner" class="danger">Stop</button>
+      </div>
+      <p class="warn-line hidden" id="runner-warn"></p>
+    </form>
+  </section>
+
+  <!-- PROMPT -->
+  <section data-pane="prompt" class="pane">
+    <div class="presets">
+      <button data-preset="plan-next-task">Plan next task</button>
+      <button data-preset="run-one-safe-task">Run one safe task</button>
+      <button data-preset="loop-safe-tasks">Loop safe tasks</button>
+      <button data-preset="resume-after-answer">Resume after answer</button>
+      <button data-preset="analyze-blockage">Analyze blockage</button>
+    </div>
+    <textarea id="prompt-text" placeholder="Prompt libre pour Claude Code…" rows="10"></textarea>
+    <div class="actions">
+      <button id="prompt-send" class="primary">Envoyer</button>
+      <button id="prompt-clear">Clear</button>
+    </div>
+  </section>
+
+  <!-- LOGS -->
+  <section data-pane="logs" class="pane">
+    <div class="logs-toolbar">
+      <select id="log-run-select"><option value="">Run en direct</option></select>
+      <button data-action="copy-logs">Copier</button>
+      <button data-action="clear-logs">Vider la vue</button>
+      <label class="check"><input type="checkbox" id="log-autoscroll" checked> Auto-scroll</label>
+    </div>
+    <pre id="log-view" class="log-view" aria-live="polite"></pre>
+  </section>
+
+  <!-- QUESTIONS -->
+  <section data-pane="questions" class="pane">
+    <div id="questions-list"></div>
+    <p class="muted small">Questions postées par Claude. Réponse retournera dans GitHub via n8n.</p>
+  </section>
+
+  <!-- SETTINGS -->
+  <section data-pane="settings" class="pane">
+    <form id="settings-form" class="form">
+      <label>Max PRs / run <input type="number" name="maxPrsPerRun" min="1" max="10" /></label>
+      <label>Max minutes <input type="number" name="maxMinutes" min="1" max="240" /></label>
+      <label>Stale days <input type="number" name="staleDays" min="0" max="365" /></label>
+      <label>Issue préférée <input type="number" name="preferredIssue" min="1" placeholder="ex: 41" /></label>
+      <label class="check"><input type="checkbox" name="dryRunDefault"> Dry-run par défaut</label>
+      <label class="check"><input type="checkbox" name="allowExec"> Autoriser exec</label>
+      <label class="check"><input type="checkbox" name="allowLoop"> Autoriser loop</label>
+      <label class="check danger"><input type="checkbox" name="allowAutoMerge"> Autoriser auto-merge</label>
+      <label class="check"><input type="checkbox" name="lanEnabled"> Activer LAN</label>
+
+      <label>Risk autorisés <input type="text" name="allowedRisk" placeholder="safe" /></label>
+      <label>Autonomy autorisés <input type="text" name="allowedAutonomy" placeholder="autonomous" /></label>
+
+      <fieldset>
+        <legend>LAN</legend>
+        <p class="small muted" id="lan-info">Backend bind <code>127.0.0.1</code> par défaut. Cocher LAN + relancer avec <code>--lan</code> pour ouvrir au réseau local.</p>
+      </fieldset>
+
+      <div class="actions">
+        <button type="submit" class="primary">Enregistrer</button>
+      </div>
+    </form>
+  </section>
+</main>
+
+<dialog id="confirm-dialog">
+  <form method="dialog">
+    <h3 id="confirm-title">Confirmer</h3>
+    <p id="confirm-body"></p>
+    <input id="confirm-input" type="text" placeholder="Tape: CONFIRMER" />
+    <menu>
+      <button value="cancel">Annuler</button>
+      <button id="confirm-ok" value="ok" class="danger">OK</button>
+    </menu>
+  </form>
+</dialog>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
