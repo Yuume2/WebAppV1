@@ -1,9 +1,9 @@
-const PRESETS = {
-  "plan-next-task": "Plan la prochaine tâche exécutable. Mode dry-run.",
-  "run-one-safe-task": "Run une seule tâche classifiée 'safe' ou 'trivial'. Stop après PR.",
-  "loop-safe-tasks": "Loop tasks 'safe'/'trivial' jusqu'à maxPRs. Stop si question humaine ou erreur.",
-  "resume-after-answer": "Resume depuis la dernière réponse Notion appliquée à GitHub.",
-  "analyze-blockage": "Analyse pourquoi le runner est bloqué. Liste blockers et propose remédiation.",
+export const PRESETS = {
+  "plan-next-task": "Plan la prochaine tâche exécutable (dry-run). Ne fais que planifier, ne lance aucune action.",
+  "run-one-safe-task": "Run une seule tâche classifiée 'safe' ou 'trivial'. Stop après PR. Respecte allowExec.",
+  "loop-safe-tasks": "Loop dry-run sur tasks 'safe'/'trivial' jusqu'à maxPRs. Aucune écriture réelle. Stop si question humaine ou erreur.",
+  "resume-after-answer": "Resume depuis la dernière réponse humaine appliquée à GitHub. Reprend la task en attente.",
+  "analyze-blockage": "Analyse pourquoi le runner est bloqué. Liste blockers et propose remédiation. Aucune action.",
 };
 
 export function mountPrompt(api) {

@@ -3,6 +3,7 @@ import { existsSync, readFileSync, statSync, readdirSync } from 'node:fs';
 import { dirname, resolve, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { networkInterfaces } from 'node:os';
 import { SettingsStore } from './settings.mjs';
 import { isAuthenticated, extractToken, constantTimeEqual } from './auth.mjs';
 import { LogStore, StateStore } from './logs.mjs';
@@ -35,6 +36,15 @@ function repoNameWithOwner(repoRoot) {
   });
   return r.status === 0 ? r.stdout.trim() : null;
 }
+function lanIPv4() {
+  const ifs = networkInterfaces();
+  for (const list of Object.values(ifs)) {
+    for (const ni of list || []) {
+      if (ni.family === 'IPv4' && !ni.internal) return ni.address;
+    }
+  }
+  return null;
+}
 function gitInfo(repoRoot) {
   const branchR = spawnSync('git', ['branch', '--show-current'], { cwd: repoRoot, encoding: 'utf8' });
   const dirtyR  = spawnSync('git', ['status', '--porcelain'], { cwd: repoRoot, encoding: 'utf8' });
@@ -51,6 +61,7 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
   const logs = new LogStore(repoRoot);
   const runner = new Runner({ logs, state, settings, repoRoot });
   const startedAt = Date.now();
+  const network = { host: '127.0.0.1', port: 8787, lan: false };
 
   function authOk(req) { return isAuthenticated(req, settings.get().authToken); }
   function send(res, code, body, extraHeaders = {}) {
@@ -104,6 +115,21 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
         activeRunId: runner.activeIds()[0] ?? null,
         uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
         uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
+      });
+    }
+    if (method === 'GET' && path === '/api/network') {
+      const lanIp = lanIPv4();
+      const s = settings.get();
+      const tokenSet = !!s.authToken;
+      return send(res, 200, {
+        host: network.host,
+        port: network.port,
+        lan: !!network.lan,
+        lanEnabled: !!s.lanEnabled,
+        lanIp,
+        localUrl: `http://127.0.0.1:${network.port}`,
+        lanUrl: network.lan && lanIp ? `http://${lanIp}:${network.port}` : null,
+        tokenRequired: tokenSet,
       });
     }
     if (method === 'GET' && path === '/api/dashboard') {
@@ -370,7 +396,7 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
     }
   };
 
-  return { handler, settings, state, logs, runner, repoRoot };
+  return { handler, settings, state, logs, runner, repoRoot, network };
 }
 
 export function startServer({ port = 8787, lan = false, repoRoot = REPO_ROOT_DEFAULT } = {}) {
@@ -381,6 +407,9 @@ export function startServer({ port = 8787, lan = false, repoRoot = REPO_ROOT_DEF
     console.error('[local-control] --lan ignored: settings.lanEnabled is false');
   }
   const host = wantLan ? '0.0.0.0' : '127.0.0.1';
+  app.network.host = host;
+  app.network.port = port;
+  app.network.lan = wantLan;
   const server = createServer(app.handler);
   server.listen(port, host, () => {
     console.log(`[local-control] http://${host}:${port}`);

@@ -13,10 +13,15 @@ import { mountLogs } from "./lib/logs.js";
 import { renderQuestions } from "./lib/questions.js";
 import { mountSettings } from "./lib/settings.js";
 import { confirmDanger } from "./lib/confirm.js";
+import { renderOnboarding } from "./lib/onboarding.js";
+import { runWithState } from "./lib/buttonState.js";
 import {
   TokenStore, ConnState, readTokenFromUrl,
   classifyError, badgeLabel, badgeClass, shouldKeepPolling,
 } from "./lib/auth-ui.js";
+
+let lastSettings = null;
+let lastNetwork = null;
 
 const REFRESH_MS = 15000;
 const tokenStore = new TokenStore(typeof localStorage !== "undefined" ? localStorage : null);
@@ -79,8 +84,12 @@ function setConnState(next, errMsg) {
 }
 
 function setActionsDisabled(disabled) {
-  document.querySelectorAll('main button[data-action], main button[type="submit"], main button[data-preset]')
-    .forEach((b) => { b.disabled = !!disabled; });
+  document.querySelectorAll('main button[data-needs="auth"], main button[type="submit"], main button[data-preset]')
+    .forEach((b) => {
+      b.disabled = !!disabled;
+      if (disabled) b.setAttribute("data-disabled-reason", "Auth requise — colle ton token.");
+      else b.removeAttribute("data-disabled-reason");
+    });
 }
 
 function startPolling() {
@@ -94,26 +103,30 @@ function stopPolling() {
 async function refreshAll() {
   if (!api.token) {
     setConnState(ConnState.AUTH_REQUIRED);
+    renderOnboarding({ conn: "auth-required", settings: lastSettings, network: lastNetwork });
     return;
   }
   try {
-    const [dash, tasks, questions, settings] = await Promise.all([
+    const [dash, tasks, questions, settings, network] = await Promise.all([
       api.get("/api/dashboard"),
       api.get("/api/tasks?limit=50"),
       api.get("/api/questions"),
       api.get("/api/settings"),
+      api.get("/api/network").catch(() => null),
     ]);
+    lastSettings = settings;
+    lastNetwork = network;
     renderDashboard(dash);
-    renderTasks(tasks.items || [], { api, confirmDanger });
+    renderTasks(tasks.items || [], { api, confirmDanger, settings, conn: "connected" });
     renderQuestions(questions.items || [], { api });
     applySettingsToBadges(settings);
+    renderOnboarding({ conn: "connected", settings, network });
     setConnState(ConnState.CONNECTED);
   } catch (e) {
     const next = classifyError(e);
-    if (next === ConnState.AUTH_REQUIRED && lastLoggedState !== ConnState.AUTH_REQUIRED) {
-      // log only on transition
-    }
     setConnState(next, redact(String(e?.message || e)));
+    const simple = next === ConnState.AUTH_REQUIRED ? "auth-required" : next === ConnState.OFFLINE ? "offline" : "connected";
+    renderOnboarding({ conn: simple, settings: lastSettings, network: lastNetwork });
   }
 }
 
@@ -137,21 +150,26 @@ function log(line) {
   if (document.getElementById("log-autoscroll")?.checked) view.scrollTop = view.scrollHeight;
 }
 
-document.querySelector('[data-action="refresh"]').addEventListener("click", () => refreshAll());
-document.querySelector('[data-action="doctor"]').addEventListener("click", async () => {
-  try {
-    const r = await api.post("/api/doctor/run", {});
-    if (r?.runId) document.getElementById("log-run-select").dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
-  } catch (e) { setConnState(classifyError(e), redact(String(e?.message || e))); }
-});
-document.querySelector('[data-action="score"]').addEventListener("click", () => api.post("/api/tasks/score", {}).catch(() => {}));
-document.querySelector('[data-action="queue"]').addEventListener("click", () => refreshAll());
-document.querySelector('[data-action="plan-next"]').addEventListener("click", async () => {
-  try {
-    const r = await api.post("/api/runner/start", { mode: "plan", dryRun: true });
-    if (r?.runId) document.getElementById("log-run-select").dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
-  } catch (e) { setConnState(classifyError(e), redact(String(e?.message || e))); }
-});
+const refreshBtn = document.querySelector('[data-action="refresh"]');
+refreshBtn.addEventListener("click", () => runWithState(refreshBtn, refreshAll).catch(() => {}));
+
+const doctorBtn = document.querySelector('[data-action="doctor"]');
+doctorBtn.addEventListener("click", () => runWithState(doctorBtn, async () => {
+  const r = await api.post("/api/doctor/run", {});
+  if (r?.runId) document.getElementById("log-run-select").dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
+}).catch((e) => setConnState(classifyError(e), redact(String(e?.message || e)))));
+
+const scoreBtn = document.querySelector('[data-action="score"]');
+scoreBtn.addEventListener("click", () => runWithState(scoreBtn, () => api.post("/api/tasks/score", {})).catch(() => {}));
+
+const queueBtn = document.querySelector('[data-action="queue"]');
+queueBtn.addEventListener("click", () => runWithState(queueBtn, refreshAll).catch(() => {}));
+
+const planNextBtn = document.querySelector('[data-action="plan-next"]');
+planNextBtn.addEventListener("click", () => runWithState(planNextBtn, async () => {
+  const r = await api.post("/api/runner/start", { mode: "plan", dryRun: true });
+  if (r?.runId) document.getElementById("log-run-select").dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
+}).catch((e) => setConnState(classifyError(e), redact(String(e?.message || e)))));
 document.querySelector('[data-action="reload-tasks"]').addEventListener("click", () => refreshAll());
 
 document.getElementById("auth-form").addEventListener("submit", (ev) => {
