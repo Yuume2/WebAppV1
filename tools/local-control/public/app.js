@@ -111,6 +111,8 @@ async function refreshAll() {
     renderStatusGrid({ conn: "connected", settings, v5, network, dashboard: dash });
     renderMetrics(dash);
     renderAutopilot({ ap: v5?.autopilot ?? null, v5, settings });
+    applyModeLabel();
+    if (!autopilotEvents && (v5?.autopilot?.status === "running" || v5?.autopilot?.status === "waiting")) subscribeAutopilotEvents();
     renderDoctor(lastDoctorSummary);
     renderPhone(network);
     api.get("/api/tasks/best").then((r) => { lastBestTask = r; renderSelectedTask(r); }).catch(() => {});
@@ -307,12 +309,50 @@ document.querySelector('[data-action="v5-resume"]')?.addEventListener("click", a
 });
 
 // Autopilot CTAs
+function autopilotModeLabel(s) {
+  if (!s?.allowExec) return { label: "prompt-only", detail: "— flippe allowExec dans Settings pour exec réel." };
+  if (!s?.allowLoop) return { label: "run-one", detail: "— une PR puis stop." };
+  return { label: `loop max ${s.maxPrsPerRun ?? 2}`, detail: "— enchaîne jusqu'au budget PR/erreurs/temps." };
+}
+
+function applyModeLabel() {
+  const m = autopilotModeLabel(lastSettings);
+  const lbl = document.getElementById("autopilot-mode-label");
+  const det = document.getElementById("autopilot-mode-detail");
+  if (lbl) lbl.textContent = m.label;
+  if (det) det.textContent = m.detail;
+}
+
+let autopilotEvents = null;
+function subscribeAutopilotEvents() {
+  if (autopilotEvents) { try { autopilotEvents.close(); } catch {} autopilotEvents = null; }
+  if (!api.token) return;
+  const url = `/api/autopilot/events?token=${encodeURIComponent(api.token)}`;
+  try {
+    autopilotEvents = new EventSource(url);
+    autopilotEvents.addEventListener("state", (e) => {
+      try {
+        const ap = JSON.parse(e.data);
+        renderAutopilot({ ap, v5: lastV5, settings: lastSettings });
+      } catch {}
+    });
+    autopilotEvents.addEventListener("log", (e) => {
+      try {
+        const log = JSON.parse(e.data);
+        const view = document.getElementById("log-view");
+        if (view) { view.textContent += `[${log.stream}] ${log.chunk}`; if (document.getElementById("log-autoscroll")?.checked) view.scrollTop = view.scrollHeight; }
+      } catch {}
+    });
+  } catch { /* ignore */ }
+}
+
 document.getElementById("autopilot-start")?.addEventListener("click", async (ev) => {
   await runWithState(ev.currentTarget, async () => {
     const issueRaw = document.getElementById("v5-issue")?.value;
     const issue = issueRaw ? Number(issueRaw) : null;
-    const mode = lastSettings?.allowExec ? "exec" : "plan";
+    const mode = !lastSettings?.allowExec ? "plan" : (lastSettings?.allowLoop ? "loop" : "exec");
     const r = await startAutopilot(api, { mode, issue: Number.isInteger(issue) && issue > 0 ? issue : null });
+    if (r?.ok && r.launched) subscribeAutopilotEvents();
     if (r?.run) {
       const promptEl = document.getElementById("autopilot-prompt");
       if (r.prompt && promptEl) { promptEl.textContent = r.prompt; promptEl.classList.remove("hidden"); }

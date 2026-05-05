@@ -28,38 +28,53 @@ export function probeClaudeAvailability({ command, shellEnv = process.env }) {
   return { available: true, version: versionLine, reason: null };
 }
 
-export function buildIssuePrompt({ issue, mode = 'plan', repoRoot }) {
+export function buildIssuePrompt({ issue, mode = 'plan', repoRoot, branch }) {
   if (!Number.isInteger(issue) || issue <= 0) throw new Error('invalid issue');
   const safeMode = ['plan', 'exec', 'loop'].includes(mode) ? mode : 'plan';
+  const targetBranch = branch || `feat/issue-${issue}-autopilot`;
   const lines = [
-    `Tu es Claude Code dans WebAppV1 (${resolve(repoRoot)}).`,
-    `Mode: ${safeMode}.`,
-    `Issue cible: #${issue}.`,
+    `Tu es Claude Code, en autopilot WebAppV1 (${resolve(repoRoot)}).`,
+    `Mode demandé : ${safeMode}.`,
+    `Issue cible : #${issue}.`,
+    `Branche dédiée : ${targetBranch} (déjà créée par le superviseur).`,
     '',
-    'Étapes obligatoires :',
-    '1. `git switch main && git pull --ff-only`',
-    `2. Créer une branche \`feat/issue-${issue}-<slug>\``,
-    `3. Lire l'issue #${issue} via \`gh issue view ${issue}\``,
-    '4. Lire `project-memory/03-current-state.md` puis les fichiers cités dans l\'issue.',
-    '5. Implémenter sans toucher à `.claude/`.',
-    safeMode === 'plan'
-      ? '6. PLAN ONLY : produire un plan détaillé sans modifier de code.'
-      : '6. Implémenter, lancer `pnpm typecheck && pnpm test && pnpm lint && pnpm build`.',
-    safeMode !== 'plan' ? '7. Commit conventional, ne pas push, ne pas merge.' : '7. Ne pas commit.',
-    '',
-    'Contraintes :',
-    '- Ne push rien.',
+    'Règles inviolables :',
+    '- Ne jamais toucher à `.claude/`.',
+    '- Ne jamais commiter `.local-control/` ou un secret.',
+    '- Jamais de force-push, --admin, ou push direct sur main.',
     '- Pas d\'auto-merge.',
-    '- Pas de loop sans flag explicite.',
-    '- Aucun secret en git.',
-  ];
+    '- Pas de migration DB destructive, pas de désactivation auth/sécurité.',
+    '- Si tu es bloqué : poste un commentaire `<!-- claude-question v1 ... -->` sur l\'issue avec options + recommandation, puis ARRÊTE-TOI.',
+    '',
+    'Procédure :',
+    `1. \`gh issue view ${issue}\` pour relire l'AC.`,
+    '2. Lis `project-memory/03-current-state.md` puis les fichiers cités dans l\'issue.',
+    '3. Implémente strictement la task — pas de feature bonus.',
+    '4. Lance les tests pertinents (au minimum `pnpm typecheck && pnpm test && pnpm lint && pnpm build`).',
+    '5. Lance `pnpm task:guard` — refuse si BLOCK.',
+    safeMode === 'plan'
+      ? '6. PLAN-ONLY : ne modifie aucun fichier. Produis un plan structuré et stop.'
+      : '6. `git add` les changements pertinents (jamais `.local-control/`, jamais secrets).',
+    safeMode === 'plan'
+      ? '7. Termine en disant "PLAN OK".'
+      : `7. Commit conventionnel : \`feat(scope): ...\` ou \`fix(scope): ...\` mentionnant #${issue}.`,
+    safeMode === 'plan'
+      ? '8. (rien de plus)'
+      : `8. Push la branche : \`git push -u origin ${targetBranch}\`.`,
+    safeMode === 'plan'
+      ? ''
+      : `9. \`gh pr create --base main --head ${targetBranch}\` avec un body qui décrit clairement summary + test plan + closes #${issue}.`,
+    safeMode === 'plan'
+      ? ''
+      : '10. STOP après l\'ouverture de la PR. N\'essaie pas de merger, ni de continuer sur une autre issue.',
+  ].filter(Boolean);
   return lines.join('\n');
 }
 
 export function prepareClaudeRun({ issue, mode = 'plan', repoRoot, env }) {
   const resolved = resolveClaudeCommand(env);
-  const prompt = buildIssuePrompt({ issue, mode, repoRoot });
-  const branch = `feat/issue-${issue}-claude-${mode}`;
+  const branch = `feat/issue-${issue}-autopilot`;
+  const prompt = buildIssuePrompt({ issue, mode, repoRoot, branch });
   const proposedCommands = [
     'git switch main',
     'git pull --ff-only',

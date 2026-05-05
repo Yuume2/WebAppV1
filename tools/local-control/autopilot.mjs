@@ -179,6 +179,64 @@ export function preflightFromRepo({ repoRoot, claudeAvailable, settings, env, mo
   return { ...evaluated, gitInfo };
 }
 
+export function resetToMain(repoRoot) {
+  const sw = spawnSync('git', ['switch', 'main'], { cwd: repoRoot, encoding: 'utf8' });
+  if (sw.status !== 0) return { ok: false, reason: sw.stderr || 'switch failed' };
+  const pull = spawnSync('git', ['pull', '--ff-only'], { cwd: repoRoot, encoding: 'utf8' });
+  if (pull.status !== 0) return { ok: false, reason: pull.stderr || 'pull failed' };
+  return { ok: true };
+}
+
+export function createBranch(repoRoot, branch) {
+  if (!/^[a-zA-Z0-9._/-]{3,80}$/.test(branch)) return { ok: false, reason: 'invalid branch name' };
+  const exist = spawnSync('git', ['rev-parse', '--verify', branch], { cwd: repoRoot, encoding: 'utf8' });
+  if (exist.status === 0) {
+    const sw = spawnSync('git', ['switch', branch], { cwd: repoRoot, encoding: 'utf8' });
+    if (sw.status !== 0) return { ok: false, reason: sw.stderr };
+    return { ok: true, reused: true };
+  }
+  const r = spawnSync('git', ['switch', '-c', branch], { cwd: repoRoot, encoding: 'utf8' });
+  return r.status === 0 ? { ok: true, reused: false } : { ok: false, reason: r.stderr };
+}
+
+export function runTaskGuard(repoRoot) {
+  const r = spawnSync('node', ['tools/task-guard.mjs', '--json'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+  if (r.status !== 0 && r.status !== 1) return { ok: false, allow: false, reason: 'guard error' };
+  try {
+    const j = JSON.parse(r.stdout);
+    return { ok: true, allow: j.allow === true, violations: j.violations ?? [] };
+  } catch { return { ok: false, allow: false, reason: 'guard parse error' }; }
+}
+
+export function findOpenPRForBranch(repoRoot, branch) {
+  const r = spawnSync('gh', ['pr', 'list', '--head', branch, '--state', 'open', '--json', 'number,url,title'], {
+    cwd: repoRoot, encoding: 'utf8',
+  });
+  if (r.status !== 0) return null;
+  try {
+    const arr = JSON.parse(r.stdout);
+    return Array.isArray(arr) && arr.length ? { number: arr[0].number, url: arr[0].url, title: arr[0].title } : null;
+  } catch { return null; }
+}
+
+export function findClaudeQuestionOnIssue(repoRoot, issueNum) {
+  const r = spawnSync('gh', ['api', `repos/{owner}/{repo}/issues/${issueNum}/comments`], {
+    cwd: repoRoot, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024,
+  });
+  if (r.status !== 0) return null;
+  try {
+    const arr = JSON.parse(r.stdout);
+    if (!Array.isArray(arr)) return null;
+    for (const c of arr.slice().reverse()) {
+      if (typeof c.body === 'string' && c.body.startsWith('<!-- claude-question v1')) {
+        const qid = (c.body.match(/qid:\s*([\w-]+)/) ?? [])[1] ?? `q-${c.id}`;
+        return { id: qid, url: c.html_url };
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 export class AutopilotEngine {
   constructor({ repoRoot, settings, store, logs, env, claudeAdapter, dryRun = true }) {
     this.repoRoot = repoRoot;
@@ -191,81 +249,198 @@ export class AutopilotEngine {
     this.activeRun = null;
     this.activeChild = null;
     this.activeRunId = null;
+    this.subscribers = new Set();
   }
-  hasActive() { return !!this.activeRun && this.activeRun.status === 'running'; }
+  hasActive() { return !!this.activeRun && (this.activeRun.status === 'running' || this.activeRun.status === 'waiting'); }
+  subscribe(fn) { this.subscribers.add(fn); return () => this.subscribers.delete(fn); }
+  _emit(event, payload) {
+    for (const fn of Array.from(this.subscribers)) {
+      try { fn(event, payload); } catch { /* ignore */ }
+    }
+  }
 
   async start({ mode = 'plan', issue = null }) {
-    if (this.activeRun && (this.activeRun.status === 'running' || this.activeRun.status === 'waiting')) {
-      return { ok: false, reason: 'autopilot already active', run: exportRunSummary(this.activeRun) };
-    }
+    if (this.hasActive()) return { ok: false, reason: 'autopilot already active', run: exportRunSummary(this.activeRun) };
+
     const settingsSnapshot = this.settings.get();
     const claudeAvailable = !!this.claudeAdapter?.available;
-    const pre = preflightFromRepo({
-      repoRoot: this.repoRoot,
-      claudeAvailable,
-      settings: settingsSnapshot,
-      env: this.env,
-      mode,
-    });
+    const wantExec = mode !== 'plan' && settingsSnapshot.allowExec && claudeAvailable && !this.dryRun;
+    const wantLoop = mode === 'loop' && settingsSnapshot.allowLoop && wantExec;
+
+    const pre = preflightFromRepo({ repoRoot: this.repoRoot, claudeAvailable, settings: settingsSnapshot, env: this.env, mode });
     const run = buildAutopilotState({ mode, issue, settingsSnapshot });
     this.activeRun = run;
     this.activeRunId = run.id;
+    this._persist(); this._emit('state', exportRunSummary(run));
+
     if (!pre.ok) {
       runStep(run, 'preflight-failed', { reasons: pre.reasons });
       markStopped(run, AUTOPILOT_STOP_REASONS.REPO_DIRTY);
-      this._persist();
+      this._persist(); this._emit('state', exportRunSummary(run));
       return { ok: false, reason: pre.reasons.join('; '), run: exportRunSummary(run) };
     }
     runStep(run, 'preflight-ok');
 
-    let chosenIssue = issue;
-    if (!chosenIssue) {
-      const queue = loadQueueItems(this.repoRoot);
-      if (!queue.ok) {
-        recordError(run, new Error(queue.reason));
-        markStopped(run, AUTOPILOT_STOP_REASONS.NO_SAFE_TASK);
-        this._persist();
-        return { ok: false, reason: queue.reason, run: exportRunSummary(run) };
-      }
-      const safe = chooseSafeTask({ items: queue.items, staleDays: settingsSnapshot.staleDays });
-      if (!safe) {
-        markStopped(run, AUTOPILOT_STOP_REASONS.NO_SAFE_TASK);
-        this._persist();
-        return { ok: false, reason: 'no safe task available', run: exportRunSummary(run) };
-      }
-      chosenIssue = safe.number;
-      run.issue = chosenIssue;
-    }
-
-    const branch = `feat/issue-${chosenIssue}-autopilot`;
-    run.branch = branch;
-    runStep(run, 'task-selected', { issue: chosenIssue, branch });
-
-    const prep = this.claudeAdapter?.prepare?.({ issue: chosenIssue, mode, env: this.env, repoRoot: this.repoRoot })
-      ?? null;
-    run.lastPrompt = prep?.prompt ?? null;
-    runStep(run, 'prompt-ready');
-
-    if (mode === 'plan' || this.dryRun || !claudeAvailable || !settingsSnapshot.allowExec) {
-      run.nextAction = 'manual: copy prompt and run yu locally';
-      runStep(run, 'plan-only-ready', { reason: this.dryRun ? 'dry-run' : (!claudeAvailable ? 'claude unavailable' : 'exec disabled') });
+    if (!wantExec) {
+      const chosenIssue = await this._pickIssue({ run, issue });
+      if (!chosenIssue) return { ok: false, reason: run.stopReason, run: exportRunSummary(run) };
+      const branch = `feat/issue-${chosenIssue}-autopilot`;
+      run.branch = branch;
+      const prep = this.claudeAdapter?.prepare?.({ issue: chosenIssue, mode: 'plan', env: this.env, repoRoot: this.repoRoot }) ?? null;
+      run.lastPrompt = prep?.prompt ?? null;
+      run.nextAction = 'copy prompt and run yu locally';
+      runStep(run, 'plan-only-ready', { reason: !claudeAvailable ? 'claude unavailable' : !settingsSnapshot.allowExec ? 'allowExec=false' : 'dry-run' });
       markStopped(run, AUTOPILOT_STOP_REASONS.COMPLETED);
-      this._persist();
+      this._persist(); this._emit('state', exportRunSummary(run));
       return { ok: true, run: exportRunSummary(run), prompt: prep?.prompt ?? null, branch };
     }
 
+    // Real exec mode — run lifecycle in background.
+    this._runLifecycle({ run, settingsSnapshot, wantLoop, initialIssue: issue }).catch((err) => {
+      recordError(run, err);
+      markStopped(run, AUTOPILOT_STOP_REASONS.ERROR_BUDGET);
+      this._persist(); this._emit('state', exportRunSummary(run));
+    });
+    return { ok: true, run: exportRunSummary(run), launched: true, mode: wantLoop ? 'loop' : 'run-one' };
+  }
+
+  async _pickIssue({ run, issue }) {
+    if (issue) { run.issue = issue; runStep(run, 'task-selected', { issue, branch: `feat/issue-${issue}-autopilot` }); return issue; }
+    const queue = loadQueueItems(this.repoRoot);
+    if (!queue.ok) {
+      recordError(run, new Error(queue.reason));
+      markStopped(run, AUTOPILOT_STOP_REASONS.NO_SAFE_TASK);
+      this._persist();
+      return null;
+    }
+    const safe = chooseSafeTask({ items: queue.items, excludeIssues: run.issuesProcessed ?? [], staleDays: run.settingsSnapshot?.staleDays });
+    if (!safe) {
+      markStopped(run, AUTOPILOT_STOP_REASONS.NO_SAFE_TASK);
+      this._persist();
+      return null;
+    }
+    run.issue = safe.number;
+    runStep(run, 'task-selected', { issue: safe.number, branch: `feat/issue-${safe.number}-autopilot` });
+    return safe.number;
+  }
+
+  async _runLifecycle({ run, settingsSnapshot, wantLoop, initialIssue }) {
+    const maxErrors = settingsSnapshot.maxErrors ?? 3;
+    const maxPRs = settingsSnapshot.maxPrsPerRun ?? 2;
+    const startedAt = Date.now();
+    const maxMs = (settingsSnapshot.maxMinutes ?? 60) * 60 * 1000;
+
+    let iterIssue = initialIssue ?? null;
+    while (true) {
+      if (run.stopRequested) { markStopped(run, AUTOPILOT_STOP_REASONS.STOPPED); break; }
+      if (Date.now() - startedAt > maxMs) { markStopped(run, AUTOPILOT_STOP_REASONS.TIME_BUDGET); break; }
+      if (run.errors >= maxErrors) { markStopped(run, AUTOPILOT_STOP_REASONS.ERROR_BUDGET); break; }
+      if ((run.prsCreated ?? 0) >= maxPRs) { markStopped(run, AUTOPILOT_STOP_REASONS.PR_BUDGET); break; }
+
+      const issueNum = await this._pickIssue({ run, issue: iterIssue });
+      if (!issueNum) break;
+      iterIssue = null; // only first iteration uses initialIssue
+
+      const ok = await this._runSingleIssue(run, issueNum);
+      if (!ok) break; // issue handler set stopReason already if fatal
+      run.issuesProcessed.push(issueNum);
+
+      if (!wantLoop) { markStopped(run, AUTOPILOT_STOP_REASONS.COMPLETED); break; }
+    }
+    this._persist(); this._emit('state', exportRunSummary(run));
+  }
+
+  async _runSingleIssue(run, issueNum) {
+    const branch = `feat/issue-${issueNum}-autopilot`;
+    run.branch = branch;
+    this._persist(); this._emit('state', exportRunSummary(run));
+
+    runStep(run, 'reset-to-main');
+    const reset = resetToMain(this.repoRoot);
+    if (!reset.ok) {
+      recordError(run, new Error('reset to main failed: ' + (reset.reason ?? '?')));
+      this._persist(); this._emit('state', exportRunSummary(run));
+      return false;
+    }
+
+    runStep(run, 'create-branch', { branch });
+    const br = createBranch(this.repoRoot, branch);
+    if (!br.ok) {
+      recordError(run, new Error('create-branch failed: ' + (br.reason ?? '?')));
+      this._persist(); this._emit('state', exportRunSummary(run));
+      return false;
+    }
+
+    const prep = this.claudeAdapter.prepare({ issue: issueNum, mode: 'exec', env: this.env, repoRoot: this.repoRoot });
+    run.lastPrompt = prep.prompt;
     runStep(run, 'launching-claude');
+    this._persist(); this._emit('state', exportRunSummary(run));
+
     const launch = this.claudeAdapter.launch({ prompt: prep.prompt, command: prep.command, repoRoot: this.repoRoot, env: this.env });
     if (!launch.ok) {
-      recordError(run, new Error(launch.reason ?? 'launch failed'));
+      recordError(run, new Error('launch failed: ' + (launch.reason ?? '?')));
       markStopped(run, AUTOPILOT_STOP_REASONS.CLAUDE_UNAVAILABLE);
-      this._persist();
-      return { ok: false, reason: launch.reason, run: exportRunSummary(run) };
+      this._persist(); this._emit('state', exportRunSummary(run));
+      return false;
     }
     this.activeChild = launch.child;
-    run.nextAction = 'claude running';
-    this._persist();
-    return { ok: true, run: exportRunSummary(run), branch, launched: true };
+
+    const exitCode = await new Promise((resolveP) => {
+      const onClose = (code) => { try { launch.child.removeAllListeners(); } catch {} resolveP(code ?? 0); };
+      launch.child.on('close', onClose);
+      launch.child.on('error', () => onClose(1));
+      const tok = run.settingsSnapshot?.authToken;
+      const stream = (label) => (chunk) => {
+        const text = redactSecrets(chunk.toString('utf8'), tok ? [tok] : []);
+        if (this.logs?.append) this.logs.append(run.id, label, text);
+        this._emit('log', { runId: run.id, stream: label, chunk: text });
+      };
+      launch.child.stdout?.on('data', stream('stdout'));
+      launch.child.stderr?.on('data', stream('stderr'));
+    });
+    this.activeChild = null;
+
+    if (run.stopRequested) {
+      markStopped(run, AUTOPILOT_STOP_REASONS.STOPPED);
+      this._persist(); this._emit('state', exportRunSummary(run));
+      return false;
+    }
+
+    runStep(run, 'claude-exited', { exitCode });
+
+    if (exitCode !== 0) {
+      recordError(run, new Error(`claude exit=${exitCode}`));
+      this._persist(); this._emit('state', exportRunSummary(run));
+      return true; // continue loop, error budget will eventually trigger stop
+    }
+
+    runStep(run, 'task-guard');
+    const guard = runTaskGuard(this.repoRoot);
+    if (!guard.ok && !guard.allow) {
+      runStep(run, 'guard-block', { violations: guard.violations });
+      markStopped(run, AUTOPILOT_STOP_REASONS.GUARD_BLOCK);
+      this._persist(); this._emit('state', exportRunSummary(run));
+      return false;
+    }
+
+    runStep(run, 'check-pr');
+    const pr = findOpenPRForBranch(this.repoRoot, branch);
+    if (pr) {
+      recordPR({ run, pr });
+      runStep(run, 'pr-created', pr);
+    } else {
+      const q = findClaudeQuestionOnIssue(this.repoRoot, issueNum);
+      if (q) {
+        markWaitingOnQuestion(run, q.id);
+        this._persist(); this._emit('state', exportRunSummary(run));
+        return false;
+      }
+      runStep(run, 'no-pr-no-question');
+      recordError(run, new Error('claude did not open PR and posted no question'));
+    }
+
+    this._persist(); this._emit('state', exportRunSummary(run));
+    return true;
   }
 
   stop() {

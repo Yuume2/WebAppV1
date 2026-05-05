@@ -475,6 +475,15 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       const ap = getAutopilot();
       return send(res, 200, { autopilot: ap.current() });
     }
+    if (method === 'GET' && path === '/api/autopilot/events') {
+      const ap = getAutopilot();
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+      const sendEvt = (event, payload) => { res.write(`event: ${event}\n`); res.write(`data: ${JSON.stringify(payload)}\n\n`); };
+      sendEvt('state', ap.current() ?? null);
+      const unsub = ap.subscribe((event, payload) => sendEvt(event, payload));
+      req.on('close', () => unsub());
+      return;
+    }
 
     if (method === 'POST' && path === '/api/v5/prepare-run') {
       let body; try { body = await readBody(req); } catch (e) { return sendErr(res, 422, e.message); }

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 import { SettingsStore, validatePatch, DEFAULT_SETTINGS } from './settings.mjs';
 
 function mkroot() { return mkdtempSync(resolve(tmpdir(), 'lc-settings-')); }
@@ -56,6 +56,19 @@ test('patch rejects authToken update via patch', () => {
     s.patch({ authToken: 'leaked' });
     assert.equal(s.get().authToken, before);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('maxErrors validates 1..20 and defaults to 3', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lc-'));
+  try {
+    const s = new SettingsStore(dir);
+    s.load();
+    assert.equal(s.get().maxErrors, 3);
+    const next = s.patch({ maxErrors: 5 });
+    assert.equal(next.maxErrors, 5);
+    assert.throws(() => s.patch({ maxErrors: 0 }), /invalid value/);
+    assert.throws(() => s.patch({ maxErrors: 100 }), /invalid value/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('patch rejects out-of-range maxPrsPerRun', () => {

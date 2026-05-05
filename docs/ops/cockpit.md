@@ -3,6 +3,24 @@
 Le cockpit local-control pilote Claude Code, l'autopilot V5 et les
 intégrations Notion / n8n / WhatsApp depuis un navigateur.
 
+## Activer l'exec réel
+
+Le bouton **Start Autopilot** affiche le mode actif sous lui :
+
+| Settings | Mode |
+|---|---|
+| `allowExec=false` | prompt-only — copie le prompt dans `yu` |
+| `allowExec=true` + `allowLoop=false` | run-one — une PR puis stop |
+| `allowExec=true` + `allowLoop=true` | loop max `maxPrsPerRun` |
+
+Pour passer en exec réel :
+1. Settings → toggle **Autoriser exec**.
+2. Vérifie `maxPrsPerRun` (défaut 2) et `maxMinutes` (défaut 60).
+3. Reste sur `main`, repo clean.
+4. Click **Start Autopilot** sur Overview.
+
+Pour stopper : bouton **Stop**, ou `pnpm cockpit` Ctrl+C tue tout.
+
 ## Lancer en 1 commande
 
 ```bash
