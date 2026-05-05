@@ -14,6 +14,10 @@ import {
   fetchPrContext, fetchIssueLabels, fetchBranchProtection,
   runTaskGuard, evaluateAutoMerge, applyAutoMerge,
 } from './automerge.mjs';
+import { loadV5Env, evaluateV5Env } from './v5-env.mjs';
+import { v5StatusFromEnv, prepareClaudeRun } from './claude-adapter.mjs';
+import { V5StateStore } from './state.mjs';
+import { evaluateResume } from './resume.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT_DEFAULT = resolve(__dirname, '..', '..');
@@ -62,6 +66,7 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
   const runner = new Runner({ logs, state, settings, repoRoot });
   const startedAt = Date.now();
   const network = { host: '127.0.0.1', port: 8787, lan: false };
+  const v5Store = new V5StateStore(repoRoot);
 
   function authOk(req) { return isAuthenticated(req, settings.get().authToken); }
   function send(res, code, body, extraHeaders = {}) {
@@ -344,6 +349,81 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       report.applied = m.ok;
       if (!m.ok) report.reasons.push(`merge command failed: ${redactSecrets(m.stderr, [s.authToken])}`);
       return send(res, 200, report);
+    }
+
+    if (method === 'GET' && path === '/api/v5/status') {
+      const s = settings.get();
+      const { values: env } = loadV5Env(repoRoot);
+      const envEval = evaluateV5Env(env);
+      const claude = v5StatusFromEnv({ env, repoRoot });
+      const phaseStatus = {
+        phase1: 'ready',
+        phase2: claude.claudeAvailable ? 'ready' : 'pending',
+        phase3: envEval.notionConfigured && envEval.n8nConfigured && envEval.whatsappConfigured ? 'ready' : 'pending',
+        phase4: 'pending',
+      };
+      const nextHumanActions = [];
+      if (!claude.claudeAvailable) nextHumanActions.push(`Install/expose Claude Code CLI: ${claude.claudeReason ?? 'set CLAUDE_CODE_COMMAND'}`);
+      if (!envEval.notionConfigured) nextHumanActions.push(`Fill Notion env: ${envEval.missingByGroup.notion.join(', ')}`);
+      if (!envEval.n8nConfigured) nextHumanActions.push(`Fill n8n env: ${envEval.missingByGroup.n8n.join(', ')}`);
+      if (!envEval.whatsappConfigured) nextHumanActions.push(`Fill WhatsApp env: ${envEval.missingByGroup.whatsapp.join(', ')}`);
+      if (!s.allowExec) nextHumanActions.push('Enable allowExec in Settings to run real exec');
+      if (!s.allowAutoMerge) nextHumanActions.push('Auto-merge stays OFF until explicitly enabled');
+      return send(res, 200, {
+        claudeCommand: claude.claudeCommand,
+        claudeAvailable: claude.claudeAvailable,
+        claudeVersion: claude.claudeVersion,
+        claudeReason: claude.claudeReason,
+        execAllowed: !!s.allowExec,
+        loopAllowed: !!s.allowLoop,
+        autoMergeAllowed: !!s.allowAutoMerge,
+        notionConfigured: envEval.notionConfigured,
+        n8nConfigured: envEval.n8nConfigured,
+        whatsappConfigured: envEval.whatsappConfigured,
+        missingEnv: envEval.missingEnv,
+        missingByGroup: envEval.missingByGroup,
+        phaseStatus,
+        nextHumanActions,
+      });
+    }
+
+    if (method === 'POST' && path === '/api/v5/prepare-run') {
+      let body; try { body = await readBody(req); } catch (e) { return sendErr(res, 422, e.message); }
+      const issue = Number(body?.issue);
+      if (!Number.isInteger(issue) || issue <= 0) return sendErr(res, 422, 'invalid issue');
+      const mode = ['plan', 'exec', 'loop'].includes(body?.mode) ? body.mode : 'plan';
+      const { values: env } = loadV5Env(repoRoot);
+      const prep = prepareClaudeRun({ issue, mode, repoRoot, env });
+      const id = v5Store.newId();
+      const record = v5Store.save({
+        id,
+        issue,
+        mode,
+        status: 'prepared',
+        ready: prep.ready,
+        reason: prep.reason,
+        branch: prep.branch,
+        prompt: prep.prompt,
+        proposedCommands: prep.proposedCommands,
+        createdAt: new Date().toISOString(),
+      });
+      return send(res, 200, { runId: id, ...prep, record });
+    }
+
+    if (method === 'GET' && path === '/api/state') {
+      const items = v5Store.list({ limit: 30 });
+      return send(res, 200, { items, latest: items[0] ?? null });
+    }
+
+    if (method === 'POST' && path === '/api/resume') {
+      let body; try { body = await readBody(req); } catch (e) { return sendErr(res, 422, e.message); }
+      const id = String(body?.runId ?? '');
+      const run = id ? v5Store.load(id) : v5Store.latest();
+      let questions = [];
+      const r = spawnSync('pnpm', ['task:questions:list', '--json'], { cwd: repoRoot, encoding: 'utf8' });
+      if (r.status === 0) { try { const j = JSON.parse(r.stdout); questions = Array.isArray(j) ? j : (j.items ?? []); } catch { /* ignore */ } }
+      const evald = evaluateResume({ run, questions });
+      return send(res, 200, evald);
     }
 
     return sendErr(res, 404, 'not found');

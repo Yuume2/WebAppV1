@@ -15,6 +15,7 @@ import { mountSettings } from "./lib/settings.js";
 import { confirmDanger } from "./lib/confirm.js";
 import { renderOnboarding } from "./lib/onboarding.js";
 import { runWithState } from "./lib/buttonState.js";
+import { renderV5Card } from "./lib/v5.js";
 import {
   TokenStore, ConnState, readTokenFromUrl,
   classifyError, badgeLabel, badgeClass, shouldKeepPolling,
@@ -107,12 +108,13 @@ async function refreshAll() {
     return;
   }
   try {
-    const [dash, tasks, questions, settings, network] = await Promise.all([
+    const [dash, tasks, questions, settings, network, v5] = await Promise.all([
       api.get("/api/dashboard"),
       api.get("/api/tasks?limit=50"),
       api.get("/api/questions"),
       api.get("/api/settings"),
       api.get("/api/network").catch(() => null),
+      api.get("/api/v5/status").catch(() => null),
     ]);
     lastSettings = settings;
     lastNetwork = network;
@@ -121,6 +123,7 @@ async function refreshAll() {
     renderQuestions(questions.items || [], { api });
     applySettingsToBadges(settings);
     renderOnboarding({ conn: "connected", settings, network });
+    if (v5) renderV5Card(document.getElementById("v5-card"), v5);
     setConnState(ConnState.CONNECTED);
   } catch (e) {
     const next = classifyError(e);
@@ -185,6 +188,34 @@ document.getElementById("auth-form").addEventListener("submit", (ev) => {
 document.getElementById("auth-retry").addEventListener("click", () => {
   setConnState(ConnState.UNKNOWN);
   refreshAll();
+});
+
+let lastV5Prompt = null;
+
+document.querySelector('[data-action="v5-prepare"]')?.addEventListener("click", async () => {
+  const issue = Number(document.getElementById("v5-issue").value);
+  if (!Number.isInteger(issue) || issue <= 0) { log("⚠ v5: enter an issue number first"); return; }
+  try {
+    const r = await api.post("/api/v5/prepare-run", { issue, mode: "plan" });
+    lastV5Prompt = r?.prompt ?? null;
+    const view = document.getElementById("v5-prompt-view");
+    view.textContent = lastV5Prompt ?? "";
+    view.classList.toggle("hidden", !lastV5Prompt);
+    log(`✓ v5: prepared run ${r?.runId ?? "?"} for issue #${issue} (ready=${r?.ready})`);
+  } catch (e) { log(`⚠ v5 prepare failed: ${redact(String(e?.message || e))}`); }
+});
+
+document.querySelector('[data-action="v5-copy-prompt"]')?.addEventListener("click", () => {
+  if (!lastV5Prompt) { log("⚠ v5: prepare a run first"); return; }
+  navigator.clipboard?.writeText(lastV5Prompt).then(() => log("✓ v5 prompt copied")).catch(() => {});
+});
+
+document.querySelector('[data-action="v5-resume"]')?.addEventListener("click", async () => {
+  try {
+    const r = await api.post("/api/resume", {});
+    if (r?.canResume) log(`✓ v5: can resume run ${r.runId} for issue #${r.issue}`);
+    else log(`⚠ v5: resume blocked — ${r?.reason ?? "unknown"}`);
+  } catch (e) { log(`⚠ v5 resume failed: ${redact(String(e?.message || e))}`); }
 });
 
 setConnState(api.token ? ConnState.UNKNOWN : ConnState.AUTH_REQUIRED);
