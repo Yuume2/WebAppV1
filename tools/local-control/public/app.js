@@ -138,6 +138,8 @@ function openChecklistAction(action) {
   if (action === "open-settings-safety") return openSettingsSection("safety");
   if (action === "open-settings-integrations") return openSettingsSection("integrations");
   if (action === "run-doctor") return runDoctor();
+  if (action === "install-claude") return showToast("Installe Claude Code CLI puis relance le cockpit.", "info");
+  if (action === "open-github-protection") { window.open("https://github.com/Yuume2/WebAppV1/settings/branches", "_blank", "noopener"); return; }
   showToast(`Action: ${action}`, "info");
 }
 
