@@ -116,6 +116,34 @@ function validateDelta(delta, repoLabels, projectFields) {
   }
 }
 
+// ── AC body linter (warn-only for now) ────────────────────────────────────────
+// Checks that each delta issue body declares the expected protocol sections.
+// Mode: warn. Returns the warning count so the caller can flip to strict later.
+
+const REQUIRED_SECTIONS = ['## Goal', '## Acceptance criteria', '## Out of scope'];
+
+export function lintIssueBody(body) {
+  const missing = REQUIRED_SECTIONS.filter((s) => !body.includes(s));
+  return missing;
+}
+
+function lintDeltaBodies(delta, { strict = false } = {}) {
+  let warnings = 0;
+  for (const [i, it] of delta.issues.entries()) {
+    const missing = lintIssueBody(it.body ?? '');
+    if (missing.length === 0) continue;
+    warnings++;
+    const msg = `issues[${i}] (${it.externalKey}): missing section(s) → ${missing.join(', ')}`;
+    if (strict) reject(`AC linter (strict): ${msg}`);
+    console.warn(c.yellow(`warn: AC linter — ${msg}`));
+  }
+  if (warnings > 0) {
+    console.warn(c.yellow(`warn: AC linter found ${warnings} issue(s) with missing sections. Mode: warn-only (will become strict later).`));
+    console.warn(c.dim(`      expected sections: ${REQUIRED_SECTIONS.join(', ')}`));
+  }
+  return warnings;
+}
+
 // ── Repo / project state ──────────────────────────────────────────────────────
 
 function detectRepo() {
@@ -206,6 +234,10 @@ function main() {
   const projectFields = fetchProjectFields(delta.project.projectNumber, delta.project.projectOwnerLogin);
 
   validateDelta(delta, labels, projectFields);
+  // AC linter: strict by default. Backlog already conforms; new deltas must too.
+  // Override with env LINT_AC=warn for emergency bypass.
+  const strict = (process.env.LINT_AC || 'strict').toLowerCase() !== 'warn';
+  lintDeltaBodies(delta, { strict });
 
   const { byTitle, keyedBodies } = fetchExistingIssueTitles(repo);
   const duplicates = [];
@@ -280,4 +312,6 @@ function main() {
   if (failed.length) { console.log(c.red('failures:')); for (const f of failed) console.log(`  - [${f.stage}] ${f.title}`); }
 }
 
-main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}

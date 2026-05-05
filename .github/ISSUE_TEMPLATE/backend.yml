@@ -49,6 +49,17 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Anything an agent needs to avoid stale-AC traps. Recent PRs, related endpoints, things that look done but aren't.
+      placeholder: |
+        - Drizzle migrations already shipped (#23).
+        - Provider key cipher lives in lib/api-key-cipher.ts.
+    validations:
+      required: false
+
   - type: dropdown
     id: priority
     attributes:

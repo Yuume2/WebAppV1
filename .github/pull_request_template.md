@@ -21,6 +21,12 @@ One paragraph. What changed and why — not what the diff contains.
 
 <!-- Anything in the issue's Out-of-scope that a reviewer might otherwise expect. -->
 
+## AC vs code reality check
+
+<!-- Required by AI-ISSUE-EXECUTION-PROTOCOL.md §2.5. Confirms the AC is still aligned with the code on main, not an outdated description. -->
+
+- [ ] J'ai vérifié que les acceptance criteria sont toujours alignés avec l'état actuel du code.
+
 ## Test plan
 
 <!-- Commands and manual steps. Paste relevant output if non-trivial. -->
@@ -30,6 +36,12 @@ One paragraph. What changed and why — not what the diff contains.
 - [ ] `pnpm test`
 - [ ] `pnpm build` (if backend or shared types changed)
 - [ ] Manual check: …
+
+## Screenshots
+
+<!-- For UI changes only. Before/after if a visual regression is plausible. Skip for backend-only PRs. -->
+
+_N/A_
 
 ## Risk and autonomy
 

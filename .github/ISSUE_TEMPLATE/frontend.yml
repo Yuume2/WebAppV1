@@ -49,6 +49,52 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Anything an agent needs to avoid stale-AC traps. Recent PRs, related code paths, things that look done but aren't.
+      placeholder: |
+        - Backend write endpoints already exist (see #19).
+        - Auth UI not blocking — backend session works without it.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0-now
+        - P1-week
+        - P2-soon
+        - P3-backlog
+    validations:
+      required: true
+
+  - type: dropdown
+    id: autonomy
+    attributes:
+      label: AI autonomy
+      description: ai:autonomous = agent runs to PR on its own. ai:human-checkpoint = agent stops after the plan.
+      options:
+        - ai:autonomous
+        - ai:human-checkpoint
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk
+      description: risk:safe = reversible local change. risk:review-required = non-trivial. risk:destructive = data or security impact; always human-gated.
+      options:
+        - risk:safe
+        - risk:review-required
+        - risk:destructive
+    validations:
+      required: true
+
   - type: dropdown
     id: priority
     attributes:
