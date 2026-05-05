@@ -21,7 +21,9 @@ import { evaluateResume } from './resume.mjs';
 import { evaluateNotionConfig, validateNotionDatabase } from './integrations/notion-questions.mjs';
 import { evaluateN8nConfig } from './integrations/n8n-webhooks.mjs';
 import { evaluateWhatsappConfig } from './integrations/whatsapp.mjs';
-import { AutopilotEngine, exportRunSummary } from './autopilot.mjs';
+import { AutopilotEngine, exportRunSummary, loadQueueItems } from './autopilot.mjs';
+import { runDoctorJson, summarizeDoctor } from './doctor.mjs';
+import { selectBestTask, evaluateRunnability } from './task-select.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT_DEFAULT = resolve(__dirname, '..', '..');
@@ -399,6 +401,14 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
         loopAllowed: !!s.allowLoop,
         autoMergeAllowed: !!s.allowAutoMerge,
         autoMergeMode: s.allowAutoMerge ? 'ENABLED' : 'OFF',
+        notion: { stage: notionCfg.stage, summary: notionCfg.summary, missing: notionCfg.missing, configured: notionCfg.configured },
+        n8n: {
+          stage: n8nCfg.stage, summary: n8nCfg.summary,
+          missing: n8nCfg.missing, missingWebhooks: n8nCfg.missingWebhooks,
+          baseConfigured: n8nCfg.baseConfigured,
+          webhooksConfigured: n8nCfg.questionWebhookConfigured && n8nCfg.answerWebhookConfigured,
+        },
+        whatsapp: { configured: whatsappCfg.configured, via: whatsappCfg.via, missing: whatsappCfg.missing },
         notionConfigured: notionCfg.configured,
         n8nConfigured: n8nCfg.baseConfigured,
         n8nWebhooksConfigured: n8nCfg.questionWebhookConfigured && n8nCfg.answerWebhookConfigured,
@@ -411,6 +421,23 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
         nextHumanActions,
         autopilot: ap,
       });
+    }
+
+    if (method === 'GET' && path === '/api/doctor/summary') {
+      const out = runDoctorJson(repoRoot);
+      if (!out.ok) return send(res, 200, { ok: false, reason: out.reason ?? 'doctor failed', summary: null });
+      const summary = summarizeDoctor(out.report);
+      return send(res, 200, { ok: true, summary, generatedAt: summary?.generatedAt ?? null });
+    }
+
+    if (method === 'GET' && path === '/api/tasks/best') {
+      const queue = loadQueueItems(repoRoot);
+      if (!queue.ok) return send(res, 200, { ok: false, reason: queue.reason ?? 'queue failed', best: null, blocked: [] });
+      const { values: env } = loadV5Env(repoRoot);
+      const claude = v5StatusFromEnv({ env, repoRoot });
+      const sNow = settings.get();
+      const result = selectBestTask({ items: queue.items, staleDays: sNow.staleDays, settings: sNow, claudeAvailable: !!claude.claudeAvailable });
+      return send(res, 200, result);
     }
 
     if (method === 'GET' && path === '/api/v5/notion/validate') {

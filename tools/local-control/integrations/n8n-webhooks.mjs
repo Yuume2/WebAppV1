@@ -9,22 +9,41 @@ export function evaluateN8nConfig(env) {
   const questionWh = (env.N8N_QUESTION_NOTIFY_WEBHOOK ?? '').trim();
   const answerWh = (env.N8N_NOTION_ANSWER_WEBHOOK ?? '').trim();
   const baseConfigured = !!(baseUrl && secret);
+  const baseUrlOnly = !!baseUrl && !secret;
+  const missing = [
+    !baseUrl ? 'N8N_BASE_URL' : null,
+    !secret ? 'N8N_WEBHOOK_SECRET' : null,
+  ].filter(Boolean);
+  const missingWebhooks = [
+    !questionWh ? 'N8N_QUESTION_NOTIFY_WEBHOOK' : null,
+    !answerWh ? 'N8N_NOTION_ANSWER_WEBHOOK' : null,
+  ].filter(Boolean);
+  let stage;
+  if (!baseUrl && !secret) stage = 'missing-all';
+  else if (!secret) stage = 'missing-secret';
+  else if (!baseConfigured) stage = 'missing-base';
+  else if (missingWebhooks.length === 2) stage = 'base-only';
+  else if (missingWebhooks.length === 1) stage = 'partial-webhooks';
+  else stage = 'configured';
+  let summary;
+  if (stage === 'missing-all') summary = 'not configured';
+  else if (stage === 'missing-secret') summary = 'base URL set, missing secret';
+  else if (stage === 'base-only') summary = 'n8n base configured, webhooks missing';
+  else if (stage === 'partial-webhooks') summary = `base configured, missing: ${missingWebhooks.join(', ')}`;
+  else summary = 'configured';
   return {
     baseConfigured,
-    baseUrl: baseConfigured ? baseUrl : null,
+    baseUrlOnly,
+    baseUrl: baseUrl || null,
     secret: baseConfigured ? secret : null,
     questionWebhook: questionWh || null,
     answerWebhook: answerWh || null,
     questionWebhookConfigured: !!questionWh,
     answerWebhookConfigured: !!answerWh,
-    missing: [
-      !baseUrl ? 'N8N_BASE_URL' : null,
-      !secret ? 'N8N_WEBHOOK_SECRET' : null,
-    ].filter(Boolean),
-    missingWebhooks: [
-      !questionWh ? 'N8N_QUESTION_NOTIFY_WEBHOOK' : null,
-      !answerWh ? 'N8N_NOTION_ANSWER_WEBHOOK' : null,
-    ].filter(Boolean),
+    missing,
+    missingWebhooks,
+    stage,
+    summary,
   };
 }
 

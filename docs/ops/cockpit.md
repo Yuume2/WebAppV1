@@ -17,6 +17,18 @@ pnpm cockpit:headless # serveur sans ouvrir le navigateur
 - attend que `/api/health` réponde,
 - ouvre `http://127.0.0.1:8787?token=…` (token lu dans `.local-control/settings.json`).
 
+## Lancer une task en 5 étapes
+
+1. `pnpm cockpit` — le navigateur s'ouvre.
+2. Sur **Overview**, regarde la card **Task sélectionnée** : l'autopilot a déjà choisi la meilleure issue safe.
+3. Clique **Prepare run** — le prompt apparaît dans la card.
+4. Clique **Copy prompt** — le prompt va dans le clipboard.
+5. Colle-le dans `yu` au terminal (ou clique **Start Autopilot** si `allowExec=true`).
+
+Si la card affiche **Aucune task safe**, déplie **Tasks bloquées** pour voir pourquoi chaque issue est exclue (label manquant, label bloquant, stale).
+
+Le bouton **Run doctor** rafraîchit la card **Doctor** : tu vois quels checks passent, quelles phases sont prêtes, et les recommandations explicites — pas de logs bruts.
+
 ## Pages
 
 Le cockpit a 3 onglets :

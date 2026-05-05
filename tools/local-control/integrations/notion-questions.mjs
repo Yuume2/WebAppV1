@@ -22,14 +22,22 @@ export function evaluateNotionConfig(env) {
   const token = (env.NOTION_TOKEN ?? '').trim();
   const dbId = (env.NOTION_QUESTIONS_DATABASE_ID ?? '').trim();
   const configured = !!(token && dbId);
+  const missing = [
+    !token ? 'NOTION_TOKEN' : null,
+    !dbId ? 'NOTION_QUESTIONS_DATABASE_ID' : null,
+  ].filter(Boolean);
+  let stage;
+  if (!token && !dbId) stage = 'missing-all';
+  else if (!token) stage = 'missing-token';
+  else if (!dbId) stage = 'missing-database-id';
+  else stage = 'configured';
   return {
     configured,
     token: configured ? token : null,
     databaseId: configured ? dbId : null,
-    missing: [
-      !token ? 'NOTION_TOKEN' : null,
-      !dbId ? 'NOTION_QUESTIONS_DATABASE_ID' : null,
-    ].filter(Boolean),
+    missing,
+    stage,
+    summary: stage === 'configured' ? 'configured' : `missing: ${missing.join(', ')}`,
   };
 }
 
