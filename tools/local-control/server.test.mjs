@@ -166,3 +166,19 @@ test('runner stop is idempotent for unknown id', async () => {
     await close(server);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('GET /api/network returns local URL and lan flags', async () => {
+  const root = mkroot();
+  try {
+    const app = buildApp({ repoRoot: root });
+    const tok = app.settings.get().authToken;
+    const { server, base } = await listenApp(app.handler);
+    const r = await fetch(`${base}/api/network`, { headers: { authorization: `Bearer ${tok}` } });
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.ok(j.localUrl.startsWith('http://127.0.0.1:'));
+    assert.equal(typeof j.lanEnabled, 'boolean');
+    assert.equal(typeof j.tokenRequired, 'boolean');
+    await close(server);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
