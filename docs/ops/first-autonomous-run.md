@@ -154,3 +154,15 @@ If a task is stuck mid-execution:
 2. Issue stays in "In Progress" or moves to "Blocked" via `pnpm project:status:blocked N`.
 3. Next session can either pick up the same task (`pnpm task:run -- --task=N`) or move on.
 4. Stale branches accumulate — clean weekly with `pnpm clean_gone` (already in `commit-commands` skill) or manually.
+
+## Cockpit local (UI)
+
+Pour piloter via interface au lieu de CLI :
+
+```bash
+pnpm local:control
+# ouvre http://127.0.0.1:8787
+# token : .local-control/settings.json (chmod 600, généré au premier run)
+```
+
+Détails : `docs/ops/local-control-panel.md`. Téléphone : `docs/ops/local-control-phone.md`.
