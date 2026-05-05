@@ -11,6 +11,7 @@ import {
   recordPR,
   exportRunSummary,
   createBranch,
+  filterDirtyStatusLines,
   AUTOPILOT_STOP_REASONS,
 } from './autopilot.mjs';
 
@@ -193,4 +194,46 @@ test('chooseSafeTask excludes already-processed in loop', () => {
   ];
   const r = chooseSafeTask({ items, excludeIssues: [5] });
   assert.equal(r.number, 6);
+});
+
+test('filterDirtyStatusLines: only .claude/ untracked is clean', () => {
+  const out = filterDirtyStatusLines(['?? .claude/']);
+  assert.equal(out.length, 0);
+});
+
+test('filterDirtyStatusLines: only .local-control/ untracked is clean', () => {
+  const out = filterDirtyStatusLines(['?? .local-control/', '?? .local-control/state.json']);
+  assert.equal(out.length, 0);
+});
+
+test('filterDirtyStatusLines: .claude/ plus tracked modified file is dirty', () => {
+  const out = filterDirtyStatusLines(['?? .claude/', ' M apps/api/src/index.ts']);
+  assert.deepEqual(out, [' M apps/api/src/index.ts']);
+});
+
+test('filterDirtyStatusLines: untracked outside ignored dirs is dirty', () => {
+  const out = filterDirtyStatusLines(['?? scratch.txt']);
+  assert.deepEqual(out, ['?? scratch.txt']);
+});
+
+test('filterDirtyStatusLines: tracked modified file is dirty', () => {
+  const out = filterDirtyStatusLines([' M package.json']);
+  assert.deepEqual(out, [' M package.json']);
+});
+
+test('filterDirtyStatusLines: handles raw multiline string', () => {
+  const out = filterDirtyStatusLines('?? .claude/\n M src/foo.ts\n');
+  assert.deepEqual(out, [' M src/foo.ts']);
+});
+
+test('evaluatePreflight reports dirty file list', () => {
+  const r = evaluatePreflight({
+    gitInfo: { dirty: true, dirtyFiles: ['package.json', 'src/foo.ts'], branch: 'main' },
+    claudeAvailable: true,
+    settings: { allowExec: true, allowLoop: true },
+    env: { CLAUDE_CODE_COMMAND: 'yu', GITHUB_OWNER: 'x', GITHUB_REPO: 'y' },
+    mode: 'exec',
+  });
+  assert.equal(r.ok, false);
+  assert.ok(r.reasons.some((x) => x.includes('package.json')));
 });

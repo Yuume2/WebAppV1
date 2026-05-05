@@ -48,9 +48,32 @@ export function chooseSafeTask({ items = [], excludeIssues = [], staleDays = 7 }
   return filtered[0] ?? null;
 }
 
+const AUTOPILOT_IGNORED_DIRTY_PREFIXES = Object.freeze(['.claude/', '.local-control/']);
+
+export function filterDirtyStatusLines(lines) {
+  const arr = Array.isArray(lines) ? lines : String(lines ?? '').split('\n');
+  const blocking = [];
+  for (const raw of arr) {
+    if (raw == null) continue;
+    const line = String(raw).replace(/\r$/, '');
+    if (line.trim() === '') continue;
+    const path = line.length >= 3 ? line.slice(3) : line;
+    const cleanPath = path.replace(/^"(.*)"$/, '$1');
+    const ignored = AUTOPILOT_IGNORED_DIRTY_PREFIXES.some(
+      (p) => cleanPath === p || cleanPath === p.replace(/\/$/, '') || cleanPath.startsWith(p),
+    );
+    if (ignored) continue;
+    blocking.push(line);
+  }
+  return blocking;
+}
+
 export function evaluatePreflight({ gitInfo, claudeAvailable, settings, env, mode }) {
   const reasons = [];
-  if (gitInfo?.dirty) reasons.push('repo dirty');
+  if (gitInfo?.dirty) {
+    const files = Array.isArray(gitInfo.dirtyFiles) ? gitInfo.dirtyFiles : [];
+    reasons.push(files.length ? `repo dirty: ${files.join(', ')}` : 'repo dirty');
+  }
   if (gitInfo?.branch && gitInfo.branch !== 'main') reasons.push(`not on main (currently ${gitInfo.branch})`);
   if (!claudeAvailable && (mode === 'exec' || mode === 'loop')) reasons.push('Claude CLI not available');
   if (mode !== 'plan' && !settings?.allowExec) reasons.push('allowExec disabled');
@@ -155,9 +178,12 @@ export function exportRunSummary(run) {
   };
 }
 
-function gitClean(repoRoot) {
+function gitDirtyFiles(repoRoot) {
   const r = spawnSync('git', ['status', '--porcelain'], { cwd: repoRoot, encoding: 'utf8' });
-  return r.status === 0 && r.stdout.trim().length === 0;
+  if (r.status !== 0) return { ok: false, files: [] };
+  const lines = r.stdout.split('\n');
+  const blocking = filterDirtyStatusLines(lines);
+  return { ok: true, files: blocking.map((l) => (l.length >= 3 ? l.slice(3) : l).replace(/^"(.*)"$/, '$1')) };
 }
 function gitBranch(repoRoot) {
   const r = spawnSync('git', ['branch', '--show-current'], { cwd: repoRoot, encoding: 'utf8' });
@@ -174,7 +200,8 @@ export function loadQueueItems(repoRoot) {
 }
 
 export function preflightFromRepo({ repoRoot, claudeAvailable, settings, env, mode }) {
-  const gitInfo = { branch: gitBranch(repoRoot), dirty: !gitClean(repoRoot) };
+  const dirtyInfo = gitDirtyFiles(repoRoot);
+  const gitInfo = { branch: gitBranch(repoRoot), dirty: dirtyInfo.files.length > 0, dirtyFiles: dirtyInfo.files };
   const evaluated = evaluatePreflight({ gitInfo, claudeAvailable, settings, env, mode });
   return { ...evaluated, gitInfo };
 }
@@ -274,10 +301,13 @@ export class AutopilotEngine {
     this._persist(); this._emit('state', exportRunSummary(run));
 
     if (!pre.ok) {
-      runStep(run, 'preflight-failed', { reasons: pre.reasons });
-      markStopped(run, AUTOPILOT_STOP_REASONS.REPO_DIRTY);
+      runStep(run, 'preflight-failed', { reasons: pre.reasons, dirtyFiles: pre.gitInfo?.dirtyFiles ?? [] });
+      const stopReason = pre.gitInfo?.dirty
+        ? AUTOPILOT_STOP_REASONS.REPO_DIRTY
+        : AUTOPILOT_STOP_REASONS.GUARD_BLOCK;
+      markStopped(run, stopReason);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return { ok: false, reason: pre.reasons.join('; '), run: exportRunSummary(run) };
+      return { ok: false, reason: pre.reasons.join('; '), run: exportRunSummary(run), dirtyFiles: pre.gitInfo?.dirtyFiles ?? [] };
     }
     runStep(run, 'preflight-ok');
 
