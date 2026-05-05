@@ -44,6 +44,10 @@
     "task:run": "node tools/task-runner.mjs",
     "task:run:plan": "node tools/task-runner.mjs --plan-only",
     "task:doctor": "node tools/task-doctor.mjs",
+    "local:control": "node tools/local-control/server.mjs",
+    "local:control:lan": "node tools/local-control/server.mjs --lan",
+    "local:control:test": "node --test tools/local-control/safety.test.mjs tools/local-control/settings.test.mjs tools/local-control/commands.test.mjs tools/local-control/automerge.test.mjs tools/local-control/server.test.mjs",
+    "local:control:ui:test": "node --test tools/local-control/tests/",
     "task:test": "node --test tools/task-meta.test.mjs tools/task-deps.test.mjs tools/task-guard.test.mjs tools/task-questions.test.mjs tools/task-runner.test.mjs tools/task-doctor.test.mjs tools/apply-issue-delta.test.mjs tools/issue-status.test.mjs",
     "task:lint:test": "node --test tools/apply-issue-delta.test.mjs",
     "task:deps:test": "node --test tools/task-deps.test.mjs"

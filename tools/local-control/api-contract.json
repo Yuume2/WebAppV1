@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Local Control API Contract",
+  "version": "1.0.0",
+  "status": "Aligned with tools/local-control/server.mjs",
+  "transport": "HTTP + Server-Sent Events for live logs",
+  "baseUrl": "http://127.0.0.1:8787",
+  "auth": {
+    "mode": "loopback-only by default; LAN requires settings.lanEnabled = true",
+    "token": "auto-generated in .local-control/settings.json (authToken). All /api/* requests require it once set; backend runs open if no token configured.",
+    "header": "Authorization: Bearer <token>",
+    "queryFallback": "?token=<token> for SSE (EventSource cannot send headers)"
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/api/status",
+      "alias": "/api/health",
+      "returns": {
+        "ok": "boolean",
+        "version": "string",
+        "branch": "string|null",
+        "dirty": "boolean",
+        "activeRunId": "string|null",
+        "uptimeSeconds": "number",
+        "uptimeSec": "number"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/dashboard",
+      "returns": {
+        "branch": "string|null",
+        "gitStatus": { "clean": "boolean", "ahead": "number", "behind": "number", "files": "string[]" },
+        "doctor": { "ok": "boolean|null", "phase": "1|2|3|null", "blockers": "string[]", "checkedAt": "isoDate|null" },
+        "mainProtection": { "enabled": "boolean|null", "type": "branch_protection|ruleset|none|unknown", "checks": "string[]" },
+        "phaseGates": { "phase1": "ok|blocked|unknown", "phase2": "ok|blocked|unknown", "phase3": "ok|blocked|unknown" },
+        "openIssues": "number|null",
+        "autonomousTasks": "number|null",
+        "pendingQuestions": "number|null",
+        "latestRun": { "id": "string|null", "status": "idle|running|done|error", "startedAt": "isoDate|null", "endedAt": "isoDate|null" },
+        "activeRunId": "string|null"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings",
+      "returns": {
+        "maxPrsPerRun": "number (1-10)",
+        "maxMinutes": "number (1-240)",
+        "dryRunDefault": "boolean",
+        "allowExec": "boolean",
+        "allowLoop": "boolean",
+        "allowAutoMerge": "boolean",
+        "allowedRisk": "string[]",
+        "allowedAutonomy": "string[]",
+        "staleDays": "number (0-365)",
+        "preferredIssue": "number|null",
+        "lanEnabled": "boolean"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/api/settings",
+      "alias": "PUT /api/settings",
+      "body": "Partial<Settings> (authToken not patchable)",
+      "returns": "Settings (authToken stripped)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/command",
+      "body": { "name": "string (whitelisted)", "args": "string[]" },
+      "returns": { "runId": "string", "name": "string", "args": "string[]" },
+      "errors": ["422 invalid command/args", "409 a run is already active"]
+    },
+    {
+      "method": "POST",
+      "path": "/api/run/plan",
+      "body": { "issue": "number" },
+      "returns": { "runId": "string" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/run/start",
+      "body": { "issue": "number", "dryRun": "boolean (default settings.dryRunDefault)" },
+      "returns": { "runId": "string", "dryRun": "boolean" },
+      "notes": "Real execution not yet wired. Returns 403 unless dryRun=true."
+    },
+    {
+      "method": "POST",
+      "path": "/api/run/stop",
+      "alias": "/api/runner/stop",
+      "body": { "runId": "string|null" },
+      "returns": { "ok": "boolean", "stopped": "boolean" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/runner/start",
+      "body": { "mode": "plan|exec|loop", "issue": "number" },
+      "returns": { "runId": "string", "mode": "plan|plan-fallback" },
+      "notes": "exec/loop currently fallback to plan unless allowExec/allowLoop set."
+    },
+    {
+      "method": "POST",
+      "path": "/api/doctor/run",
+      "returns": { "runId": "string" },
+      "stream": "/api/runs/:runId/events"
+    },
+    {
+      "method": "POST",
+      "path": "/api/prompt",
+      "body": { "preset": "plan-next|run-one-safe|loop-safe|resume-after-answer|analyze-blockage|null" },
+      "returns": { "runId": "string", "preset": "string|null" }
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks",
+      "returns": { "items": "TaskQueueItem[]" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:issue/plan",
+      "returns": { "runId": "string" }
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs",
+      "returns": { "items": "RunSummary[]" }
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/:runId",
+      "returns": { "id": "string", "status": "running|done|error", "stdout": "string", "stderr": "string", "exitCode": "number|null" }
+    },
+    {
+      "method": "GET",
+      "path": "/api/runs/:runId/events",
+      "transport": "SSE",
+      "events": ["log", "exit"],
+      "auth": "bearer header OR ?token=<token> query"
+    },
+    {
+      "method": "GET",
+      "path": "/api/logs/:runId",
+      "transport": "SSE",
+      "events": ["log", "exit"]
+    },
+    {
+      "method": "GET",
+      "path": "/api/questions",
+      "returns": "QuestionItem[]"
+    },
+    {
+      "method": "POST",
+      "path": "/api/questions/answer",
+      "body": { "id": "string", "answer": "string (1-8000)" },
+      "returns": { "ok": "boolean", "runId": "string|null" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/questions/:id/answer",
+      "body": { "answer": "string (1-8000)" },
+      "returns": { "ok": "boolean" }
+    },
+    {
+      "method": "POST",
+      "path": "/api/automerge/check",
+      "body": { "pr": "number" },
+      "returns": "AutoMergeReport"
+    },
+    {
+      "method": "POST",
+      "path": "/api/automerge/apply",
+      "body": { "pr": "number" },
+      "returns": "AutoMergeReport (with applied:boolean)",
+      "errors": ["403 allowAutoMerge disabled"]
+    }
+  ],
+  "redaction": {
+    "rule": "Server redacts secrets via tools/local-control/safety.mjs (gh*/sk-/AKIA/Bearer/*_TOKEN/_SECRET/_KEY/_PASSWORD env values) plus the live authToken before any payload returns to the UI."
+  },
+  "notes": [
+    "All long-running ops return a runId; UI subscribes to SSE for live logs.",
+    "Default bind 127.0.0.1. LAN mode requires settings.lanEnabled = true; --lan ignored otherwise.",
+    "Auth token lives in .local-control/settings.json (chmod 600). The directory is gitignored."
+  ]
+}

@@ -156,3 +156,12 @@ Add at the top of the prompt: `Pick task #<N> only.` and skip `task:next`.
 ### Plan-only (no exec)
 
 Replace step 5 with: `pnpm task:run -- --task=<N> --plan-only` and stop after producing the plan.
+
+### Pilotage via cockpit local
+
+Au lieu d'envoyer ce prompt en CLI, lancer le cockpit (`pnpm local:control` → `http://127.0.0.1:8787`) et utiliser :
+- Onglet **Prompt** → preset `plan-next-task` ou `run-one-safe-task`.
+- Onglet **Tasks** → bouton **Plan** sur l'issue ciblée.
+- Onglet **Logs** pour suivre en temps réel via SSE.
+
+Doc : `docs/ops/local-control-panel.md`.
