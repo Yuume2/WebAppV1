@@ -165,7 +165,7 @@ function gitBranch(repoRoot) {
 }
 
 export function loadQueueItems(repoRoot) {
-  const r = spawnSync('pnpm', ['task:queue'], { cwd: repoRoot, encoding: 'utf8' });
+  const r = spawnSync('node', ['tools/task-score.mjs', '--queue'], { cwd: repoRoot, encoding: 'utf8' });
   if (r.status !== 0) return { ok: false, items: [], reason: r.stderr || 'queue failed' };
   try {
     const parsed = JSON.parse(r.stdout);

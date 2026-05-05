@@ -92,6 +92,58 @@
     <pre id="autopilot-prompt" class="autopilot-prompt hidden" aria-live="polite"></pre>
   </div>
 
+  <!-- Selected task -->
+  <div class="section-header" style="margin-top: 28px;">
+    <h2>Task sélectionnée</h2>
+    <span class="section-sub">La meilleure issue safe que l'autopilot prendrait maintenant.</span>
+  </div>
+  <div class="card" id="selected-task-card">
+    <div id="selected-task-body" class="muted small">Chargement...</div>
+    <div class="row" style="margin-top: 14px;">
+      <button data-action="refresh-task">Find best task</button>
+      <button data-action="prepare-best" class="primary" data-needs="auth">Prepare run</button>
+      <button data-action="copy-best-prompt" data-needs="auth" disabled>Copy prompt</button>
+    </div>
+    <pre id="selected-task-prompt" class="autopilot-prompt hidden"></pre>
+    <details style="margin-top: 14px;">
+      <summary class="muted small" style="cursor: pointer;">Tasks bloquées (<span id="blocked-count">0</span>)</summary>
+      <ul id="blocked-tasks" class="small" style="margin: 8px 0 0; padding-left: 20px;"></ul>
+    </details>
+  </div>
+
+  <!-- Doctor summary -->
+  <div class="section-header" style="margin-top: 28px;">
+    <h2>Doctor</h2>
+    <span class="section-sub">État du repo et des phases. Cliquer Run pour rafraîchir.</span>
+  </div>
+  <div class="card" id="doctor-card">
+    <div id="doctor-empty" class="muted small">Pas encore exécuté. Clique <strong>Run doctor</strong>.</div>
+    <div id="doctor-result" class="hidden">
+      <div class="row" style="margin-bottom: 12px;">
+        <span id="doctor-status-badge" class="badge">—</span>
+        <span class="muted small" id="doctor-generated">—</span>
+      </div>
+      <ul id="doctor-checks" class="status-grid" style="margin-bottom: 14px;"></ul>
+      <div class="row" style="gap: 6px;">
+        <span id="doctor-phase-1" class="badge">P1</span>
+        <span id="doctor-phase-2" class="badge">P2</span>
+        <span id="doctor-phase-3" class="badge">P3</span>
+        <span id="doctor-phase-4" class="badge">P4</span>
+      </div>
+      <details style="margin-top: 12px;">
+        <summary class="muted small" style="cursor: pointer;">Recommandations</summary>
+        <ul id="doctor-recos" class="small" style="margin: 8px 0 0; padding-left: 20px;"></ul>
+      </details>
+      <details style="margin-top: 8px;">
+        <summary class="muted small" style="cursor: pointer;">Phase blockers</summary>
+        <ul id="doctor-blockers" class="small" style="margin: 8px 0 0; padding-left: 20px;"></ul>
+      </details>
+    </div>
+    <div class="row" style="margin-top: 14px;">
+      <button data-action="doctor-summary" class="primary" data-needs="auth">Run doctor</button>
+    </div>
+  </div>
+
   <!-- System status -->
   <div class="section-header" style="margin-top: 28px;">
     <h2>System</h2>

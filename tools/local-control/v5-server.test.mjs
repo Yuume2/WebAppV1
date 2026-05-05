@@ -164,6 +164,33 @@ test('GET /api/v5/status surfaces autoMergeMode and notion/n8n flags', async () 
     assert.equal(r.data.notionConfigured, true);
     assert.equal(r.data.n8nConfigured, true);
     assert.equal(r.data.autoMergeMode, 'OFF');
+    assert.equal(r.data.notion.stage, 'configured');
+    assert.equal(r.data.n8n.stage, 'base-only');
+    assert.match(r.data.n8n.summary, /webhooks missing/);
     assert.deepEqual(r.data.n8nMissingWebhooks.sort(), ['N8N_NOTION_ANSWER_WEBHOOK', 'N8N_QUESTION_NOTIFY_WEBHOOK'].sort());
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('GET /api/v5/status with empty notion env reports stage missing-all', async () => {
+  const root = tmpRepo();
+  writeFileSync(join(root, '.local-control', 'v5.env'), 'CLAUDE_CODE_COMMAND=yu\n');
+  try {
+    const app = buildApp({ repoRoot: root });
+    const tok = app.settings.get().authToken;
+    const r = await call(app, 'GET', '/api/v5/status', { token: tok });
+    assert.equal(r.data.notion.stage, 'missing-all');
+    assert.equal(r.data.n8n.stage, 'missing-all');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('GET /api/tasks/best returns 200 with structured payload', async () => {
+  const root = tmpRepo();
+  try {
+    const app = buildApp({ repoRoot: root });
+    const tok = app.settings.get().authToken;
+    const r = await call(app, 'GET', '/api/tasks/best', { token: tok });
+    assert.equal(r.status, 200);
+    assert.ok(typeof r.data === 'object');
+    assert.ok('ok' in r.data);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

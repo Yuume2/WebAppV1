@@ -17,7 +17,7 @@ import {
 } from "./lib/auth-ui.js";
 import {
   renderTopbar, renderStatusGrid, renderMetrics, renderAutopilot,
-  renderPhone, showToast, bindToggles,
+  renderPhone, showToast, bindToggles, renderDoctor, renderSelectedTask,
 } from "./lib/cockpit.js";
 import { startAutopilot, stopAutopilot, resumeAutopilot } from "./lib/autopilot.js";
 
@@ -42,6 +42,9 @@ let pollTimer = null;
 let lastSettings = null;
 let lastNetwork = null;
 let lastV5 = null;
+let lastBestTask = null;
+let lastBestPrompt = null;
+let lastDoctorSummary = null;
 
 // Tabs + secondary mounts
 mountTabs();
@@ -108,7 +111,9 @@ async function refreshAll() {
     renderStatusGrid({ conn: "connected", settings, v5, network, dashboard: dash });
     renderMetrics(dash);
     renderAutopilot({ ap: v5?.autopilot ?? null, v5, settings });
+    renderDoctor(lastDoctorSummary);
     renderPhone(network);
+    api.get("/api/tasks/best").then((r) => { lastBestTask = r; renderSelectedTask(r); }).catch(() => {});
     renderTasks(tasks.items || tasks || [], { api, confirmDanger, settings, conn: "connected" });
     renderQuestions(questions.items || questions || [], { api });
     syncSettingsForm(settings);
@@ -219,6 +224,51 @@ document.querySelectorAll('[data-action="plan-next"]').forEach((b) => {
     if (r?.runId) document.getElementById("log-run-select")?.dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
     showToast("Plan next lancé", "ok");
   }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
+});
+
+document.querySelectorAll('[data-action="doctor-summary"]').forEach((b) => {
+  b.addEventListener("click", () => runWithState(b, async () => {
+    const r = await api.get("/api/doctor/summary");
+    if (r?.ok && r.summary) {
+      lastDoctorSummary = r.summary;
+      renderDoctor(r.summary);
+      showToast(r.summary.ok ? "Doctor green" : `Doctor ${r.summary.failed?.length ? "red" : "warn"}`, r.summary.ok ? "ok" : "warn");
+    } else {
+      showToast(r?.reason ?? "Doctor failed", "err");
+    }
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
+});
+
+document.querySelectorAll('[data-action="refresh-task"]').forEach((b) => {
+  b.addEventListener("click", () => runWithState(b, async () => {
+    const r = await api.get("/api/tasks/best");
+    lastBestTask = r;
+    renderSelectedTask(r);
+    showToast(r?.ok ? `#${r.best?.number} sélectionnée` : (r?.reason ?? "aucune task"), r?.ok ? "ok" : "warn");
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
+});
+
+document.querySelectorAll('[data-action="prepare-best"]').forEach((b) => {
+  b.addEventListener("click", () => runWithState(b, async () => {
+    if (!lastBestTask?.best?.number) { showToast("Aucune task sélectionnée", "warn"); return; }
+    const r = await api.post("/api/v5/prepare-run", { issue: lastBestTask.best.number, mode: "plan" });
+    lastBestPrompt = r?.prompt ?? null;
+    const promptEl = document.getElementById("selected-task-prompt");
+    if (promptEl) {
+      promptEl.textContent = lastBestPrompt ?? "";
+      promptEl.classList.toggle("hidden", !lastBestPrompt);
+    }
+    const copyBtn = document.querySelector('[data-action="copy-best-prompt"]');
+    if (copyBtn) copyBtn.disabled = !lastBestPrompt;
+    showToast(`Prepared #${lastBestTask.best.number}`, "ok");
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
+});
+
+document.querySelectorAll('[data-action="copy-best-prompt"]').forEach((b) => {
+  b.addEventListener("click", () => {
+    if (!lastBestPrompt) return showToast("Prepare d'abord", "warn");
+    navigator.clipboard?.writeText(lastBestPrompt).then(() => showToast("Prompt copié — colle dans yu", "ok")).catch(() => {});
+  });
 });
 
 document.querySelectorAll('[data-action="scroll-logs"]').forEach((b) => {

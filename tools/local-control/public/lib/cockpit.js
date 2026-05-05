@@ -30,20 +30,27 @@ export function renderTopbar({ conn, settings, lan }) {
 }
 
 export function renderStatusGrid({ conn, settings, v5, network, dashboard }) {
+  const notion = v5?.notion ?? null;
+  const n8n = v5?.n8n ?? null;
+  const whatsapp = v5?.whatsapp ?? null;
   const map = {
     server: pill(conn === 'connected' ? 'ok' : 'err', conn === 'connected' ? 'En ligne' : 'Hors ligne'),
     auth: pill(conn === 'auth-required' ? 'err' : conn === 'connected' ? 'ok' : 'warn',
       conn === 'auth-required' ? 'Token requis' : conn === 'connected' ? 'OK' : '…'),
     claude: v5 ? pill(v5.claudeAvailable ? 'ok' : 'err', v5.claudeAvailable ? (v5.claudeVersion || 'OK') : 'Indispo') : pill('warn', '…'),
     branch: pill(dashboard?.branch === 'main' ? 'ok' : 'warn', dashboard?.branch ?? '—'),
-    protection: pill(dashboard?.mainProtection?.enabled ? 'ok' : dashboard?.mainProtection?.enabled === false ? 'err' : 'warn',
-      dashboard?.mainProtection?.enabled === true ? 'protected' : dashboard?.mainProtection?.enabled === false ? 'off' : '?'),
+    protection: pill(
+      dashboard?.mainProtection?.enabled === true ? 'ok'
+      : dashboard?.mainProtection?.enabled === false ? 'err' : 'warn',
+      dashboard?.mainProtection?.enabled === true ? 'protected'
+      : dashboard?.mainProtection?.enabled === false ? 'off'
+      : 'not checked'),
     exec: pill(settings?.allowExec ? 'warn' : 'ok', settings?.allowExec ? 'autorisé' : 'bloqué'),
     loop: pill(settings?.allowLoop ? 'warn' : 'ok', settings?.allowLoop ? 'autorisé' : 'bloqué'),
     automerge: pill(settings?.allowAutoMerge ? 'warn' : 'ok', settings?.allowAutoMerge ? 'ENABLED' : 'OFF'),
-    notion: v5 ? pill(v5.notionConfigured ? 'ok' : 'warn', v5.notionConfigured ? 'configuré' : 'à configurer') : pill('warn', '…'),
-    n8n: v5 ? pill(v5.n8nConfigured ? 'ok' : 'warn', v5.n8nConfigured ? (v5.n8nWebhooksConfigured ? 'live' : 'partial') : 'à configurer') : pill('warn', '…'),
-    whatsapp: v5 ? pill(v5.whatsappConfigured ? 'ok' : 'warn', v5.whatsappConfigured ? (v5.whatsappVia ?? 'on') : 'optionnel') : pill('warn', '…'),
+    notion: pillForNotion(notion ?? { stage: v5?.notionConfigured ? 'configured' : 'missing-all', summary: v5?.notionConfigured ? 'configured' : 'not configured' }),
+    n8n: pillForN8n(n8n ?? { stage: 'unknown', summary: '…' }),
+    whatsapp: pillForWhatsapp(whatsapp ?? { configured: !!v5?.whatsappConfigured, via: v5?.whatsappVia }),
     lan: pill(network?.lan ? 'ok' : 'warn', network?.lan ? (network.lanIp ?? 'on') : 'local only'),
   };
   const grid = document.getElementById('status-grid');
@@ -68,6 +75,113 @@ export function renderStatusGrid({ conn, settings, v5, network, dashboard }) {
 }
 
 function pill(cls, text) { return { cls, text }; }
+function pillForNotion(n) {
+  if (!n || n.stage === 'unknown') return pill('warn', '…');
+  if (n.stage === 'configured') return pill('ok', 'configured');
+  if (n.stage === 'missing-token') return pill('err', 'missing token');
+  if (n.stage === 'missing-database-id') return pill('err', 'missing DB id');
+  return pill('warn', n.summary || 'not configured');
+}
+function pillForN8n(n) {
+  if (!n || n.stage === 'unknown') return pill('warn', '…');
+  if (n.stage === 'configured') return pill('ok', 'configured');
+  if (n.stage === 'partial-webhooks') return pill('warn', 'webhooks partiels');
+  if (n.stage === 'base-only') return pill('warn', 'base ok, webhooks ø');
+  if (n.stage === 'missing-secret') return pill('err', 'missing secret');
+  if (n.stage === 'missing-base') return pill('warn', 'base manquante');
+  return pill('warn', n.summary || 'not configured');
+}
+function pillForWhatsapp(w) {
+  if (!w) return pill('warn', '…');
+  if (w.configured) return pill('ok', w.via || 'on');
+  return pill('warn', 'optionnel');
+}
+
+export function renderDoctor(summary) {
+  const card = document.getElementById('doctor-card');
+  if (!card) return;
+  const empty = document.getElementById('doctor-empty');
+  const result = document.getElementById('doctor-result');
+  if (!summary) {
+    if (empty) empty.classList.remove('hidden');
+    if (result) result.classList.add('hidden');
+    return;
+  }
+  if (empty) empty.classList.add('hidden');
+  if (result) result.classList.remove('hidden');
+  const badge = document.getElementById('doctor-status-badge');
+  if (badge) {
+    badge.textContent = summary.ok ? 'green' : (summary.failed?.length ? 'red' : 'warn');
+    badge.classList.remove('ok', 'warn', 'danger');
+    badge.classList.add(summary.ok ? 'ok' : (summary.failed?.length ? 'danger' : 'warn'));
+  }
+  const gen = document.getElementById('doctor-generated');
+  if (gen) gen.textContent = summary.generatedAt ? new Date(summary.generatedAt).toLocaleString() : '—';
+  const checks = document.getElementById('doctor-checks');
+  if (checks) {
+    checks.innerHTML = (summary.checks || []).map((c) => {
+      const cls = c.status === 'ok' ? 'ok' : c.status === 'fail' ? 'err' : c.status === 'warn' ? 'warn' : '';
+      return `<li class="status-pill ${cls}"><span class="dot"></span><span class="label">${escapeHtml(c.label)}</span><span class="value">${escapeHtml(c.detail ?? '—')}</span></li>`;
+    }).join('');
+  }
+  const phaseMap = { phase1: 'doctor-phase-1', phase2: 'doctor-phase-2', phase3: 'doctor-phase-3', phase4: 'doctor-phase-4' };
+  for (const [k, id] of Object.entries(phaseMap)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const ready = summary.phaseSummary?.[k]?.ready;
+    el.textContent = `P${k.replace('phase', '')} · ${ready ? 'ready' : 'pending'}`;
+    el.classList.remove('ok', 'warn');
+    el.classList.add(ready ? 'ok' : 'warn');
+  }
+  const recos = document.getElementById('doctor-recos');
+  if (recos) recos.innerHTML = (summary.recommendations ?? []).length ? summary.recommendations.map((r) => `<li>${escapeHtml(r)}</li>`).join('') : '<li class="muted">Aucune.</li>';
+  const blockers = document.getElementById('doctor-blockers');
+  if (blockers) {
+    blockers.innerHTML = (summary.blockers ?? []).length
+      ? summary.blockers.map((b) => `<li><strong>${escapeHtml(b.phase)}</strong> · ${escapeHtml(b.blocker)}</li>`).join('')
+      : '<li class="muted">Aucun blocker.</li>';
+  }
+}
+
+export function renderSelectedTask(result) {
+  const body = document.getElementById('selected-task-body');
+  const promptEl = document.getElementById('selected-task-prompt');
+  const copyBtn = document.querySelector('[data-action="copy-best-prompt"]');
+  const blockedList = document.getElementById('blocked-tasks');
+  const blockedCount = document.getElementById('blocked-count');
+  if (!body) return;
+  if (!result) { body.textContent = 'Pas encore chargé.'; return; }
+  if (!result.ok || !result.best) {
+    body.innerHTML = `<strong style="color: var(--warn);">Aucune task safe</strong><br><span class="muted">${escapeHtml(result.reason ?? 'rien à exécuter')}</span>`;
+    if (promptEl) { promptEl.textContent = ''; promptEl.classList.add('hidden'); }
+    if (copyBtn) copyBtn.disabled = true;
+  } else {
+    const best = result.best;
+    const run = result.runnability ?? {};
+    const runState = run.canExec ? '<span class="badge ok">exec</span>'
+      : run.canPlan ? '<span class="badge warn">plan-only</span>'
+      : '<span class="badge danger">bloqué</span>';
+    const blockers = (run.blockers ?? []).length
+      ? `<ul class="small" style="margin: 6px 0 0; padding-left: 20px;">${run.blockers.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}</ul>`
+      : '';
+    body.innerHTML = `
+      <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+        <div>
+          <strong style="font-size: 16px;">#${best.number} · ${escapeHtml(best.title)}</strong>
+          <div class="muted small" style="margin-top: 4px;">Score ${best.score ?? '—'} · classification ${best.classification ?? '—'}</div>
+        </div>
+        ${runState}
+      </div>
+      <div class="muted small" style="margin-top: 10px;">${escapeHtml(best.reason)}</div>
+      ${blockers}
+    `;
+    if (copyBtn) copyBtn.disabled = false;
+  }
+  if (blockedList) {
+    blockedList.innerHTML = (result.blocked ?? []).map((b) => `<li>#${b.number} · ${escapeHtml(b.title || '')} — <span class="muted">${escapeHtml(b.reasons?.join(', ') ?? 'safe mais non sélectionnée')}</span></li>`).join('');
+    if (blockedCount) blockedCount.textContent = String(result.blocked?.length ?? 0);
+  }
+}
 
 export function renderMetrics(dashboard) {
   if (!dashboard) return;
