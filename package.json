@@ -29,7 +29,17 @@
     "project:status:in-progress": "node tools/issue-status.mjs --status \"In Progress\"",
     "project:status:review": "node tools/issue-status.mjs --status Review",
     "project:status:blocked": "node tools/issue-status.mjs --status Blocked",
-    "project:status:done": "node tools/issue-status.mjs --status Done"
+    "project:status:done": "node tools/issue-status.mjs --status Done",
+    "task:next": "node tools/next-task.mjs",
+    "task:stale": "node tools/stale-check.mjs",
+    "task:score": "node tools/task-score.mjs",
+    "task:queue": "node tools/task-score.mjs --queue",
+    "task:deps": "node tools/task-deps.mjs",
+    "task:meta": "node tools/task-meta.mjs",
+    "task:meta:check": "node tools/task-meta.mjs --json",
+    "task:meta:backfill": "node tools/task-meta-backfill.mjs",
+    "task:doctor": "node tools/task-doctor.mjs",
+    "task:deps:test": "node --test tools/task-deps.test.mjs"
   },
   "devDependencies": {
     "turbo": "^2.3.3",
