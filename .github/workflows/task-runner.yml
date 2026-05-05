@@ -1,0 +1,59 @@
+name: task-runner
+
+# Manual-trigger only. No schedule. No automatic execution.
+# Phase 2 read-only: runs the planner in dry-run, prints the chosen
+# candidate, the safety checks, and the would-be branch name.
+# Does NOT modify GitHub state, does NOT push branches, does NOT comment
+# on issues. Yume can review the planning output before any real exec
+# happens locally.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Pin a specific issue number (leave blank to auto-pick)"
+        required: false
+        default: ""
+      plan_only:
+        description: "Stop after printing the plan (always true for now)"
+        required: false
+        default: "true"
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: task-runner
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run task-runner planner (dry-run)
+        run: |
+          ARGS="--plan-only"
+          if [ -n "${{ inputs.task }}" ]; then
+            ARGS="$ARGS --task=${{ inputs.task }}"
+          fi
+          node tools/task-runner.mjs $ARGS
+
+      - name: Surface scoring board
+        run: node tools/task-score.mjs --top 10
+
+      - name: Surface dependency graph
+        run: node tools/task-deps.mjs
+
+      - name: Stale tasks
+        run: node tools/stale-check.mjs

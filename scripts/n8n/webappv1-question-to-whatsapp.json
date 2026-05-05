@@ -1,0 +1,66 @@
+{
+  "name": "webappv1-question-to-whatsapp",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "webappv1-question",
+        "options": { "noResponseBody": false },
+        "responseMode": "lastNode"
+      },
+      "name": "Webhook (GitHub issue_comment)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "REPLACE_AT_IMPORT"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json[\"body\"][\"comment\"][\"body\"]}}",
+              "operation": "startsWith",
+              "value2": "<!-- claude-question v1"
+            }
+          ]
+        }
+      },
+      "name": "Is claude-question?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const body = $json.body.comment.body;\nconst issue = $json.body.issue;\nconst headerEnd = body.indexOf('-->');\nconst meta = {};\nfor (const line of body.slice('<!-- claude-question v1'.length, headerEnd).split('\\n')) {\n  const m = line.trim().match(/^([a-zA-Z][\\w]*)\\s*:\\s*(.*)$/);\n  if (m) meta[m[1]] = m[2];\n}\nreturn [{ json: { qid: meta.qid, blockLevel: meta.blockLevel, issueNumber: issue.number, issueTitle: issue.title, htmlUrl: $json.body.comment.html_url } }];"
+      },
+      "name": "Extract qid + meta",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "from": "={{$env.WHATSAPP_FROM}}",
+        "to": "={{$env.WHATSAPP_TO}}",
+        "message": "=Claude attend ta réponse.\n#{{$json.issueNumber}} — {{$json.issueTitle}}\nQ: {{$json.qid}} ({{$json.blockLevel}})\n{{$json.htmlUrl}}"
+      },
+      "name": "WhatsApp notify",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [960, 300],
+      "credentials": { "twilioApi": { "id": "REPLACE_AT_IMPORT", "name": "webappv1-whatsapp" } }
+    }
+  ],
+  "connections": {
+    "Webhook (GitHub issue_comment)": { "main": [[{ "node": "Is claude-question?", "type": "main", "index": 0 }]] },
+    "Is claude-question?":             { "main": [[{ "node": "Extract qid + meta",   "type": "main", "index": 0 }]] },
+    "Extract qid + meta":              { "main": [[{ "node": "WhatsApp notify",      "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {},
+  "tags": ["webappv1"],
+  "_notes": "Import then map: webhook URL must be added to GitHub repo → Settings → Webhooks (event: Issue comments). Twilio credentials must be created in n8n as 'webappv1-whatsapp'."
+}

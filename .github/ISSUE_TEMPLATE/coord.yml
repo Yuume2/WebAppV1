@@ -46,6 +46,14 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Anything an agent needs to avoid stale-AC traps. Related files, recent reorganisations, prior attempts.
+    validations:
+      required: false
+
   - type: dropdown
     id: priority
     attributes:

@@ -1,0 +1,77 @@
+{
+  "name": "webappv1-notion-answer-to-github",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "minutes", "minutesInterval": 5 }] }
+      },
+      "name": "Poll every 5 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.notion.com/v1/databases/{{$env.NOTION_QUESTIONS_DB_ID}}/query",
+        "authentication": "headerAuth",
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"filter\": {\n    \"and\": [\n      { \"property\": \"Status\", \"select\": { \"equals\": \"answered\" } }\n    ]\n  }\n}",
+        "options": {}
+      },
+      "name": "Notion query (status=answered)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [480, 300],
+      "credentials": { "httpHeaderAuth": { "id": "REPLACE_AT_IMPORT", "name": "webappv1-notion" } }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Filter pages whose Last synced at < Answered at (i.e. not yet pushed to GitHub).\nconst out = [];\nfor (const r of $json.results || []) {\n  const props = r.properties || {};\n  const qid = props.Title?.title?.[0]?.plain_text;\n  const issue = props.Task?.number;\n  const status = props.Status?.select?.name;\n  const answerText = (props.Answer?.rich_text || []).map(t => t.plain_text).join('').trim();\n  const lastSynced = props['Last synced at']?.date?.start;\n  const answeredAt = props['Answered at']?.date?.start;\n  if (!qid || !issue || status !== 'answered' || !answerText) continue;\n  if (lastSynced && answeredAt && new Date(lastSynced) >= new Date(answeredAt)) continue;\n  out.push({ json: { qid, issue, answerText, pageId: r.id } });\n}\nreturn out;"
+      },
+      "name": "Pick unsynced answers",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{$env.WEBAPPV1_REPO}}/issues/{{$json.issue}}/comments",
+        "authentication": "headerAuth",
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"body\": \"<!-- claude-answer qid: {{$json.qid}} -->\\n\\n{{$json.answerText}}\"\n}"
+      },
+      "name": "Post answer to GitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [960, 300],
+      "credentials": { "httpHeaderAuth": { "id": "REPLACE_AT_IMPORT", "name": "webappv1-github" } }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.notion.com/v1/pages/{{$json.pageId}}",
+        "authentication": "headerAuth",
+        "method": "PATCH",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"properties\": {\n    \"Last synced at\": { \"date\": { \"start\": \"{{ $now.toISO() }}\" } }\n  }\n}",
+        "options": {}
+      },
+      "name": "Mark Notion as synced",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1200, 300],
+      "credentials": { "httpHeaderAuth": { "id": "REPLACE_AT_IMPORT", "name": "webappv1-notion" } }
+    }
+  ],
+  "connections": {
+    "Poll every 5 min":              { "main": [[{ "node": "Notion query (status=answered)", "type": "main", "index": 0 }]] },
+    "Notion query (status=answered)":{ "main": [[{ "node": "Pick unsynced answers",          "type": "main", "index": 0 }]] },
+    "Pick unsynced answers":         { "main": [[{ "node": "Post answer to GitHub",          "type": "main", "index": 0 }]] },
+    "Post answer to GitHub":         { "main": [[{ "node": "Mark Notion as synced",          "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {},
+  "tags": ["webappv1"],
+  "_notes": "Cron polling because Notion has no webhook. 5 min is the floor. The function node guards against re-posting by comparing 'Last synced at' to 'Answered at'."
+}
