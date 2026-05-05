@@ -159,11 +159,13 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       const info = gitInfo(repoRoot);
       const active = runner.activeIds()[0] ?? null;
       const last = state.list(1)[0] ?? null;
+      const repo = repoNameWithOwner(repoRoot);
+      const protection = repo ? fetchBranchProtection(repo, 'main') : { protected: false, source: null };
       return send(res, 200, {
         branch: info.branch,
         gitStatus: { clean: !info.dirty, ahead: 0, behind: 0, files: [] },
         doctor: { ok: null, phase: null, blockers: [], checkedAt: null },
-        mainProtection: { enabled: null, type: 'unknown', checks: [] },
+        mainProtection: { enabled: !!protection.protected, type: protection.source ?? 'unknown', checks: [] },
         phaseGates: { phase1: 'unknown', phase2: 'unknown', phase3: 'unknown' },
         openIssues: null,
         autonomousTasks: null,
@@ -459,7 +461,18 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       const whatsappCfg = evaluateWhatsappConfig(env);
       const items = [
         { id: 'claude', label: 'Claude CLI', kind: 'required', status: claude.claudeAvailable ? 'ready' : 'missing', detail: claude.claudeAvailable ? (claude.claudeVersion || 'available') : (claude.claudeReason || 'not available'), action: claude.claudeAvailable ? null : 'install-claude' },
-        { id: 'protection', label: 'Branch protection', kind: 'required', status: 'unknown', detail: 'check via doctor', action: 'run-doctor' },
+        ...(() => {
+          const repo = repoNameWithOwner(repoRoot);
+          const p = repo ? fetchBranchProtection(repo, 'main') : { protected: false, source: null };
+          return [{
+            id: 'protection',
+            label: 'Branch protection',
+            kind: 'required',
+            status: p.protected ? 'ready' : 'missing',
+            detail: p.protected ? `protected via ${p.source}` : 'main protection désactivée',
+            action: p.protected ? null : 'open-github-protection',
+          }];
+        })(),
         { id: 'allowExec', label: 'Exec allowed', kind: 'required', status: s.allowExec ? 'ready' : 'missing', detail: s.allowExec ? 'autorisé' : 'flippe le toggle Exec dans Settings', action: 'open-settings-safety' },
         { id: 'allowLoop', label: 'Loop allowed', kind: 'required', status: s.allowLoop ? 'ready' : 'missing', detail: s.allowLoop ? 'autorisé' : 'flippe le toggle Loop dans Settings', action: 'open-settings-safety' },
         { id: 'allowAutoMerge', label: 'Auto-merge (Power mode)', kind: 'optional', status: s.allowAutoMerge ? 'ready' : 'optional', detail: s.allowAutoMerge ? 'ENABLED' : 'optionnel — laisser OFF par défaut', action: 'open-settings-safety' },

@@ -209,3 +209,30 @@ test('GET /api/v5/full-readiness lists items with statuses', async () => {
     assert.equal(typeof r.data.requiredMissingCount, 'number');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('GET /api/v5/full-readiness marks integrations as optional', async () => {
+  const root = tmpRepo();
+  writeFileSync(join(root, '.local-control', 'v5.env'), 'CLAUDE_CODE_COMMAND=yu\n');
+  try {
+    const app = buildApp({ repoRoot: root });
+    const tok = app.settings.get().authToken;
+    const r = await call(app, 'GET', '/api/v5/full-readiness', { token: tok });
+    const optionalIds = r.data.items.filter((i) => i.kind === 'optional').map((i) => i.id).sort();
+    assert.ok(optionalIds.includes('notion'));
+    assert.ok(optionalIds.includes('n8n'));
+    assert.ok(optionalIds.includes('whatsapp'));
+    assert.ok(optionalIds.includes('allowAutoMerge'));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('GET /api/dashboard exposes mainProtection.enabled as boolean', async () => {
+  const root = tmpRepo();
+  try {
+    const app = buildApp({ repoRoot: root });
+    const tok = app.settings.get().authToken;
+    const r = await call(app, 'GET', '/api/dashboard', { token: tok });
+    assert.equal(r.status, 200);
+    assert.equal(typeof r.data.mainProtection.enabled, 'boolean');
+    assert.equal(typeof r.data.mainProtection.type, 'string');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
