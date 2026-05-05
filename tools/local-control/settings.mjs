@@ -18,7 +18,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
 });
 
 const VALIDATORS = {
-  maxPrsPerRun: (v) => Number.isInteger(v) && v >= 1 && v <= 10,
+  maxPrsPerRun: (v) => Number.isInteger(v) && v >= 1 && v <= 20,
   maxMinutes: (v) => Number.isInteger(v) && v >= 1 && v <= 240,
   maxErrors: (v) => Number.isInteger(v) && v >= 1 && v <= 20,
   dryRunDefault: (v) => typeof v === 'boolean',

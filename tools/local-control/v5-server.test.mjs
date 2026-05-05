@@ -194,3 +194,18 @@ test('GET /api/tasks/best returns 200 with structured payload', async () => {
     assert.ok('ok' in r.data);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('GET /api/v5/full-readiness lists items with statuses', async () => {
+  const root = tmpRepo();
+  writeFileSync(join(root, '.local-control', 'v5.env'), 'CLAUDE_CODE_COMMAND=yu\n');
+  try {
+    const app = buildApp({ repoRoot: root });
+    const tok = app.settings.get().authToken;
+    const r = await call(app, 'GET', '/api/v5/full-readiness', { token: tok });
+    assert.equal(r.status, 200);
+    assert.ok(Array.isArray(r.data.items));
+    assert.ok(r.data.items.find((i) => i.id === 'allowExec'));
+    assert.ok(r.data.items.find((i) => i.id === 'notion'));
+    assert.equal(typeof r.data.requiredMissingCount, 'number');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

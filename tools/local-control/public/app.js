@@ -1,24 +1,25 @@
-// WebAppV1 Cockpit V5
-// Talks to backend at same origin. Backend = tools/local-control/server.mjs.
+// WebAppV1 Mission Control · app.js
 
-import { ApiClient, AuthError, NetworkError } from "./lib/api.js";
+import { ApiClient, AuthError } from "./lib/api.js";
 import { redact } from "./lib/redact.js";
 import { mountTabs } from "./lib/tabs.js";
-import { renderTasks } from "./lib/tasks.js";
-import { mountRunner } from "./lib/runner.js";
-import { mountPrompt } from "./lib/prompt.js";
-import { mountLogs } from "./lib/logs.js";
 import { renderQuestions } from "./lib/questions.js";
 import { confirmDanger } from "./lib/confirm.js";
 import { runWithState } from "./lib/buttonState.js";
 import {
   TokenStore, ConnState, readTokenFromUrl,
-  classifyError, badgeLabel, badgeClass, shouldKeepPolling,
+  classifyError, shouldKeepPolling,
 } from "./lib/auth-ui.js";
 import {
-  renderTopbar, renderStatusGrid, renderMetrics, renderAutopilot,
-  renderPhone, showToast, bindToggles, renderDoctor, renderSelectedTask,
+  renderTopbar, renderStatusGrid, renderStatusBranch, renderDoctor, renderPhone,
+  showToast, bindToggles, renderIntegrationSettings, mountSettingsNav, openSettingsSection,
 } from "./lib/cockpit.js";
+import {
+  MISSION_MODES, DEFAULT_MODE_ID, findMode,
+  renderModeRail, buildMissionState, renderMissionHero, renderMissionProgress,
+  renderFullChecklist, renderNextTask, renderTaskBoard,
+  renderLogSummary, appendLogLine, clearLogs,
+} from "./lib/mission.js";
 import { startAutopilot, stopAutopilot, resumeAutopilot } from "./lib/autopilot.js";
 
 const REFRESH_MS = 15000;
@@ -45,89 +46,111 @@ let lastV5 = null;
 let lastBestTask = null;
 let lastBestPrompt = null;
 let lastDoctorSummary = null;
+let lastReadiness = null;
+let activeModeId = (typeof localStorage !== "undefined" && localStorage.getItem("missionMode")) || DEFAULT_MODE_ID;
+let logSummary = { last: null, success: null, error: null };
 
-// Tabs + secondary mounts
 mountTabs();
-mountLogs(api);
-mountRunner(api, { confirmDanger });
-mountPrompt(api);
+mountSettingsNav();
 bindSettingsForm();
+mountModeRail();
+mountLogDrawer();
 
 function setConnState(next, errMsg) {
   connState = next;
-  renderTopbar({ conn: connStateToString(next), settings: lastSettings, lan: lastNetwork?.lan });
+  renderTopbar({ conn: connStateToString(next), settings: lastSettings });
   const authPanel = document.getElementById("auth-panel");
   authPanel.classList.toggle("hidden", next !== ConnState.AUTH_REQUIRED);
-  setActionsDisabled(next !== ConnState.CONNECTED);
-
+  document.querySelectorAll('button[data-needs="auth"]').forEach((b) => {
+    b.disabled = next !== ConnState.CONNECTED;
+  });
   if (next === ConnState.AUTH_REQUIRED) {
-    const title = document.getElementById("auth-title");
-    title.textContent = api.token ? "Token invalide" : "Auth requise";
+    document.getElementById("auth-title").textContent = api.token ? "Token invalide" : "Auth requise";
     const errEl = document.getElementById("auth-error");
     if (errMsg) { errEl.textContent = errMsg; errEl.style.display = "block"; }
     else errEl.style.display = "none";
   }
-
-  if (shouldKeepPolling(next)) startPolling();
-  else stopPolling();
+  if (shouldKeepPolling(next)) startPolling(); else stopPolling();
 }
-
 function connStateToString(s) {
   if (s === ConnState.CONNECTED) return "connected";
   if (s === ConnState.AUTH_REQUIRED) return "auth-required";
   if (s === ConnState.OFFLINE) return "offline";
   return "unknown";
 }
-
-function setActionsDisabled(disabled) {
-  document.querySelectorAll('button[data-needs="auth"]').forEach((b) => {
-    b.disabled = !!disabled;
-    if (disabled) b.setAttribute("data-disabled-reason", "Auth requise.");
-    else b.removeAttribute("data-disabled-reason");
-  });
-}
-
 function startPolling() { if (!pollTimer) pollTimer = setInterval(() => { refreshAll().catch(() => {}); }, REFRESH_MS); }
 function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 
 async function refreshAll() {
-  if (!api.token) {
-    setConnState(ConnState.AUTH_REQUIRED);
-    return;
-  }
+  if (!api.token) { setConnState(ConnState.AUTH_REQUIRED); return; }
   try {
-    const [dash, tasks, questions, settings, network, v5] = await Promise.all([
-      api.get("/api/dashboard"),
-      api.get("/api/tasks").catch(() => ({ items: [] })),
+    const [dash, questions, settings, network, v5, readiness] = await Promise.all([
+      api.get("/api/dashboard").catch(() => null),
       api.get("/api/questions").catch(() => ({ items: [] })),
       api.get("/api/settings"),
       api.get("/api/network").catch(() => null),
       api.get("/api/v5/status").catch(() => null),
+      api.get("/api/v5/full-readiness").catch(() => null),
     ]);
     lastSettings = settings;
     lastNetwork = network;
     lastV5 = v5;
+    lastReadiness = readiness;
     setConnState(ConnState.CONNECTED);
-    renderStatusGrid({ conn: "connected", settings, v5, network, dashboard: dash });
-    renderMetrics(dash);
-    renderAutopilot({ ap: v5?.autopilot ?? null, v5, settings });
-    applyModeLabel();
-    if (!autopilotEvents && (v5?.autopilot?.status === "running" || v5?.autopilot?.status === "waiting")) subscribeAutopilotEvents();
+    renderStatusGrid({ conn: "connected", settings, v5, network });
+    if (dash) renderStatusBranch(dash);
     renderDoctor(lastDoctorSummary);
     renderPhone(network);
-    api.get("/api/tasks/best").then((r) => { lastBestTask = r; renderSelectedTask(r); }).catch(() => {});
-    renderTasks(tasks.items || tasks || [], { api, confirmDanger, settings, conn: "connected" });
     renderQuestions(questions.items || questions || [], { api });
+    document.getElementById("questions-empty").style.display = (questions.items ?? questions ?? []).length ? "none" : "block";
     syncSettingsForm(settings);
-    const empty = document.getElementById("questions-empty");
-    if (empty) empty.style.display = (questions.items ?? questions ?? []).length ? "none" : "block";
+    renderIntegrationSettings(v5);
+    rerenderMission();
+    api.get("/api/tasks/best").then((r) => {
+      lastBestTask = r;
+      renderNextTask(r);
+      renderTaskBoard(r);
+    }).catch(() => {});
+    if (!autopilotEvents && (v5?.autopilot?.status === "running" || v5?.autopilot?.status === "waiting")) subscribeAutopilotEvents();
   } catch (e) {
-    const next = classifyError(e);
-    setConnState(next, redact(String(e?.message || e)));
+    setConnState(classifyError(e), redact(String(e?.message || e)));
   }
 }
 
-// Settings form binding
+function rerenderMission() {
+  const m = findMode(activeModeId);
+  const customMax = Number(document.getElementById("mode-custom-value")?.value || 5);
+  const state = buildMissionState({
+    mode: activeModeId,
+    settings: lastSettings,
+    v5: lastV5,
+    ap: lastV5?.autopilot ?? null,
+    fullReadiness: lastReadiness,
+    customMax,
+  });
+  renderMissionHero(state);
+  renderMissionProgress(lastV5?.autopilot ?? null);
+  if (m.full) renderFullChecklist(lastReadiness, openChecklistAction);
+  else document.getElementById("full-checklist-card")?.classList.add("hidden");
+}
+
+function openChecklistAction(action) {
+  if (action === "open-settings-safety") return openSettingsSection("safety");
+  if (action === "open-settings-integrations") return openSettingsSection("integrations");
+  if (action === "run-doctor") return runDoctor();
+  showToast(`Action: ${action}`, "info");
+}
+
+function mountModeRail() {
+  renderModeRail(activeModeId, (id) => {
+    activeModeId = id;
+    try { localStorage.setItem("missionMode", id); } catch {}
+    renderModeRail(activeModeId, (next) => mountModeRail()); // re-render selection
+    rerenderMission();
+  });
+  document.getElementById("mode-custom-value")?.addEventListener("input", () => rerenderMission());
+}
+
 function bindSettingsForm() {
   const form = document.getElementById("settings-form");
   if (!form) return;
@@ -136,7 +159,7 @@ function bindSettingsForm() {
     ev.preventDefault();
     const data = new FormData(form);
     const body = {};
-    for (const k of ["maxPrsPerRun", "maxMinutes", "staleDays"]) {
+    for (const k of ["maxPrsPerRun", "maxMinutes", "maxErrors", "staleDays"]) {
       const v = data.get(k);
       if (v != null && v !== "") body[k] = Number(v);
     }
@@ -173,7 +196,7 @@ function syncSettingsForm(settings) {
   bindToggles(form);
 }
 
-// Auth form
+// Auth
 document.getElementById("auth-form")?.addEventListener("submit", (ev) => {
   ev.preventDefault();
   const input = document.getElementById("auth-token-input");
@@ -184,179 +207,66 @@ document.getElementById("auth-form")?.addEventListener("submit", (ev) => {
   setConnState(ConnState.UNKNOWN);
   refreshAll();
 });
-document.getElementById("auth-retry")?.addEventListener("click", () => {
-  setConnState(ConnState.UNKNOWN);
-  refreshAll();
-});
+document.getElementById("auth-retry")?.addEventListener("click", () => { setConnState(ConnState.UNKNOWN); refreshAll(); });
 
-// Workflow step buttons → existing endpoints
-async function callStep(action, payload = {}) {
-  const map = {
-    "doctor": () => api.post("/api/doctor/run", {}),
-    "score": () => api.post("/api/tasks/score", {}).catch(() => api.get("/api/tasks")),
-    "queue": () => refreshAll(),
-    "plan-next": () => api.post("/api/runner/start", { mode: "plan", dryRun: true }),
-    "reload-tasks": () => refreshAll(),
-  };
-  const fn = map[action];
-  if (!fn) return;
-  return fn();
-}
-
-document.querySelectorAll('[data-action="doctor"]').forEach((b) => {
-  b.addEventListener("click", () => runWithState(b, async () => {
-    const r = await callStep("doctor");
-    if (r?.runId) document.getElementById("log-run-select")?.dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
-    showToast("Doctor lancé", "ok");
-  }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
-});
-
-document.querySelectorAll('[data-action="score"]').forEach((b) => {
-  b.addEventListener("click", () => runWithState(b, async () => { await callStep("score"); showToast("Tâches rechargées", "ok"); }).catch(() => {}));
-});
-document.querySelectorAll('[data-action="queue"]').forEach((b) => {
-  b.addEventListener("click", () => runWithState(b, refreshAll).catch(() => {}));
-});
-document.querySelectorAll('[data-action="reload-tasks"]').forEach((b) => {
-  b.addEventListener("click", () => runWithState(b, refreshAll).catch(() => {}));
-});
-document.querySelectorAll('[data-action="plan-next"]').forEach((b) => {
-  b.addEventListener("click", () => runWithState(b, async () => {
-    const r = await callStep("plan-next");
-    if (r?.runId) document.getElementById("log-run-select")?.dispatchEvent(new CustomEvent("subscribe", { detail: r.runId }));
-    showToast("Plan next lancé", "ok");
-  }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
-});
-
-document.querySelectorAll('[data-action="doctor-summary"]').forEach((b) => {
-  b.addEventListener("click", () => runWithState(b, async () => {
+// Mission CTA
+async function runDoctor() {
+  try {
     const r = await api.get("/api/doctor/summary");
     if (r?.ok && r.summary) {
       lastDoctorSummary = r.summary;
       renderDoctor(r.summary);
-      showToast(r.summary.ok ? "Doctor green" : `Doctor ${r.summary.failed?.length ? "red" : "warn"}`, r.summary.ok ? "ok" : "warn");
+      logSummary.last = "Doctor finished";
+      logSummary.success = r.summary.ok ? "Doctor green" : null;
+      logSummary.error = r.summary.failed?.length ? `Doctor failed: ${r.summary.failed.join(", ")}` : null;
+      renderLogSummary(logSummary);
+      showToast(r.summary.ok ? "Doctor green" : "Doctor warn/red", r.summary.ok ? "ok" : "warn");
     } else {
       showToast(r?.reason ?? "Doctor failed", "err");
     }
-  }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
+  } catch (e) { showToast(redact(String(e?.message || e)), "err"); }
+}
+
+document.querySelectorAll('[data-action="doctor-summary"]').forEach((b) => {
+  b.addEventListener("click", () => runWithState(b, runDoctor).catch(() => {}));
 });
 
-document.querySelectorAll('[data-action="refresh-task"]').forEach((b) => {
-  b.addEventListener("click", () => runWithState(b, async () => {
-    const r = await api.get("/api/tasks/best");
-    lastBestTask = r;
-    renderSelectedTask(r);
-    showToast(r?.ok ? `#${r.best?.number} sélectionnée` : (r?.reason ?? "aucune task"), r?.ok ? "ok" : "warn");
-  }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
-});
-
-document.querySelectorAll('[data-action="prepare-best"]').forEach((b) => {
-  b.addEventListener("click", () => runWithState(b, async () => {
-    if (!lastBestTask?.best?.number) { showToast("Aucune task sélectionnée", "warn"); return; }
-    const r = await api.post("/api/v5/prepare-run", { issue: lastBestTask.best.number, mode: "plan" });
-    lastBestPrompt = r?.prompt ?? null;
-    const promptEl = document.getElementById("selected-task-prompt");
-    if (promptEl) {
-      promptEl.textContent = lastBestPrompt ?? "";
-      promptEl.classList.toggle("hidden", !lastBestPrompt);
-    }
-    const copyBtn = document.querySelector('[data-action="copy-best-prompt"]');
-    if (copyBtn) copyBtn.disabled = !lastBestPrompt;
-    showToast(`Prepared #${lastBestTask.best.number}`, "ok");
-  }).catch((e) => showToast(redact(String(e?.message || e)), "err")));
-});
-
-document.querySelectorAll('[data-action="copy-best-prompt"]').forEach((b) => {
-  b.addEventListener("click", () => {
-    if (!lastBestPrompt) return showToast("Prepare d'abord", "warn");
-    navigator.clipboard?.writeText(lastBestPrompt).then(() => showToast("Prompt copié — colle dans yu", "ok")).catch(() => {});
-  });
-});
-
-document.querySelectorAll('[data-action="scroll-logs"]').forEach((b) => {
-  b.addEventListener("click", () => {
-    document.querySelector('[data-tab="workspace"]')?.click();
-    document.getElementById("logs-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-});
-
-// V5 prompt block
-let lastV5Prompt = null;
-document.querySelector('[data-action="v5-prepare"]')?.addEventListener("click", async (ev) => {
+document.getElementById("mission-cta")?.addEventListener("click", async (ev) => {
   const btn = ev.currentTarget;
   await runWithState(btn, async () => {
-    const issue = Number(document.getElementById("v5-issue-prepare")?.value);
-    if (!Number.isInteger(issue) || issue <= 0) { showToast("Numéro d'issue invalide", "warn"); return; }
-    const r = await api.post("/api/v5/prepare-run", { issue, mode: "plan" });
-    lastV5Prompt = r?.prompt ?? null;
-    const view = document.getElementById("v5-prompt-view");
-    if (view) {
-      view.textContent = lastV5Prompt ?? "";
-      view.classList.toggle("hidden", !lastV5Prompt);
+    const m = findMode(activeModeId);
+    const ap = lastV5?.autopilot;
+    if (ap?.status === "waiting") {
+      const r = await resumeAutopilot(api);
+      showToast(r?.ok ? "Autopilot relancé" : (r?.reason ?? "—"), r?.ok ? "ok" : "warn");
+      refreshAll().catch(() => {});
+      return;
     }
-    showToast(`Prepared #${issue}`, "ok");
-  }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
-});
-document.querySelector('[data-action="v5-copy-prompt"]')?.addEventListener("click", () => {
-  if (!lastV5Prompt) return showToast("Prepare d'abord", "warn");
-  navigator.clipboard?.writeText(lastV5Prompt).then(() => showToast("Prompt copié", "ok")).catch(() => {});
-});
-document.querySelector('[data-action="v5-resume"]')?.addEventListener("click", async (ev) => {
-  await runWithState(ev.currentTarget, async () => {
-    const r = await api.post("/api/resume", {});
-    showToast(r?.canResume ? `Resume OK pour #${r.issue}` : `Bloqué : ${r?.reason ?? "?"}`, r?.canResume ? "ok" : "warn");
-  }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
-});
-
-// Autopilot CTAs
-function autopilotModeLabel(s) {
-  if (!s?.allowExec) return { label: "prompt-only", detail: "— flippe allowExec dans Settings pour exec réel." };
-  if (!s?.allowLoop) return { label: "run-one", detail: "— une PR puis stop." };
-  return { label: `loop max ${s.maxPrsPerRun ?? 2}`, detail: "— enchaîne jusqu'au budget PR/erreurs/temps." };
-}
-
-function applyModeLabel() {
-  const m = autopilotModeLabel(lastSettings);
-  const lbl = document.getElementById("autopilot-mode-label");
-  const det = document.getElementById("autopilot-mode-detail");
-  if (lbl) lbl.textContent = m.label;
-  if (det) det.textContent = m.detail;
-}
-
-let autopilotEvents = null;
-function subscribeAutopilotEvents() {
-  if (autopilotEvents) { try { autopilotEvents.close(); } catch {} autopilotEvents = null; }
-  if (!api.token) return;
-  const url = `/api/autopilot/events?token=${encodeURIComponent(api.token)}`;
-  try {
-    autopilotEvents = new EventSource(url);
-    autopilotEvents.addEventListener("state", (e) => {
-      try {
-        const ap = JSON.parse(e.data);
-        renderAutopilot({ ap, v5: lastV5, settings: lastSettings });
-      } catch {}
-    });
-    autopilotEvents.addEventListener("log", (e) => {
-      try {
-        const log = JSON.parse(e.data);
-        const view = document.getElementById("log-view");
-        if (view) { view.textContent += `[${log.stream}] ${log.chunk}`; if (document.getElementById("log-autoscroll")?.checked) view.scrollTop = view.scrollHeight; }
-      } catch {}
-    });
-  } catch { /* ignore */ }
-}
-
-document.getElementById("autopilot-start")?.addEventListener("click", async (ev) => {
-  await runWithState(ev.currentTarget, async () => {
-    const issueRaw = document.getElementById("v5-issue")?.value;
-    const issue = issueRaw ? Number(issueRaw) : null;
-    const mode = !lastSettings?.allowExec ? "plan" : (lastSettings?.allowLoop ? "loop" : "exec");
-    const r = await startAutopilot(api, { mode, issue: Number.isInteger(issue) && issue > 0 ? issue : null });
-    if (r?.ok && r.launched) subscribeAutopilotEvents();
-    if (r?.run) {
-      const promptEl = document.getElementById("autopilot-prompt");
-      if (r.prompt && promptEl) { promptEl.textContent = r.prompt; promptEl.classList.remove("hidden"); }
-      showToast(r.ok ? `Autopilot · #${r.run.issue ?? "?"}` : `${r.reason}`, r.ok ? "ok" : "warn");
+    if (ap?.status === "completed" && ap.lastPR?.url) {
+      window.open(ap.lastPR.url, "_blank", "noopener");
+      return;
+    }
+    if (m.full && lastReadiness && !lastReadiness.ready) {
+      openSettingsSection("safety");
+      showToast("Configure les items requis avant Full autopilot", "warn");
+      return;
+    }
+    if (m.requiresExec && !lastSettings?.allowExec) { openSettingsSection("safety"); showToast("Active allowExec", "warn"); return; }
+    if (m.requiresLoop && !lastSettings?.allowLoop) { openSettingsSection("safety"); showToast("Active allowLoop", "warn"); return; }
+    const customMax = Number(document.getElementById("mode-custom-value")?.value || 5);
+    const targetMax = m.custom ? customMax : m.maxPrs;
+    if (lastSettings && lastSettings.maxPrsPerRun !== targetMax) {
+      try { await api.put("/api/settings", { maxPrsPerRun: targetMax }); } catch {}
+    }
+    const apMode = m.mode;
+    const r = await startAutopilot(api, { mode: apMode, issue: null });
+    if (r?.run && r.prompt) {
+      lastBestPrompt = r.prompt;
+      navigator.clipboard?.writeText(r.prompt).catch(() => {});
+      showToast(`Prompt copié pour #${r.run.issue ?? "?"}`, "ok");
+    } else if (r?.ok) {
+      showToast(r.launched ? "Mission lancée" : "Mission préparée", "ok");
+      subscribeAutopilotEvents();
     } else {
       showToast(r?.reason ?? "Échec", "err");
     }
@@ -367,11 +277,10 @@ document.getElementById("autopilot-start")?.addEventListener("click", async (ev)
 document.getElementById("autopilot-stop")?.addEventListener("click", async (ev) => {
   await runWithState(ev.currentTarget, async () => {
     const r = await stopAutopilot(api);
-    showToast(r?.ok ? "Autopilot arrêté" : (r?.reason ?? "—"), r?.ok ? "ok" : "warn");
+    showToast(r?.ok ? "Autopilot stoppé" : (r?.reason ?? "—"), r?.ok ? "ok" : "warn");
     refreshAll().catch(() => {});
   }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
 });
-
 document.getElementById("autopilot-resume")?.addEventListener("click", async (ev) => {
   await runWithState(ev.currentTarget, async () => {
     const r = await resumeAutopilot(api);
@@ -379,6 +288,75 @@ document.getElementById("autopilot-resume")?.addEventListener("click", async (ev
     refreshAll().catch(() => {});
   }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
 });
+
+// Best task actions
+document.body.addEventListener("click", async (ev) => {
+  const btn = ev.target.closest("[data-best-action]");
+  if (!btn) return;
+  if (!lastBestTask?.best?.number) return;
+  const action = btn.dataset.bestAction;
+  if (action === "prepare") {
+    await runWithState(btn, async () => {
+      const r = await api.post("/api/v5/prepare-run", { issue: lastBestTask.best.number, mode: "plan" });
+      lastBestPrompt = r?.prompt ?? null;
+      const copyBtn = document.querySelector('[data-best-action="copy"]');
+      if (copyBtn) copyBtn.disabled = !lastBestPrompt;
+      showToast(`Prepared #${lastBestTask.best.number}`, "ok");
+    }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
+  } else if (action === "copy") {
+    if (!lastBestPrompt) return showToast("Prepare d'abord", "warn");
+    navigator.clipboard?.writeText(lastBestPrompt).then(() => showToast("Prompt copié", "ok")).catch(() => {});
+  } else if (action === "open" && lastBestTask.best.url) {
+    window.open(lastBestTask.best.url, "_blank", "noopener");
+  }
+});
+
+// Log drawer
+function mountLogDrawer() {
+  const drawer = document.getElementById("log-drawer");
+  document.getElementById("log-drawer-toggle")?.addEventListener("click", () => drawer.classList.toggle("open"));
+  document.querySelectorAll('[data-action="copy-logs"]').forEach((b) => {
+    b.addEventListener("click", () => {
+      const text = document.getElementById("log-view")?.textContent ?? "";
+      navigator.clipboard?.writeText(text).then(() => showToast("Logs copiés", "ok"));
+    });
+  });
+  document.querySelectorAll('[data-action="clear-logs"]').forEach((b) => {
+    b.addEventListener("click", () => { clearLogs(); showToast("Logs vidés"); });
+  });
+}
+
+// SSE autopilot
+let autopilotEvents = null;
+function subscribeAutopilotEvents() {
+  if (autopilotEvents) { try { autopilotEvents.close(); } catch {} autopilotEvents = null; }
+  if (!api.token) return;
+  const url = `/api/autopilot/events?token=${encodeURIComponent(api.token)}`;
+  try {
+    autopilotEvents = new EventSource(url);
+    autopilotEvents.addEventListener("state", (e) => {
+      try {
+        const ap = JSON.parse(e.data);
+        lastV5 = { ...(lastV5 || {}), autopilot: ap };
+        rerenderMission();
+        if (ap?.currentStep) {
+          logSummary.last = `Étape: ${ap.currentStep}`;
+          renderLogSummary(logSummary);
+        }
+        if (ap?.lastPR) {
+          logSummary.success = `PR #${ap.lastPR.number}`;
+          renderLogSummary(logSummary);
+        }
+      } catch {}
+    });
+    autopilotEvents.addEventListener("log", (e) => {
+      try {
+        const log = JSON.parse(e.data);
+        appendLogLine(`[${log.stream}] ${log.chunk}`);
+      } catch {}
+    });
+  } catch { /* ignore */ }
+}
 
 setConnState(api.token ? ConnState.UNKNOWN : ConnState.AUTH_REQUIRED);
 refreshAll();
