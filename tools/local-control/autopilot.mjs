@@ -133,6 +133,7 @@ export function buildAutopilotState({ id, mode, issue, branch, settingsSnapshot,
     completedAt: null,
     stopReason: null,
     pendingQuestionId: null,
+    pendingQuestion: null,
     prsCreated: 0,
     prUrl: null,
     prNumber: null,
@@ -339,9 +340,22 @@ export function markStopped(run, reason) {
   return run;
 }
 
-export function markWaitingOnQuestion(run, qid) {
+export function markWaitingOnQuestion(run, qid, question = null) {
   run.status = 'waiting';
   run.pendingQuestionId = qid;
+  run.pendingQuestion = question
+    ? {
+        qid,
+        issue: question.issue ?? run.issue ?? null,
+        question: question.question ?? null,
+        why: question.why ?? null,
+        options: Array.isArray(question.options) ? question.options : [],
+        recommendation: question.recommendation ?? null,
+        githubUrl: question.githubUrl ?? null,
+        blockLevel: question.blockLevel ?? null,
+        capturedAt: new Date().toISOString(),
+      }
+    : (run.pendingQuestion ?? { qid, issue: run.issue ?? null });
   run.resumeAvailable = true;
   run.nextAction = `answer question ${qid}`;
   return run;
@@ -370,6 +384,7 @@ export function exportRunSummary(run) {
     completedAt: run.completedAt,
     stopReason: run.stopReason,
     pendingQuestionId: run.pendingQuestionId,
+    pendingQuestion: run.pendingQuestion ?? null,
     prsCreated: run.prsCreated,
     prUrl: run.prUrl ?? run.lastPR?.url ?? null,
     prNumber: run.prNumber ?? run.lastPR?.number ?? null,
@@ -460,6 +475,68 @@ export function findOpenPRForBranch(repoRoot, branch) {
   } catch { return null; }
 }
 
+export function parseClaudeQuestionBody(body) {
+  if (!body || !body.startsWith('<!-- claude-question v1')) return null;
+  const close = body.indexOf('-->');
+  if (close === -1) return null;
+  const headerInner = body.slice('<!-- claude-question v1'.length, close);
+  const meta = {};
+  for (const raw of headerInner.split('\n')) {
+    const line = raw.trim();
+    const kv = line.match(/^([a-zA-Z][\w]*)\s*:\s*(.*)$/);
+    if (kv) meta[kv[1]] = kv[2];
+  }
+  const text = body.slice(close + 3).trim();
+  // mini-parser inline (mirror tools/task-questions.mjs:parseQuestionPayload)
+  const lines = text.split('\n');
+  let section = null;
+  let question = null, why = null, recommendation = null;
+  let firstStrongLine = null, firstLooseLine = null;
+  const options = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    const m = line.match(/^\*\*Q\s*\(#?\d*\)?\*\*\s*:\s*(.*)$/i);
+    if (m) { question = m[1]; section = 'q'; continue; }
+    const w = line.match(/^\*\*Pourquoi je demande\*\*\s*:\s*(.*)$/i);
+    if (w) { why = w[1]; section = 'why'; continue; }
+    if (/^\*\*Options\*\*/i.test(line)) { section = 'options'; continue; }
+    const rec = line.match(/^\*\*Recommandation\s+Claude\*\*\s*:\s*(.*)$/i);
+    if (rec) { recommendation = rec[1]; section = 'rec'; continue; }
+    if (line && firstLooseLine == null) firstLooseLine = line;
+    if (firstStrongLine == null && /^\*\*[^*]+\*\*/.test(line)) firstStrongLine = line.replace(/^\*\*([^*]+)\*\*\s*:?\s*/, '$1');
+    if (section === 'options' && /^([-*]|[A-Z]\))\s+/.test(line)) options.push(line.replace(/^([-*])\s+/, '').trim());
+    else if (section === 'q' && line && !line.startsWith('**')) question = (question ? question + ' ' : '') + line;
+    else if (section === 'why' && line && !line.startsWith('**')) why = (why ? why + ' ' : '') + line;
+    else if (section === 'rec' && line && !line.startsWith('**')) recommendation = (recommendation ? recommendation + ' ' : '') + line;
+  }
+  if (!question && firstStrongLine) question = firstStrongLine;
+  if (!question && firstLooseLine) question = firstLooseLine.slice(0, 200);
+  return { meta, text, question, why, options, recommendation };
+}
+
+export function fetchPRSnapshot(repoRoot, prNumber) {
+  if (!Number.isInteger(prNumber) || prNumber <= 0) return null;
+  const r = spawnSync('gh', ['pr', 'view', String(prNumber), '--json', 'number,url,title,state,isDraft,mergedAt,closedAt,headRefName'], {
+    cwd: repoRoot, encoding: 'utf8',
+  });
+  if (r.status !== 0) return null;
+  try {
+    const j = JSON.parse(r.stdout);
+    let state = String(j.state || '').toLowerCase();
+    if (j.mergedAt) state = 'merged';
+    return {
+      number: j.number,
+      url: j.url,
+      title: j.title,
+      state,
+      isDraft: !!j.isDraft,
+      mergedAt: j.mergedAt ?? null,
+      closedAt: j.closedAt ?? null,
+      branch: j.headRefName ?? null,
+    };
+  } catch { return null; }
+}
+
 export function findClaudeQuestionOnIssue(repoRoot, issueNum) {
   const r = spawnSync('gh', ['api', `repos/{owner}/{repo}/issues/${issueNum}/comments`], {
     cwd: repoRoot, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024,
@@ -469,10 +546,22 @@ export function findClaudeQuestionOnIssue(repoRoot, issueNum) {
     const arr = JSON.parse(r.stdout);
     if (!Array.isArray(arr)) return null;
     for (const c of arr.slice().reverse()) {
-      if (typeof c.body === 'string' && c.body.startsWith('<!-- claude-question v1')) {
-        const qid = (c.body.match(/qid:\s*([\w-]+)/) ?? [])[1] ?? `q-${c.id}`;
-        return { id: qid, url: c.html_url };
-      }
+      const parsed = parseClaudeQuestionBody(c.body || '');
+      if (!parsed) continue;
+      const qid = parsed.meta.qid || `q-${c.id}`;
+      return {
+        id: qid,
+        qid,
+        url: c.html_url,
+        githubUrl: c.html_url,
+        issue: Number(parsed.meta.taskIssue ?? issueNum),
+        blockLevel: parsed.meta.blockLevel ?? null,
+        question: parsed.question ?? null,
+        why: parsed.why ?? null,
+        options: parsed.options,
+        recommendation: parsed.recommendation ?? null,
+        text: parsed.text,
+      };
     }
   } catch { /* ignore */ }
   return null;
@@ -745,9 +834,9 @@ export class AutopilotEngine {
     }
     const q = findClaudeQuestionOnIssue(this.repoRoot, issueNum);
     if (q) {
-      markWaitingOnQuestion(run, q.id);
+      markWaitingOnQuestion(run, q.id, q);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return { kind: 'waiting', fatal: false, qid: q.id };
+      return { kind: 'waiting', fatal: false, qid: q.id, question: q };
     }
     runStep(run, 'no-pr-no-question');
     recordError(run, new Error('claude did not open PR and posted no question'));
@@ -779,6 +868,7 @@ export class AutopilotEngine {
       return { ok: false, reason: 'pending question not answered' };
     }
     run.pendingQuestionId = null;
+    run.pendingQuestion = null;
     run.status = 'running';
     run.nextAction = 'continue';
     runStep(run, 'resumed');
@@ -787,6 +877,12 @@ export class AutopilotEngine {
   }
 
   current() { return this.activeRun ? exportRunSummary(this.activeRun) : null; }
+
+  latest() {
+    if (this.activeRun) return exportRunSummary(this.activeRun);
+    if (!this.store) return null;
+    try { return exportRunSummary(this.store.latest()); } catch { return null; }
+  }
 
   history({ limit = 20 } = {}) {
     if (!this.store) return [];
@@ -803,6 +899,62 @@ export class AutopilotEngine {
       const r = this.store.load(runId);
       return r ? exportRunSummary(r) : null;
     } catch { return null; }
+  }
+
+  async answerQuestion({ qid, answer, issue = null }) {
+    const run = this.activeRun;
+    if (!run) return { ok: false, reason: 'no active run' };
+    if (run.status !== 'waiting') return { ok: false, reason: `run status is ${run.status}` };
+    const expectedQid = run.pendingQuestionId;
+    if (qid && expectedQid && qid !== expectedQid) return { ok: false, reason: 'qid mismatch' };
+    const trimmed = String(answer ?? '').trim();
+    if (!trimmed) return { ok: false, reason: 'answer required' };
+    const targetIssue = issue ?? run.pendingQuestion?.issue ?? run.issue ?? null;
+    if (!Number.isInteger(targetIssue) || targetIssue <= 0) return { ok: false, reason: 'cannot determine issue' };
+    const targetQid = qid || expectedQid;
+    if (!targetQid) return { ok: false, reason: 'no pending question id' };
+    const args = ['tools/task-questions.mjs', 'answer', '--qid', targetQid, '--issue', String(targetIssue), '--answer', trimmed, '--json'];
+    const r = spawnSync('node', args, { cwd: this.repoRoot, encoding: 'utf8' });
+    if (r.status !== 0) {
+      const err = redactSecrets((r.stderr || r.stdout || '').toString().slice(-400), [run.settingsSnapshot?.authToken].filter(Boolean));
+      recordError(run, new Error('answer post failed: ' + err));
+      this._persist(); this._emit('state', exportRunSummary(run));
+      return { ok: false, reason: err || 'answer post failed' };
+    }
+    if (!Array.isArray(run.questionLog)) run.questionLog = [];
+    run.questionLog.push({ qid: targetQid, issue: targetIssue, answer: trimmed.slice(0, 4000), at: new Date().toISOString() });
+    if (this.notifier) {
+      try { await this.notifier.notify('question_required', { runId: run.id, qid: targetQid, status: 'answered' }); } catch {}
+    }
+    return this.resume({ answeredQid: targetQid });
+  }
+
+  refreshPrStatus({ runId = null } = {}) {
+    const target = runId ? this.getRun(runId) : (this.activeRun ? exportRunSummary(this.activeRun) : (this.store?.latest() ? exportRunSummary(this.store.latest()) : null));
+    if (!target) return { ok: false, reason: 'no run available' };
+    const list = Array.isArray(target.createdPrs) ? target.createdPrs : [];
+    if (!list.length) return { ok: true, prs: [] };
+    const updated = [];
+    for (const entry of list) {
+      const snap = fetchPRSnapshot(this.repoRoot, Number(entry.number));
+      updated.push({ ...entry, ...(snap ?? {}), refreshedAt: new Date().toISOString() });
+    }
+    // Also persist back to active run if matches
+    if (this.activeRun?.id === target.id) {
+      this.activeRun.createdPrs = updated;
+      if (this.activeRun.missionReport) this.activeRun.missionReport.createdPrs = updated;
+      this._persist();
+    } else if (this.store && target.id) {
+      try {
+        const raw = this.store.load(target.id);
+        if (raw) {
+          raw.createdPrs = updated;
+          if (raw.missionReport) raw.missionReport.createdPrs = updated;
+          this.store.save(raw);
+        }
+      } catch { /* ignore */ }
+    }
+    return { ok: true, prs: updated };
   }
 
   reset() {

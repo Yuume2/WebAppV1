@@ -86,3 +86,49 @@ describe('buildQuestionBody', () => {
     assert.doesNotMatch(body, /\*\*Options\*\*/);
   });
 });
+
+import { parseQuestionPayload } from './task-questions.mjs';
+
+describe('parseQuestionPayload', () => {
+  it('extracts question, why, options, recommendation', () => {
+    const text = [
+      '**Q (#41)** : Should we ship X?',
+      '',
+      '**Pourquoi je demande** : impact on cache layer.',
+      '',
+      '**Options**',
+      '- A) ship as is',
+      '- B) defer to next sprint',
+      '',
+      '**Recommandation Claude** : option A',
+      '',
+    ].join('\n');
+    const p = parseQuestionPayload(text);
+    assert.match(p.question, /ship X/);
+    assert.match(p.why, /cache layer/);
+    assert.deepEqual(p.options, ['A) ship as is', 'B) defer to next sprint']);
+    assert.match(p.recommendation, /option A/);
+  });
+
+  it('returns empty fields when text is empty', () => {
+    const p = parseQuestionPayload('');
+    assert.equal(p.question, null);
+    assert.deepEqual(p.options, []);
+    assert.equal(p.recommendation, null);
+  });
+
+  it('handles question without options or recommendation', () => {
+    const p = parseQuestionPayload('**Q (#9)** : OK?\n\n**Pourquoi je demande** : safety.');
+    assert.match(p.question, /OK\?/);
+    assert.match(p.why, /safety/);
+    assert.deepEqual(p.options, []);
+    assert.equal(p.recommendation, null);
+  });
+
+  it('handles multi-line question body', () => {
+    const text = '**Q (#1)** : line one\nline two';
+    const p = parseQuestionPayload(text);
+    assert.match(p.question, /line one/);
+    assert.match(p.question, /line two/);
+  });
+});

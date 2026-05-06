@@ -80,6 +80,11 @@
       <input id="mode-custom-value" type="number" min="1" max="20" value="5" />
     </div>
 
+    <div class="activity-ticker idle" id="activity-ticker">
+      <span class="pulse" aria-hidden="true"></span>
+      <span class="ticker-text">Cockpit ready.</span>
+    </div>
+
     <div class="mission-progress hidden-step" id="mission-progress">
       <div class="mission-progress-head">
         <div class="mission-progress-status">
@@ -103,11 +108,21 @@
     </div>
   </div>
 
+  <!-- Inline human-question card (visible when status=waiting) -->
+  <div class="card question-card hidden" id="mission-question"></div>
+
   <!-- Live unattended run summary (visible during running unattended loop) -->
   <div class="card mission-unattended hidden" id="mission-unattended"></div>
 
   <!-- Mission result (visible when run is finished/failed/stopped) -->
   <div class="card mission-result hidden" id="mission-result"></div>
+
+  <!-- Recent runs (last completed missions) -->
+  <div class="section-header">
+    <h2>Derniers runs</h2>
+    <span class="section-sub">Historique des missions récentes.</span>
+  </div>
+  <div class="recent-runs hidden" id="recent-runs"></div>
 
   <!-- Full autopilot checklist (only shown when mode = full) -->
   <div class="card hidden" id="full-checklist-card">

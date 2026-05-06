@@ -390,7 +390,8 @@ export function renderUnattendedRun(ap) {
   const prList = prs.length ? prs.map((p) => `
     <li class="pr-item">
       <a href="${escapeHtml2(p.url || '#')}" target="_blank" rel="noopener">PR #${p.number ?? '?'}</a>
-      <span class="muted small">${escapeHtml2(p.title || '')}</span>
+      <span class="pr-state ${prStateClass(p)}">${escapeHtml2(prStateLabel(p))}</span>
+      <span class="pr-title">${escapeHtml2(p.title || '')}</span>
     </li>
   `).join('') : '<li class="muted small">Aucune PR pour l\'instant.</li>';
   const currentLine = ap.issue
@@ -442,7 +443,8 @@ export function renderMissionResult(ap) {
         ${created.map((p) => `
           <li class="pr-item">
             <a href="${escapeHtml2(p.url || '#')}" target="_blank" rel="noopener">PR #${p.number ?? '?'}</a>
-            <span class="muted small">${escapeHtml2(p.title || '')}</span>
+            <span class="pr-state ${prStateClass(p)}">${escapeHtml2(prStateLabel(p))}</span>
+            <span class="pr-title">${escapeHtml2(p.title || '')}</span>
           </li>
         `).join('')}
       </ul>
@@ -495,6 +497,7 @@ export function renderMissionResult(ap) {
       ${created.length === 1 ? `<button data-result-action="open-pr" class="primary">Open PR</button>` : ''}
       ${created.length > 1 ? `<button data-result-action="open-all-prs" class="primary">Open all PRs</button>` : ''}
       ${created.length ? `<button data-result-action="copy-pr-links">Copy PR links</button>` : ''}
+      ${created.length ? `<button data-result-action="refresh-pr-status" class="ghost">Refresh PR status</button>` : ''}
       ${failed.length ? `<button data-result-action="retry">Retry failed</button>` : ''}
       <button data-result-action="copy-diagnostic">Copy diagnostic</button>
       <button data-result-action="open-logs" class="ghost">Open logs</button>
@@ -543,4 +546,163 @@ export function buildDiagnostic(ap) {
     ...(ap.log ?? []).slice(-10).map((l) => `- ${l.at} · ${l.step}${l.error ? ' · ERR: ' + l.error : ''}`),
   ];
   return lines.join('\n');
+}
+
+export function prStateClass(p) {
+  const s = String(p?.state ?? '').toLowerCase();
+  if (s === 'merged') return 'merged';
+  if (s === 'open') return p?.isDraft ? 'draft' : 'open';
+  if (s === 'closed') return 'closed';
+  if (s === 'draft') return 'draft';
+  return 'unknown';
+}
+export function prStateLabel(p) {
+  const s = String(p?.state ?? '').toLowerCase();
+  if (s === 'merged') return 'merged';
+  if (s === 'open') return p?.isDraft ? 'draft' : 'open';
+  if (s === 'closed') return 'closed';
+  if (s === 'draft') return 'draft';
+  return '—';
+}
+
+function _esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+export function buildActivityTickerState(ap) {
+  if (!ap || ap.status === 'idle' || !ap.status) {
+    return { tone: 'idle', text: 'Cockpit ready. Lance une mission pour démarrer.', meta: '' };
+  }
+  if (ap.status === 'waiting') {
+    return { tone: 'warn', text: ap.pendingQuestion?.question ? `Décision humaine : ${truncate(ap.pendingQuestion.question, 80)}` : 'Décision humaine requise.', meta: ap.pendingQuestionId ?? '' };
+  }
+  if (ap.status === 'failed') {
+    return { tone: 'err', text: humanFailureReason(ap), meta: ap.stopReason ?? '' };
+  }
+  if (ap.status === 'stopped') {
+    return { tone: 'warn', text: ap.stopReason ? `Stoppé · ${ap.stopReason}` : 'Mission stoppée.', meta: '' };
+  }
+  if (ap.status === 'completed') {
+    const created = (ap.missionReport?.createdPrs ?? ap.createdPrs ?? []).length;
+    return { tone: 'idle', text: created ? `Mission terminée · ${created} PR créée${created > 1 ? 's' : ''}.` : 'Mission terminée.', meta: '' };
+  }
+  // running
+  const step = ap.currentStep || 'preflight';
+  const labels = {
+    preflight: 'Préflight…',
+    'preflight-ok': 'Préflight OK, sélection de la task…',
+    'task-selected': `Task sélectionnée${ap.issue ? ' #' + ap.issue : ''}`,
+    'reset-to-main': 'Sync main…',
+    'create-branch': 'Création de la branche…',
+    'launching-claude': 'Lancement Claude…',
+    'claude-running': 'Claude is coding…',
+    'claude-exited': 'Claude a fini, vérification…',
+    'task-guard': 'Task guard en cours…',
+    'check-pr': 'Vérification PR…',
+    'pr-created': 'PR créée 🎉',
+    'no-pr-no-question': 'Pas de PR détectée.',
+    resumed: 'Reprise après réponse humaine…',
+  };
+  const completed = (ap.completedIssues ?? []).length;
+  const failed = (ap.failedIssues ?? []).length;
+  const meta = ap.unattended ? `${completed} done · ${failed} failed${ap.plannedTasks ? ` · ${ap.plannedTasks} target` : ''}` : (ap.issue ? `#${ap.issue}` : '');
+  return { tone: 'live', text: labels[step] || `Étape : ${step.replace(/-/g, ' ')}`, meta };
+}
+
+function truncate(s, n) { const t = String(s ?? ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; }
+
+export function renderActivityTicker(ap) {
+  const host = document.getElementById('activity-ticker');
+  if (!host) return;
+  const s = buildActivityTickerState(ap);
+  host.classList.remove('idle', 'warn', 'err');
+  if (s.tone === 'idle') host.classList.add('idle');
+  if (s.tone === 'warn') host.classList.add('warn');
+  if (s.tone === 'err') host.classList.add('err');
+  host.innerHTML = `
+    <span class="pulse" aria-hidden="true"></span>
+    <span class="ticker-text">${_esc(s.text)}</span>
+    ${s.meta ? `<span class="ticker-meta">${_esc(s.meta)}</span>` : ''}
+  `;
+}
+
+export function renderQuestionCard(ap, opts = {}) {
+  const host = document.getElementById('mission-question');
+  if (!host) return;
+  const q = ap?.pendingQuestion;
+  const isWaiting = ap?.status === 'waiting';
+  if (!isWaiting || !q) {
+    host.classList.add('hidden');
+    host.innerHTML = '';
+    host.dataset.renderedQid = '';
+    return;
+  }
+  host.classList.remove('hidden');
+  const isLive = opts.isLive !== false;
+  const qidKey = `${q.qid || ap.pendingQuestionId || ''}|${isLive ? 'live' : 'stale'}`;
+  // Skip re-render if the question and mode are unchanged AND the user has typed
+  // something in the textarea (avoid wiping in-progress answer during polling).
+  if (host.dataset.renderedQid === qidKey) {
+    const ta = document.getElementById('q-answer-input');
+    if (ta && ta.value && ta.value.length > 0) return;
+  }
+  const optionsHtml = (q.options ?? []).map((opt) => {
+    const recommended = q.recommendation && (opt === q.recommendation || opt.startsWith(String(q.recommendation).trim()));
+    return `<button type="button" class="q-option ${recommended ? 'recommended' : ''}" data-q-option="${_esc(opt)}">
+      <span>${_esc(opt)}</span>
+      ${recommended ? '<span class="recommended-tag">recommandé</span>' : ''}
+    </button>`;
+  }).join('');
+  const recBlock = q.recommendation && !(q.options ?? []).some((o) => o === q.recommendation || o.startsWith(String(q.recommendation).trim()))
+    ? `<div class="q-recommendation">💡 Recommandation Claude : ${_esc(q.recommendation)}</div>`
+    : '';
+  host.innerHTML = `
+    <div class="q-head">
+      <span class="q-eyebrow">Décision humaine</span>
+      ${q.blockLevel ? `<span class="badge warn">${_esc(q.blockLevel)}</span>` : ''}
+      <span class="q-issue">${q.issue ? '#' + q.issue : ''} · ${_esc(q.qid || ap.pendingQuestionId || '')}</span>
+    </div>
+    <h3 class="q-title">${_esc(q.question || 'Claude a posé une question.')}</h3>
+    ${q.why ? `<p class="q-why">${_esc(q.why)}</p>` : ''}
+    ${optionsHtml ? `<div class="q-options">${optionsHtml}</div>` : ''}
+    ${recBlock}
+    <label class="q-answer-label" for="q-answer-input">Ta réponse</label>
+    <textarea id="q-answer-input" class="q-answer" placeholder="Réponds en quelques mots… (Cmd/Ctrl+Enter pour envoyer)"></textarea>
+    <div class="q-actions">
+      ${isLive
+        ? `<button type="button" class="primary" data-q-action="submit">Envoyer la réponse et reprendre</button>`
+        : `<button type="button" class="primary" data-q-action="submit-stale">Envoyer la réponse (run précédent)</button>
+           <button type="button" class="ghost" data-result-action="reset">Reset run</button>`}
+      ${q.githubUrl ? `<a class="ghost" href="${_esc(q.githubUrl)}" target="_blank" rel="noopener" data-q-action="open-github">Voir sur GitHub</a>` : ''}
+      <span class="q-hint">${isLive ? (q.options?.length ? 'Clique sur une option pour la pré-remplir.' : '') : 'Run hors-mémoire — réponse postée sur GitHub uniquement.'}</span>
+    </div>
+  `;
+  host.dataset.renderedQid = qidKey;
+}
+
+export function renderRecentRuns(items) {
+  const host = document.getElementById('recent-runs');
+  if (!host) return;
+  if (!items || !items.length) { host.classList.add('hidden'); host.innerHTML = ''; return; }
+  host.classList.remove('hidden');
+  host.innerHTML = items.map((r) => {
+    const outcome = r.outcome || r.status || 'unknown';
+    const dur = r.durationMs ? ` · ${formatDuration(r.durationMs)}` : '';
+    const when = r.completedAt ? new Date(r.completedAt).toLocaleString() : (r.startedAt ? new Date(r.startedAt).toLocaleString() : '—');
+    const pr = r.firstPr?.url ? `<a href="${_esc(r.firstPr.url)}" target="_blank" rel="noopener" class="rr-pr">PR #${r.firstPr.number ?? '?'}</a>` : (r.prsCreated ? `<span class="muted small">${r.prsCreated} PR</span>` : '<span class="muted small">—</span>');
+    return `<div class="recent-run">
+      <span class="rr-outcome ${_esc(outcome)}">${_esc(outcome)}</span>
+      <span class="rr-summary">${_esc(r.summary || `${r.completedIssues ?? 0} done · ${r.failedCount ?? 0} failed`)}</span>
+      ${pr}
+      <span class="rr-meta">${_esc(when)}${_esc(dur)}</span>
+    </div>`;
+  }).join('');
+}
+
+function formatDuration(ms) {
+  if (!ms || ms < 0) return '';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60); const sr = s % 60;
+  if (m < 60) return `${m}m ${sr}s`;
+  const h = Math.floor(m / 60); const mr = m % 60;
+  return `${h}h ${mr}m`;
 }

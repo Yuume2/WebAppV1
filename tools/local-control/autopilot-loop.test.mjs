@@ -158,3 +158,41 @@ test('buildMissionReport handles waiting state', () => {
   assert.equal(rep.outcome, 'waiting');
   assert.match(rep.nextAction, /Answer pending question/);
 });
+
+import { markWaitingOnQuestion, parseClaudeQuestionBody } from './autopilot.mjs';
+import { test as t2 } from 'node:test';
+t2('markWaitingOnQuestion captures full question payload', () => {
+  const r = buildAutopilotState({ mode: 'loop' });
+  markWaitingOnQuestion(r, 'q-9-1', { issue: 9, question: 'Ship?', why: 'race', options: ['A) yes', 'B) no'], recommendation: 'A', githubUrl: 'http://x' });
+  assert.equal(r.status, 'waiting');
+  assert.equal(r.pendingQuestionId, 'q-9-1');
+  assert.equal(r.pendingQuestion.issue, 9);
+  assert.match(r.pendingQuestion.question, /Ship\?/);
+  assert.deepEqual(r.pendingQuestion.options, ['A) yes', 'B) no']);
+  assert.equal(r.pendingQuestion.recommendation, 'A');
+});
+
+t2('parseClaudeQuestionBody extracts options and recommendation', () => {
+  const body = [
+    '<!-- claude-question v1',
+    'qid: q-12-3',
+    'taskIssue: 12',
+    'blockLevel: hard',
+    '-->',
+    '',
+    '**Q (#12)** : Foo or bar?',
+    '',
+    '**Pourquoi je demande** : ambiguous spec.',
+    '',
+    '**Options**',
+    '- A) foo',
+    '- B) bar',
+    '',
+    '**Recommandation Claude** : B',
+  ].join('\n');
+  const p = parseClaudeQuestionBody(body);
+  assert.equal(p.meta.qid, 'q-12-3');
+  assert.match(p.question, /Foo or bar/);
+  assert.deepEqual(p.options, ['A) foo', 'B) bar']);
+  assert.equal(p.recommendation, 'B');
+});

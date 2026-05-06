@@ -71,6 +71,44 @@ export function parseQuestionComment(commentBody) {
   return { meta, text };
 }
 
+export function parseQuestionPayload(text) {
+  if (!text) return { question: null, why: null, options: [], recommendation: null };
+  const lines = String(text).split('\n');
+  let section = null;
+  let question = null;
+  let why = null;
+  let recommendation = null;
+  const options = [];
+  let firstStrongLine = null;
+  let firstLooseLine = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (firstLooseLine == null) firstLooseLine = line;
+    const m = line.match(/^\*\*Q\s*\(#?\d*\)?\*\*\s*:\s*(.*)$/i);
+    if (m) { question = m[1]; section = 'q'; continue; }
+    const w = line.match(/^\*\*Pourquoi je demande\*\*\s*:\s*(.*)$/i) || line.match(/^###?\s+Why$/i);
+    if (w) { why = w[1] ?? null; section = 'why'; continue; }
+    if (/^(\*\*Options\*\*|###?\s+Options\b)/i.test(line)) { section = 'options'; continue; }
+    const rec = line.match(/^\*\*Recommandation\s+Claude\*\*\s*:\s*(.*)$/i) || line.match(/^###?\s+Recommendation\b/i);
+    if (rec) { recommendation = rec[1] ?? null; section = 'rec'; continue; }
+    // strong heading like **Foo** at start of body becomes question fallback
+    if (firstStrongLine == null && /^\*\*[^*]+\*\*/.test(line)) firstStrongLine = line.replace(/^\*\*([^*]+)\*\*\s*:?\s*/, '$1');
+    if (section === 'options' && /^([-*]|[A-Z]\))\s+/.test(line)) {
+      options.push(line.replace(/^([-*]|[A-Z]\))\s+/, (s) => s.trim().match(/^[A-Z]\)/) ? s : '').trim());
+    } else if (section === 'q' && line && !line.startsWith('**')) {
+      question = (question ? question + ' ' : '') + line;
+    } else if (section === 'why' && line && !line.startsWith('**')) {
+      why = (why ? why + ' ' : '') + line;
+    } else if (section === 'rec' && line && !line.startsWith('**')) {
+      recommendation = (recommendation ? recommendation + ' ' : '') + line;
+    }
+  }
+  if (!question && firstStrongLine) question = firstStrongLine;
+  if (!question && firstLooseLine) question = firstLooseLine.slice(0, 200);
+  return { question, why, options, recommendation };
+}
+
 export function parseAnswerComment(commentBody) {
   if (!commentBody || !commentBody.startsWith(ANSWER_MARKER)) return null;
   const close = commentBody.indexOf('-->');
@@ -180,7 +218,46 @@ function getArg(args, name) {
 
 function cmdList(args) {
   const issue = getArg(args, '--issue');
+  const wantJson = args.includes('--json');
   const issues = issue ? [Number(issue)] : fetchOpenIssueNumbers();
+  if (wantJson) {
+    const items = [];
+    for (const n of issues) {
+      const qs = listQuestionsOnIssue(n);
+      const ans = listAnswersOnIssue(n);
+      const answeredQids = new Set(ans.map((a) => a.qid));
+      for (const q of qs) {
+        const payload = parseQuestionPayload(q.text);
+        const qid = q.meta.qid || (q.commentId ? `q-${n}-c${q.commentId}` : `q-${n}-anon`);
+        const status = q.meta.status || (answeredQids.has(qid) ? 'answered' : 'pending');
+        items.push({
+          id: qid,
+          qid,
+          issue: Number(q.meta.taskIssue ?? n),
+          blockLevel: q.meta.blockLevel ?? null,
+          status,
+          createdAt: q.meta.createdAt ?? null,
+          defaultIfNoAnswer: q.meta.defaultIfNoAnswer ?? null,
+          defaultDelayHours: q.meta.defaultDelayHours ? Number(q.meta.defaultDelayHours) : null,
+          text: q.text,
+          question: payload.question,
+          why: payload.why,
+          options: payload.options,
+          recommendation: payload.recommendation,
+          githubUrl: q.htmlUrl,
+          author: q.author ?? null,
+          answers: ans.filter((a) => a.qid === q.meta.qid).map((a) => ({
+            text: a.text,
+            author: a.author ?? null,
+            createdAt: a.createdAt ?? null,
+            githubUrl: a.htmlUrl,
+          })),
+        });
+      }
+    }
+    process.stdout.write(JSON.stringify({ items }, null, 2) + '\n');
+    return;
+  }
   let total = 0;
   for (const n of issues) {
     const qs = listQuestionsOnIssue(n);
@@ -262,6 +339,36 @@ function cmdAnswers(args) {
   }
 }
 
+function cmdAnswer(args) {
+  const qid = getArg(args, '--qid') ?? getArg(args, '--id');
+  const answer = getArg(args, '--answer');
+  let issue = Number(getArg(args, '--issue') ?? 0);
+  const DRY = args.includes('--dry-run');
+  const wantJson = args.includes('--json');
+  if (!qid || !answer) die('--qid (or --id) and --answer required');
+  if (!issue) {
+    const m = String(qid).match(/^q-(\d+)-/);
+    if (!m) die('cannot derive issue from qid; pass --issue N');
+    issue = Number(m[1]);
+  }
+  const body = `<!-- claude-answer qid: ${qid} -->\n\n${answer}`;
+  if (DRY) {
+    if (wantJson) process.stdout.write(JSON.stringify({ ok: true, dryRun: true, qid, issue, body }) + '\n');
+    else { console.log(c.cyan('DRY-RUN: would post:')); console.log(body); }
+    return;
+  }
+  const r = postComment(issue, body);
+  if (!r.ok) {
+    if (wantJson) { process.stdout.write(JSON.stringify({ ok: false, qid, issue, error: r.err.slice(0, 500) }) + '\n'); process.exit(1); }
+    die(`failed to post answer: ${r.err}`);
+  }
+  // Best-effort resolution comment so cmdList can mark answered.
+  const note = `Answer recorded for ${qid} via cockpit.`;
+  postComment(issue, `<!-- claude-resolution qid: ${qid} -->\n\n${note}`);
+  if (wantJson) process.stdout.write(JSON.stringify({ ok: true, qid, issue }) + '\n');
+  else console.log(c.green(`✓ answer posted for ${qid} on #${issue}`));
+}
+
 function cmdResolve(args) {
   const qid = getArg(args, '--qid');
   const issue = Number(getArg(args, '--issue') ?? 0);
@@ -290,6 +397,7 @@ function main() {
   else if (cmd === 'read') cmdRead(rest);
   else if (cmd === 'answers') cmdAnswers(rest);
   else if (cmd === 'resolve') cmdResolve(rest);
+  else if (cmd === 'answer') cmdAnswer(rest);
   else die(`unknown command: ${cmd}`);
 }
 
