@@ -513,7 +513,22 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
     }
     if (method === 'GET' && path === '/api/autopilot/status') {
       const ap = getAutopilot();
-      return send(res, 200, { autopilot: ap.current() });
+      const current = ap.current();
+      const history = ap.history({ limit: 10 });
+      const latest = current ?? history[0] ?? null;
+      return send(res, 200, { autopilot: current, latest, history });
+    }
+    if (method === 'GET' && /^\/api\/autopilot\/runs\/[A-Za-z0-9-]+$/.test(path)) {
+      const id = path.split('/').pop();
+      const ap = getAutopilot();
+      const r = ap.getRun(id);
+      if (!r) return sendErr(res, 404, 'run not found');
+      return send(res, 200, r);
+    }
+    if (method === 'POST' && path === '/api/autopilot/reset') {
+      const ap = getAutopilot();
+      const r = ap.reset();
+      return send(res, r.ok ? 200 : 409, r);
     }
     if (method === 'GET' && path === '/api/autopilot/events') {
       const ap = getAutopilot();
