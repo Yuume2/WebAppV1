@@ -21,6 +21,7 @@ import { evaluateResume } from './resume.mjs';
 import { evaluateNotionConfig, validateNotionDatabase } from './integrations/notion-questions.mjs';
 import { evaluateN8nConfig } from './integrations/n8n-webhooks.mjs';
 import { evaluateWhatsappConfig } from './integrations/whatsapp.mjs';
+import { MissionNotifier, evaluateNotifierStatus } from './integrations/notifier.mjs';
 import { AutopilotEngine, exportRunSummary, loadQueueItems } from './autopilot.mjs';
 import { runDoctorJson, summarizeDoctor } from './doctor.mjs';
 import { selectBestTask, evaluateRunnability } from './task-select.mjs';
@@ -75,6 +76,13 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
   const v5Store = new V5StateStore(repoRoot);
   const autopilotStore = new V5StateStore(repoRoot);
   let autopilot = null;
+  let notifier = null;
+  function getNotifier() {
+    if (notifier) return notifier;
+    const { values: env } = loadV5Env(repoRoot);
+    notifier = new MissionNotifier({ env, logger: logs });
+    return notifier;
+  }
   function getAutopilot() {
     if (autopilot) return autopilot;
     const { values: env } = loadV5Env(repoRoot);
@@ -82,6 +90,7 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       repoRoot, settings, store: autopilotStore, logs, env,
       claudeAdapter: buildAdapter({ env, repoRoot }),
       dryRun: !settings.get().allowExec,
+      notifier: getNotifier(),
     });
     return autopilot;
   }
@@ -497,7 +506,9 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       if (issue != null && (!Number.isInteger(issue) || issue <= 0)) return sendErr(res, 422, 'invalid issue');
       const ap = getAutopilot();
       ap.dryRun = !settings.get().allowExec || mode === 'plan';
-      const result = await ap.start({ mode, issue });
+      const unattended = body?.unattended != null ? !!body.unattended : null;
+      const plannedTasks = Number.isInteger(body?.plannedTasks) && body.plannedTasks > 0 ? body.plannedTasks : null;
+      const result = await ap.start({ mode, issue, unattended, plannedTasks });
       return send(res, result.ok ? 200 : 409, result);
     }
     if (method === 'POST' && path === '/api/autopilot/stop') {
@@ -516,7 +527,12 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       const current = ap.current();
       const history = ap.history({ limit: 10 });
       const latest = current ?? history[0] ?? null;
-      return send(res, 200, { autopilot: current, latest, history });
+      const missionReport = (current?.missionReport ?? latest?.missionReport ?? null);
+      return send(res, 200, { autopilot: current, latest, history, missionReport });
+    }
+    if (method === 'GET' && path === '/api/autopilot/notifier') {
+      const n = getNotifier();
+      return send(res, 200, { ...n.describe(), recent: n.recent({ limit: 20 }) });
     }
     if (method === 'GET' && /^\/api\/autopilot\/runs\/[A-Za-z0-9-]+$/.test(path)) {
       const id = path.split('/').pop();

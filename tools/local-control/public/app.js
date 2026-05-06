@@ -17,6 +17,7 @@ import {
 import {
   MISSION_MODES, DEFAULT_MODE_ID, findMode,
   renderModeRail, buildMissionState, renderMissionHero, renderMissionProgress,
+  renderUnattendedRun, buildPrLinksText,
   renderFullChecklist, renderNextTask, renderTaskBoard,
   renderLogSummary, appendLogLine, clearLogs,
   renderMissionResult, buildDiagnostic,
@@ -137,6 +138,7 @@ function rerenderMission() {
   renderMissionHero(state);
   const ap = lastV5?.autopilot ?? lastLatestRun ?? null;
   renderMissionProgress(ap);
+  renderUnattendedRun(ap);
   renderMissionResult(ap);
   if (m.full) renderFullChecklist(lastReadiness, openChecklistAction);
   else document.getElementById("full-checklist-card")?.classList.add("hidden");
@@ -271,7 +273,9 @@ document.getElementById("mission-cta")?.addEventListener("click", async (ev) => 
       try { await api.put("/api/settings", { maxPrsPerRun: targetMax }); } catch {}
     }
     const apMode = m.mode;
-    const r = await startAutopilot(api, { mode: apMode, issue: null });
+    const unattended = !!m.loop;
+    const plannedTasks = m.custom ? customMax : (m.maxPrs || 1);
+    const r = await startAutopilot(api, { mode: apMode, issue: null, unattended, plannedTasks });
     if (r?.run && r.prompt) {
       lastBestPrompt = r.prompt;
       navigator.clipboard?.writeText(r.prompt).catch(() => {});
@@ -309,6 +313,17 @@ document.body.addEventListener("click", async (ev) => {
     const ap = lastV5?.autopilot ?? lastLatestRun ?? null;
     const action = rb.dataset.resultAction;
     if (action === "open-pr" && ap?.prUrl) { window.open(ap.prUrl, "_blank", "noopener"); return; }
+    if (action === "open-all-prs") {
+      const list = (ap?.missionReport?.createdPrs ?? ap?.createdPrs ?? []).map((p) => p.url).filter(Boolean);
+      for (const u of list) window.open(u, "_blank", "noopener");
+      return;
+    }
+    if (action === "copy-pr-links") {
+      const text = buildPrLinksText(ap) || ap?.prUrl || "";
+      if (!text) { showToast("Aucune PR à copier", "warn"); return; }
+      navigator.clipboard?.writeText(text).then(() => showToast("PR links copiés", "ok")).catch(() => showToast("Copie échouée", "warn"));
+      return;
+    }
     if (action === "copy-diagnostic") {
       navigator.clipboard?.writeText(buildDiagnostic(ap)).then(() => showToast("Diagnostic copié", "ok")).catch(() => {});
       return;

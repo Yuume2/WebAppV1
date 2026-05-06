@@ -33,8 +33,11 @@ function setValue(root, key, val) {
   if (el) el.textContent = String(val ?? '—');
 }
 
-export async function startAutopilot(api, { mode = 'plan', issue = null } = {}) {
-  return api.post('/api/autopilot/start', { mode, issue });
+export async function startAutopilot(api, { mode = 'plan', issue = null, unattended = null, plannedTasks = null } = {}) {
+  const body = { mode, issue };
+  if (unattended != null) body.unattended = !!unattended;
+  if (plannedTasks != null) body.plannedTasks = plannedTasks;
+  return api.post('/api/autopilot/start', body);
 }
 export async function stopAutopilot(api) {
   return api.post('/api/autopilot/stop', {});
