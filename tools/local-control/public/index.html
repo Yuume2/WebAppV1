@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#07060c" />
-<title>WebAppV1 · Cockpit</title>
+<meta name="theme-color" content="#06050b" />
+<title>Claude Autopilot · Mission Control</title>
 <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -13,19 +13,17 @@
   <div class="brand">
     <span class="logo" aria-hidden="true">W</span>
     <span class="name">WebAppV1</span>
-    <span class="tag">· Cockpit</span>
+    <span class="tag">· Mission Control</span>
   </div>
   <nav class="tabs" id="tabs" role="tablist">
-    <button data-tab="overview" class="active" role="tab">Overview</button>
+    <button data-tab="mission" class="active" role="tab">Mission</button>
     <button data-tab="workspace" role="tab">Workspace</button>
     <button data-tab="settings" role="tab">Settings</button>
   </nav>
   <div class="topbar-right">
-    <span class="dot" id="conn-dot" title="connection"></span>
+    <span class="orb" id="conn-orb" title="status"></span>
     <span id="conn-badge" class="badge">…</span>
-    <span id="mode-badge" class="badge dry">DRY-RUN</span>
-    <span id="lan-badge" class="badge hidden warn">LAN</span>
-    <span id="automerge-badge" class="badge hidden danger">AUTO-MERGE</span>
+    <span id="mode-badge" class="badge"></span>
   </div>
 </header>
 
@@ -48,78 +46,144 @@
 
 <main>
 
-<!-- ============ OVERVIEW ============ -->
-<section data-pane="overview" class="pane active">
+<!-- ============ MISSION ============ -->
+<section data-pane="mission" class="pane active">
 
-  <!-- Autopilot hero -->
-  <div class="card hero autopilot-hero" id="autopilot-card">
-    <div class="head">
-      <h2>Autopilot</h2>
-      <span id="autopilot-status-badge" class="badge">idle</span>
+  <div class="mission-hero" id="mission-hero">
+    <div class="floating-orbs" aria-hidden="true"></div>
+    <div class="mission-eyebrow">
+      <span class="orb" id="mission-orb"></span>
+      <span id="mission-eyebrow">Claude Autopilot</span>
     </div>
-    <p class="lead" id="autopilot-summary">
-      Pick the safest open task and hand it to Claude. Stays in dry-run until you flip <code>allowExec</code> in Settings.
-    </p>
+    <h1 class="mission-title" id="mission-title">Claude Autopilot</h1>
+    <p class="mission-subtitle" id="mission-subtitle">Préparation de la mission…</p>
 
-    <div class="blocker-banner hidden" id="autopilot-blocker">
-      <span aria-hidden="true">⚠</span>
-      <div>
-        <strong id="autopilot-blocker-title">Bloqué</strong>
-        <ul id="autopilot-blocker-list"></ul>
+    <div class="mission-cta-row">
+      <button id="mission-cta" class="primary huge" data-needs="auth">Start mission</button>
+      <div class="secondary-actions">
+        <button id="autopilot-stop" class="ghost" data-needs="auth">Stop</button>
+        <button id="autopilot-resume" class="ghost" data-needs="auth">Resume</button>
       </div>
     </div>
 
-    <div class="autopilot-cta">
-      <button id="autopilot-start" class="primary big" data-needs="auth">Start Autopilot</button>
-      <button id="autopilot-stop" class="ghost" data-needs="auth">Stop</button>
-      <button id="autopilot-resume" class="ghost" data-needs="auth">Resume</button>
-      <span class="issue-input">
-        Issue
-        <input id="v5-issue" type="number" min="1" placeholder="auto" />
-      </span>
+    <div class="blocker-banner hidden" id="mission-blocker">
+      <span aria-hidden="true">⚠</span>
+      <div>
+        <strong id="mission-blocker-title">Bloqué</strong>
+        <ul id="mission-blocker-list"></ul>
+      </div>
     </div>
 
-    <div id="autopilot-mode-hint" class="muted small" style="margin-top: 6px;">
-      Mode actuel : <strong id="autopilot-mode-label">prompt-only</strong>
-      <span id="autopilot-mode-detail">— flippe <code>allowExec</code> dans Settings pour exec réel.</span>
+    <div class="mode-rail" id="mode-rail" role="radiogroup" aria-label="Mode de mission"></div>
+    <div class="mode-custom-input" id="mode-custom-input">
+      <label class="muted small">Custom max tasks</label>
+      <input id="mode-custom-value" type="number" min="1" max="20" value="5" />
     </div>
 
-    <ul class="autopilot-meta" id="autopilot-stats">
-      <li><span class="label">Status</span><span class="value" data-key="status">idle</span></li>
-      <li><span class="label">Mode</span><span class="value" data-key="mode">—</span></li>
-      <li><span class="label">Issue</span><span class="value" data-key="issue">—</span></li>
-      <li><span class="label">PRs</span><span class="value" data-key="prs">0</span></li>
-      <li><span class="label">Errors</span><span class="value" data-key="errors">0</span></li>
-      <li><span class="label">Next</span><span class="value" data-key="next">—</span></li>
-      <li><span class="label">Auto-merge</span><span class="value" data-key="automerge">OFF</span></li>
+    <div class="mission-progress hidden-step" id="mission-progress">
+      <div class="mission-progress-head">
+        <div class="mission-progress-status">
+          <span class="orb running" id="progress-orb"></span>
+          <span id="progress-status-text">Claude is starting…</span>
+        </div>
+        <span class="badge running" id="progress-percent">0%</span>
+      </div>
+      <div class="mission-progress-bar">
+        <div class="mission-progress-fill shimmer" id="progress-fill"></div>
+      </div>
+      <ul class="timeline" id="timeline">
+        <li class="timeline-step" data-step="select"><span class="step-num">1</span><span class="step-name">Select</span></li>
+        <li class="timeline-step" data-step="branch"><span class="step-num">2</span><span class="step-name">Branch</span></li>
+        <li class="timeline-step" data-step="claude"><span class="step-num">3</span><span class="step-name">Coding</span></li>
+        <li class="timeline-step" data-step="tests"><span class="step-num">4</span><span class="step-name">Tests</span></li>
+        <li class="timeline-step" data-step="guard"><span class="step-num">5</span><span class="step-name">Guard</span></li>
+        <li class="timeline-step" data-step="pr"><span class="step-num">6</span><span class="step-name">PR</span></li>
+        <li class="timeline-step" data-step="done"><span class="step-num">7</span><span class="step-name">Done</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Mission result (visible when run is finished/failed/stopped) -->
+  <div class="card mission-result hidden" id="mission-result"></div>
+
+  <!-- Full autopilot checklist (only shown when mode = full) -->
+  <div class="card hidden" id="full-checklist-card">
+    <div class="section-header" style="margin: 0 0 12px;">
+      <h2>Full autopilot readiness</h2>
+      <span class="section-sub" id="full-checklist-summary">…</span>
+    </div>
+    <ul class="checklist" id="full-checklist"></ul>
+  </div>
+
+  <!-- Next task card -->
+  <div class="section-header">
+    <h2>Next up</h2>
+    <span class="section-sub">Issue que l'autopilot prendrait maintenant.</span>
+  </div>
+  <div id="next-task-host"></div>
+
+  <!-- Last activity / log summary -->
+  <div class="section-header">
+    <h2>Activité</h2>
+    <span class="section-sub">Résumé live de ce que fait Claude.</span>
+  </div>
+  <div class="log-summary" id="log-summary">
+    <div class="log-summary-row empty"><span class="label">Last</span><span class="value" data-key="last">—</span></div>
+    <div class="log-summary-row empty"><span class="label">Success</span><span class="value" data-key="success">—</span></div>
+    <div class="log-summary-row empty"><span class="label">Error</span><span class="value" data-key="error">—</span></div>
+  </div>
+
+  <div class="log-drawer" id="log-drawer">
+    <button class="log-drawer-toggle" id="log-drawer-toggle">
+      <span class="arrow">›</span>
+      <span>Technical logs</span>
+      <span class="muted small" style="margin-left: auto;" id="log-drawer-count">—</span>
+    </button>
+    <div class="log-drawer-body">
+      <div class="log-drawer-toolbar">
+        <select id="log-filter">
+          <option value="all">All</option>
+          <option value="autopilot">Autopilot</option>
+          <option value="claude">Claude</option>
+          <option value="git">Git</option>
+          <option value="test">Test</option>
+          <option value="guard">Guard</option>
+          <option value="error">Errors</option>
+        </select>
+        <button data-action="copy-logs">Copy</button>
+        <button data-action="clear-logs" class="ghost">Clear</button>
+        <label class="check"><input type="checkbox" id="log-autoscroll" checked> Auto-scroll</label>
+      </div>
+      <pre id="log-view" class="log-view" aria-live="polite"></pre>
+    </div>
+  </div>
+
+  <!-- Status grid -->
+  <div class="section-header">
+    <h2>System</h2>
+    <span class="section-sub">État du repo, des intégrations et du runtime.</span>
+  </div>
+  <div class="card">
+    <ul class="status-grid" id="status-grid">
+      <li class="status-pill" data-key="claude"><span class="orb"></span><span class="label">Claude</span><span class="value" data-value>—</span></li>
+      <li class="status-pill" data-key="branch"><span class="orb"></span><span class="label">Branche</span><span class="value" data-value>—</span></li>
+      <li class="status-pill" data-key="exec"><span class="orb"></span><span class="label">Exec</span><span class="value" data-value>—</span></li>
+      <li class="status-pill" data-key="loop"><span class="orb"></span><span class="label">Loop</span><span class="value" data-value>—</span></li>
+      <li class="status-pill" data-key="automerge"><span class="orb"></span><span class="label">Auto-merge</span><span class="value" data-value>—</span></li>
+      <li class="status-pill" data-key="notion"><span class="orb"></span><span class="label">Notion</span><span class="value" data-value>—</span></li>
+      <li class="status-pill" data-key="n8n"><span class="orb"></span><span class="label">n8n</span><span class="value" data-value>—</span></li>
+      <li class="status-pill" data-key="whatsapp"><span class="orb"></span><span class="label">WhatsApp</span><span class="value" data-value>—</span></li>
+      <li class="status-pill" data-key="lan"><span class="orb"></span><span class="label">LAN</span><span class="value" data-value>—</span></li>
     </ul>
-
-    <pre id="autopilot-prompt" class="autopilot-prompt hidden" aria-live="polite"></pre>
   </div>
 
-  <!-- Selected task -->
-  <div class="section-header" style="margin-top: 28px;">
-    <h2>Task sélectionnée</h2>
-    <span class="section-sub">La meilleure issue safe que l'autopilot prendrait maintenant.</span>
-  </div>
-  <div class="card" id="selected-task-card">
-    <div id="selected-task-body" class="muted small">Chargement...</div>
-    <div class="row" style="margin-top: 14px;">
-      <button data-action="refresh-task">Find best task</button>
-      <button data-action="prepare-best" class="primary" data-needs="auth">Prepare run</button>
-      <button data-action="copy-best-prompt" data-needs="auth" disabled>Copy prompt</button>
-    </div>
-    <pre id="selected-task-prompt" class="autopilot-prompt hidden"></pre>
-    <details style="margin-top: 14px;">
-      <summary class="muted small" style="cursor: pointer;">Tasks bloquées (<span id="blocked-count">0</span>)</summary>
-      <ul id="blocked-tasks" class="small" style="margin: 8px 0 0; padding-left: 20px;"></ul>
-    </details>
-  </div>
+</section>
 
-  <!-- Doctor summary -->
-  <div class="section-header" style="margin-top: 28px;">
+<!-- ============ WORKSPACE ============ -->
+<section data-pane="workspace" class="pane">
+  <div class="section-header">
     <h2>Doctor</h2>
-    <span class="section-sub">État du repo et des phases. Cliquer Run pour rafraîchir.</span>
+    <span class="section-sub">État du repo et des phases.</span>
   </div>
   <div class="card" id="doctor-card">
     <div id="doctor-empty" class="muted small">Pas encore exécuté. Clique <strong>Run doctor</strong>.</div>
@@ -135,293 +199,131 @@
         <span id="doctor-phase-3" class="badge">P3</span>
         <span id="doctor-phase-4" class="badge">P4</span>
       </div>
-      <details style="margin-top: 12px;">
-        <summary class="muted small" style="cursor: pointer;">Recommandations</summary>
-        <ul id="doctor-recos" class="small" style="margin: 8px 0 0; padding-left: 20px;"></ul>
-      </details>
-      <details style="margin-top: 8px;">
-        <summary class="muted small" style="cursor: pointer;">Phase blockers</summary>
-        <ul id="doctor-blockers" class="small" style="margin: 8px 0 0; padding-left: 20px;"></ul>
-      </details>
     </div>
     <div class="row" style="margin-top: 14px;">
       <button data-action="doctor-summary" class="primary" data-needs="auth">Run doctor</button>
     </div>
   </div>
 
-  <!-- System status -->
-  <div class="section-header" style="margin-top: 28px;">
-    <h2>System</h2>
-    <span class="section-sub">État du repo, des intégrations et du runtime.</span>
+  <div class="section-header">
+    <h2>Tasks</h2>
+    <span class="section-sub">Safe + bloquées.</span>
   </div>
-
-  <div class="card">
-    <ul class="status-grid" id="status-grid">
-      <li class="status-pill" data-key="server"><span class="dot"></span><span class="label">Serveur</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="auth"><span class="dot"></span><span class="label">Auth</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="claude"><span class="dot"></span><span class="label">Claude</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="branch"><span class="dot"></span><span class="label">Branche</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="protection"><span class="dot"></span><span class="label">Main protected</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="exec"><span class="dot"></span><span class="label">Exec</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="loop"><span class="dot"></span><span class="label">Loop</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="automerge"><span class="dot"></span><span class="label">Auto-merge</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="notion"><span class="dot"></span><span class="label">Notion</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="n8n"><span class="dot"></span><span class="label">n8n</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="whatsapp"><span class="dot"></span><span class="label">WhatsApp</span><span class="value" data-value>—</span></li>
-      <li class="status-pill" data-key="lan"><span class="dot"></span><span class="label">LAN</span><span class="value" data-value>—</span></li>
-    </ul>
-
-    <details style="margin-top: 14px;">
-      <summary class="muted small" style="cursor: pointer;">Prochaines actions humaines</summary>
-      <ul class="small" id="next-actions" style="margin: 10px 0 0; padding-left: 20px;"><li class="muted">—</li></ul>
-    </details>
-  </div>
-
-  <!-- Metrics -->
-  <div class="section-header" style="margin-top: 28px;">
-    <h2>Métriques</h2>
-    <span class="section-sub">Issues, autonomie, dernier run.</span>
-  </div>
-  <div class="status-grid">
-    <div class="metric"><span class="label">Issues ouverts</span><span class="value" id="metric-issues">—</span><span class="sub" id="metric-auto">—</span></div>
-    <div class="metric"><span class="label">Questions humaines</span><span class="value" id="metric-questions">—</span><span class="sub">en attente</span></div>
-    <div class="metric"><span class="label">Doctor</span><span class="value" id="metric-doctor">—</span><span class="sub" id="metric-doctor-sub">—</span></div>
-    <div class="metric"><span class="label">Dernier run</span><span class="value" id="metric-latest">—</span><span class="sub" id="metric-latest-sub">—</span></div>
-  </div>
-
-  <!-- Phone access -->
-  <div class="section-header" style="margin-top: 28px;">
-    <h2>Accès téléphone</h2>
-    <span class="section-sub">URL à scanner depuis ton mobile sur le même Wi-Fi.</span>
-  </div>
-  <div class="card">
-    <p class="small">Local : <code id="phone-local">—</code></p>
-    <p class="small" style="margin-top: 6px;">LAN : <code id="phone-lan">—</code></p>
-    <p class="small mute" id="phone-hint" style="margin-top: 10px;">Active LAN dans Settings + relance avec <code>pnpm cockpit:lan</code>.</p>
-  </div>
-
-</section>
-
-<!-- ============ WORKSPACE ============ -->
-<section data-pane="workspace" class="pane">
+  <div id="task-board-host" class="task-board"></div>
 
   <div class="section-header">
-    <h2>Workflow</h2>
-    <span class="section-sub">Suis ces étapes dans l'ordre.</span>
-  </div>
-  <div class="workflow">
-    <div class="step-card">
-      <span class="step-num">1</span>
-      <h3>Vérifier le repo</h3>
-      <p>Doctor scan : phase gates, branch protection, blocker labels.</p>
-      <div class="step-actions">
-        <button data-action="doctor" class="primary" data-needs="auth">Run doctor</button>
-      </div>
-    </div>
-    <div class="step-card">
-      <span class="step-num">2</span>
-      <h3>Voir les tâches</h3>
-      <p>Score & queue les issues, ne garder que les safe.</p>
-      <div class="step-actions">
-        <button data-action="score" data-needs="auth">Score</button>
-        <button data-action="queue" data-needs="auth">Queue</button>
-      </div>
-    </div>
-    <div class="step-card">
-      <span class="step-num">3</span>
-      <h3>Préparer un run</h3>
-      <p>Prompt prêt à coller dans <code>yu</code> ou autopilot direct.</p>
-      <div class="step-actions">
-        <button data-action="plan-next" class="primary" data-needs="auth">Plan next task</button>
-      </div>
-    </div>
-    <div class="step-card">
-      <span class="step-num">4</span>
-      <h3>Suivre l'exécution</h3>
-      <p>Logs live + état des questions humaines.</p>
-      <div class="step-actions">
-        <button data-action="scroll-logs">Voir les logs</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Tasks -->
-  <div class="section-header" style="margin-top: 32px;">
-    <h2>Tâches</h2>
-    <span class="section-sub">Issues classées et filtrables.</span>
-  </div>
-  <div class="tasks-toolbar">
-    <input id="task-filter" type="search" placeholder="Filtrer titre / labels…" />
-    <select id="task-class">
-      <option value="">Toutes classifications</option>
-      <option>trivial</option><option>safe</option><option>review</option><option>risky</option><option>blocked</option>
-    </select>
-    <button data-action="reload-tasks">Recharger</button>
-  </div>
-  <div class="table-wrap">
-    <table id="tasks-table">
-      <thead>
-        <tr>
-          <th>#</th><th>Titre</th><th>Score</th><th>Classif.</th>
-          <th>Risk</th><th>Autonomy</th><th>Raison</th><th>Action</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <!-- Questions -->
-  <div class="section-header" style="margin-top: 32px;">
     <h2>Questions humaines</h2>
     <span class="section-sub">Réponses publiées sur GitHub via n8n.</span>
   </div>
   <div id="questions-list"></div>
   <p class="muted small" id="questions-empty" style="display: none;">Aucune question en attente.</p>
-
-  <!-- Logs -->
-  <div class="section-header" style="margin-top: 32px;" id="logs-section">
-    <h2>Logs</h2>
-    <span class="section-sub">Stream live du run actif.</span>
-  </div>
-  <div class="logs-toolbar">
-    <select id="log-run-select"><option value="">Run en direct</option></select>
-    <button data-action="copy-logs">Copier</button>
-    <button data-action="clear-logs" class="ghost">Vider</button>
-    <label class="check"><input type="checkbox" id="log-autoscroll" checked> Auto-scroll</label>
-  </div>
-  <pre id="log-view" class="log-view" aria-live="polite"></pre>
-
-  <!-- Advanced (collapsed) -->
-  <details style="margin-top: 32px;">
-    <summary class="muted small" style="cursor: pointer; padding: 10px 0;">Outils avancés (runner manuel, prompt libre)</summary>
-
-    <div class="settings-group" style="margin-top: 14px;">
-      <h3>Runner manuel</h3>
-      <p class="group-sub">Pour piloter à la main quand l'autopilot ne convient pas.</p>
-      <form id="runner-form" class="settings-rows">
-        <div class="settings-row">
-          <div class="info"><strong>Mode</strong><span>plan = dry-run, exec = vraie action, loop = enchaîner</span></div>
-          <div class="control">
-            <label class="check"><input type="radio" name="mode" value="plan" checked> plan</label>
-            <label class="check"><input type="radio" name="mode" value="exec"> exec</label>
-            <label class="check"><input type="radio" name="mode" value="loop"> loop</label>
-          </div>
-        </div>
-        <div class="settings-row">
-          <div class="info"><strong>Issue cible</strong><span>numéro GitHub à exécuter</span></div>
-          <div class="control"><input type="number" name="issue" min="1" placeholder="#" /></div>
-        </div>
-        <div class="settings-row">
-          <div class="info"><strong>Budget</strong><span>max minutes / max PR par run</span></div>
-          <div class="control">
-            <input type="number" name="maxMinutes" min="1" max="240" value="20" /><input type="number" name="maxPRs" min="1" max="10" value="3" />
-          </div>
-        </div>
-        <div class="settings-row">
-          <div class="info"><strong>Démarrer</strong><span>respecte les flags allowExec / allowLoop</span></div>
-          <div class="control">
-            <button type="submit" class="primary">Lancer</button>
-            <button type="button" data-action="stop-runner" class="danger">Stop</button>
-          </div>
-        </div>
-        <p class="warn-line hidden" id="runner-warn" style="color: var(--warn);"></p>
-      </form>
-    </div>
-
-    <div class="settings-group">
-      <h3>Prompt libre</h3>
-      <p class="group-sub">Préset ou texte libre pour Claude Code.</p>
-      <div class="row" style="margin-bottom: 8px;">
-        <button data-preset="plan-next-task">Plan next task</button>
-        <button data-preset="run-one-safe-task">Run one safe</button>
-        <button data-preset="loop-safe-tasks">Loop safe dry-run</button>
-        <button data-preset="resume-after-answer">Resume after answer</button>
-        <button data-preset="analyze-blockage">Analyze blockage</button>
-      </div>
-      <textarea id="prompt-text" placeholder="Prompt libre pour Claude Code…"></textarea>
-      <div class="row" style="margin-top: 8px;">
-        <button id="prompt-send" class="primary">Envoyer</button>
-        <button id="prompt-clear" class="ghost">Clear</button>
-      </div>
-    </div>
-
-    <div class="settings-group">
-      <h3>V5 prepare-run</h3>
-      <p class="group-sub">Génère un prompt sans lancer Claude (mode prompt-only).</p>
-      <div class="row">
-        <label>Issue <input id="v5-issue-prepare" type="number" min="1" placeholder="ex: 41" /></label>
-        <button data-action="v5-prepare" data-needs="auth">Prepare run</button>
-        <button data-action="v5-copy-prompt" data-needs="auth">Copy prompt</button>
-        <button data-action="v5-resume" data-needs="auth">Resume</button>
-      </div>
-      <pre id="v5-prompt-view" class="log-view hidden" style="margin-top: 12px;"></pre>
-    </div>
-  </details>
-
 </section>
 
 <!-- ============ SETTINGS ============ -->
 <section data-pane="settings" class="pane">
+  <nav class="settings-nav" id="settings-nav">
+    <button data-section="mission" class="active">Mission mode</button>
+    <button data-section="safety">Safety</button>
+    <button data-section="integrations">Integrations</button>
+    <button data-section="mobile">Mobile / LAN</button>
+    <button data-section="advanced">Advanced</button>
+    <button data-section="danger">Danger zone</button>
+  </nav>
 
   <form id="settings-form">
 
-    <div class="settings-group">
-      <h3>Exécution</h3>
-      <p class="group-sub">Contrôle ce que l'autopilot peut faire.</p>
+    <!-- Mission mode -->
+    <div class="settings-section active" data-section="mission">
+      <h3>Mission mode</h3>
+      <p class="group-sub">Comportement par défaut quand tu cliques Start mission.</p>
       <div class="settings-rows">
         <label class="settings-row">
-          <span class="info"><strong>Dry-run par défaut</strong><span>Plan only · aucune action réelle.</span></span>
+          <span class="info"><strong>Dry-run par défaut</strong><span>Plan only — pas d'action réelle.</span></span>
           <span class="control"><span class="toggle"><input type="checkbox" name="dryRunDefault"></span></span>
         </label>
         <label class="settings-row">
-          <span class="info"><strong>Autoriser exec</strong><span>Autorise une vraie exécution, pas juste plan.</span></span>
-          <span class="control"><span class="toggle"><input type="checkbox" name="allowExec"></span></span>
-        </label>
-        <label class="settings-row">
-          <span class="info"><strong>Autoriser loop</strong><span>Autorise plusieurs tasks consécutives jusqu'à maxPRs.</span></span>
-          <span class="control"><span class="toggle"><input type="checkbox" name="allowLoop"></span></span>
+          <span class="info"><strong>Issue préférée</strong><span>L'autopilot tentera celle-ci en priorité.</span></span>
+          <span class="control"><input type="number" name="preferredIssue" min="1" placeholder="—" /></span>
         </label>
       </div>
     </div>
 
-    <div class="settings-group">
-      <h3>Budget</h3>
-      <p class="group-sub">Limites par run autopilot.</p>
+    <!-- Safety -->
+    <div class="settings-section" data-section="safety">
+      <h3>Safety</h3>
+      <p class="group-sub">Garde-fous d'exécution. Cumul = capacité maximale.</p>
       <div class="settings-rows">
         <label class="settings-row">
-          <span class="info"><strong>Max PRs / run</strong><span>1 → 10</span></span>
-          <span class="control"><input type="number" name="maxPrsPerRun" min="1" max="10" /></span>
+          <span class="info"><strong>Autoriser exec</strong><span>Permet à l'autopilot de lancer Claude pour de vrai.</span></span>
+          <span class="control"><span class="toggle"><input type="checkbox" name="allowExec"></span></span>
+        </label>
+        <label class="settings-row">
+          <span class="info"><strong>Autoriser loop</strong><span>Permet d'enchaîner plusieurs tasks par run.</span></span>
+          <span class="control"><span class="toggle"><input type="checkbox" name="allowLoop"></span></span>
+        </label>
+        <label class="settings-row">
+          <span class="info"><strong>Power mode · Auto-merge</strong><span>Auto-merge ultra safe. Seulement quand toutes les gates sont vertes.</span></span>
+          <span class="control"><span class="toggle power"><input type="checkbox" name="allowAutoMerge"></span></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Integrations -->
+    <div class="settings-section" data-section="integrations">
+      <h3>Integrations</h3>
+      <p class="group-sub">Notifications externes. Toutes optionnelles.</p>
+      <div class="settings-rows">
+        <div class="settings-row">
+          <span class="info"><strong>Notion</strong><span id="settings-notion-detail">…</span></span>
+          <span class="control"><span class="badge" id="settings-notion-badge">—</span></span>
+        </div>
+        <div class="settings-row">
+          <span class="info"><strong>n8n</strong><span id="settings-n8n-detail">…</span></span>
+          <span class="control"><span class="badge" id="settings-n8n-badge">—</span></span>
+        </div>
+        <div class="settings-row">
+          <span class="info"><strong>WhatsApp</strong><span id="settings-whatsapp-detail">…</span></span>
+          <span class="control"><span class="badge" id="settings-whatsapp-badge">—</span></span>
+        </div>
+      </div>
+      <p class="muted small" style="margin-top: 12px;">Pour configurer, édite <code>.local-control/v5.env</code>. Voir <code>docs/ops/notion-whatsapp-live.md</code>.</p>
+    </div>
+
+    <!-- Mobile -->
+    <div class="settings-section" data-section="mobile">
+      <h3>Mobile / LAN</h3>
+      <p class="group-sub">Accès depuis le téléphone sur le même Wi-Fi.</p>
+      <div class="settings-rows">
+        <label class="settings-row">
+          <span class="info"><strong>Activer LAN</strong><span>Sert sur 0.0.0.0 quand lancé avec <code>pnpm cockpit:lan</code>.</span></span>
+          <span class="control"><span class="toggle"><input type="checkbox" name="lanEnabled"></span></span>
+        </label>
+      </div>
+      <p class="muted small" style="margin-top: 12px;">Local : <code id="phone-local">—</code></p>
+      <p class="muted small">LAN : <code id="phone-lan">—</code></p>
+    </div>
+
+    <!-- Advanced -->
+    <div class="settings-section" data-section="advanced">
+      <h3>Advanced</h3>
+      <p class="group-sub">Budget par run et filtres autopilot.</p>
+      <div class="settings-rows">
+        <label class="settings-row">
+          <span class="info"><strong>Max PRs / run</strong><span>1 → 20</span></span>
+          <span class="control"><input type="number" name="maxPrsPerRun" min="1" max="20" /></span>
         </label>
         <label class="settings-row">
           <span class="info"><strong>Max minutes</strong><span>1 → 240</span></span>
           <span class="control"><input type="number" name="maxMinutes" min="1" max="240" /></span>
         </label>
         <label class="settings-row">
-          <span class="info"><strong>Stale days</strong><span>ignore les issues plus vieilles que N jours</span></span>
+          <span class="info"><strong>Max errors</strong><span>1 → 20</span></span>
+          <span class="control"><input type="number" name="maxErrors" min="1" max="20" /></span>
+        </label>
+        <label class="settings-row">
+          <span class="info"><strong>Stale days</strong><span>Ignore les issues plus vieilles.</span></span>
           <span class="control"><input type="number" name="staleDays" min="0" max="365" /></span>
         </label>
-        <label class="settings-row">
-          <span class="info"><strong>Issue préférée</strong><span>autopilot prendra celle-ci en priorité</span></span>
-          <span class="control"><input type="number" name="preferredIssue" min="1" placeholder="—" /></span>
-        </label>
-      </div>
-    </div>
-
-    <div class="settings-group">
-      <h3>Réseau</h3>
-      <p class="group-sub">Accès depuis le téléphone, via LAN.</p>
-      <div class="settings-rows">
-        <label class="settings-row">
-          <span class="info"><strong>Activer LAN</strong><span>Sert sur 0.0.0.0 si lancé avec <code>pnpm cockpit:lan</code>.</span></span>
-          <span class="control"><span class="toggle"><input type="checkbox" name="lanEnabled"></span></span>
-        </label>
-      </div>
-    </div>
-
-    <div class="settings-group">
-      <h3>Filtres autopilot</h3>
-      <p class="group-sub">Quelles tasks l'autopilot accepte.</p>
-      <div class="settings-rows">
         <label class="settings-row">
           <span class="info"><strong>Risk autorisés</strong><span>séparés par virgules</span></span>
           <span class="control"><input type="text" name="allowedRisk" placeholder="safe" /></span>
@@ -433,22 +335,17 @@
       </div>
     </div>
 
-    <div class="settings-group danger">
+    <!-- Danger zone -->
+    <div class="settings-section danger" data-section="danger">
       <h3 style="color: var(--danger);">Danger zone</h3>
-      <p class="group-sub">Auto-merge reste OFF jusqu'à ce que tu actives ce flag explicitement.</p>
-      <div class="settings-rows">
-        <label class="settings-row">
-          <span class="info"><strong>Autoriser auto-merge</strong><span>Capacité auto-merge ultra safe (CI green + risk:safe + ai:autonomous + protection ON).</span></span>
-          <span class="control"><span class="toggle danger"><input type="checkbox" name="allowAutoMerge"></span></span>
-        </label>
-      </div>
+      <p class="group-sub">Actions irréversibles. Réfléchis deux fois.</p>
+      <p class="muted small">Pour l'instant, rien ici n'est exposé via l'UI : auto-merge se trouve dans <strong>Safety</strong> (Power mode), pas ici.</p>
     </div>
 
     <div class="row" style="margin-top: 20px;">
       <button type="submit" class="primary">Enregistrer</button>
     </div>
   </form>
-
 </section>
 
 </main>

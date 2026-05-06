@@ -21,6 +21,64 @@ Pour passer en exec réel :
 
 Pour stopper : bouton **Stop**, ou `pnpm cockpit` Ctrl+C tue tout.
 
+## Modes de mission
+
+Le hero **Mission Control** propose un sélecteur de modes :
+
+| Mode | Action | Settings requis |
+|---|---|---|
+| **Manual prompt** | Génère un prompt à coller dans `yu`. Aucun spawn. | aucun |
+| **Auto · 1 task** | Une PR puis stop. | `allowExec` |
+| **Auto · 5 tasks** | Loop jusqu'à 5 PR. **Défaut.** | `allowExec` + `allowLoop` |
+| **Loop · 10 tasks** | Loop intensif. | `allowExec` + `allowLoop` |
+| **Loop · 20 tasks** | Loop max. | `allowExec` + `allowLoop` |
+| **Custom loop** | Tu choisis le budget. | `allowExec` + `allowLoop` |
+| **Full autopilot** | Vérifie checklist complète avant de lancer. | tout dont auto-merge |
+
+Cliquer sur un mode met à jour le hero + le sous-titre + le bouton CTA. Le mode est mémorisé dans `localStorage`.
+
+Pour **Full autopilot**, une checklist apparaît avec chaque item (Claude / branch protection / exec / loop / power / guard / Notion / n8n / WhatsApp) et un statut explicite (ready / missing / optional / blocked). Cliquer **Configure** ouvre directement la bonne section de Settings.
+
+## Lire la timeline
+
+Quand l'autopilot tourne, le hero affiche une **mission progress bar** + une **timeline** 7 étapes :
+
+1. Select · 12%
+2. Branch · 22%
+3. Coding · 50%
+4. Tests · 70%
+5. Guard · 85%
+6. PR · 95%
+7. Done · 100%
+
+Chaque étape passe de `gris → violet (active, glow) → vert (done)` au fur et à mesure. Le panneau sous-titre traduit en humain : "Claude is coding…", "Tests are running…", "PR opened.".
+
+Les logs techniques sont disponibles dans le **drawer collapsé** sous l'activité ; clique pour ouvrir, filtrer, copier ou vider.
+
+## Que faire si la mission s'arrête à 50%
+
+C'est le scénario "Claude lancé mais sortie sans PR". L'UI **ne fait plus disparaître** ce cas. Tu vois maintenant :
+
+- Le hero passe en rouge avec le titre `Échec sur #X`.
+- La progress bar reste visible avec la couleur danger et `failed` sur l'étape Claude.
+- Une carte **Mission result** apparaît juste en dessous avec :
+  - Issue traitée
+  - Étape où ça a échoué
+  - Raison humaine (`claude-failed`, `no-pr-produced`, `guard-block`, etc.)
+  - Boutons **Retry** / **Copy diagnostic** / **Open logs** / **Reset**
+
+Procédure de récupération :
+
+1. Clique **Copy diagnostic** → résumé compact (runId, issue, branche, dernière erreur, 10 dernières lignes de log).
+2. Vérifie l'issue sur GitHub : Claude a-t-il posté un commentaire `claude-question` ? Si oui le state passe en `waiting_human`.
+3. Sinon clique **Retry** — l'engine fait `reset` puis relance `start` sur la même issue.
+4. **Reset** seul nettoie le runtime sans relancer.
+
+## Stopper / Reprendre
+
+- **Stop** dans le hero ou via `pnpm autopilot:loop` Ctrl+C → SIGTERM propre.
+- **Resume** dans le hero quand le state est `waiting` (question humaine répondue sur GitHub).
+
 ## Lancer en 1 commande
 
 ```bash

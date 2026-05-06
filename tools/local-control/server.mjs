@@ -159,11 +159,13 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       const info = gitInfo(repoRoot);
       const active = runner.activeIds()[0] ?? null;
       const last = state.list(1)[0] ?? null;
+      const repo = repoNameWithOwner(repoRoot);
+      const protection = repo ? fetchBranchProtection(repo, 'main') : { protected: false, source: null };
       return send(res, 200, {
         branch: info.branch,
         gitStatus: { clean: !info.dirty, ahead: 0, behind: 0, files: [] },
         doctor: { ok: null, phase: null, blockers: [], checkedAt: null },
-        mainProtection: { enabled: null, type: 'unknown', checks: [] },
+        mainProtection: { enabled: !!protection.protected, type: protection.source ?? 'unknown', checks: [] },
         phaseGates: { phase1: 'unknown', phase2: 'unknown', phase3: 'unknown' },
         openIssues: null,
         autonomousTasks: null,
@@ -450,6 +452,44 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       } catch (e) { return send(res, 200, { configured: true, ok: false, reason: e.message }); }
     }
 
+    if (method === 'GET' && path === '/api/v5/full-readiness') {
+      const s = settings.get();
+      const { values: env } = loadV5Env(repoRoot);
+      const claude = v5StatusFromEnv({ env, repoRoot });
+      const notionCfg = evaluateNotionConfig(env);
+      const n8nCfg = evaluateN8nConfig(env);
+      const whatsappCfg = evaluateWhatsappConfig(env);
+      const items = [
+        { id: 'claude', label: 'Claude CLI', kind: 'required', status: claude.claudeAvailable ? 'ready' : 'missing', detail: claude.claudeAvailable ? (claude.claudeVersion || 'available') : (claude.claudeReason || 'not available'), action: claude.claudeAvailable ? null : 'install-claude' },
+        ...(() => {
+          const repo = repoNameWithOwner(repoRoot);
+          const p = repo ? fetchBranchProtection(repo, 'main') : { protected: false, source: null };
+          return [{
+            id: 'protection',
+            label: 'Branch protection',
+            kind: 'required',
+            status: p.protected ? 'ready' : 'missing',
+            detail: p.protected ? `protected via ${p.source}` : 'main protection désactivée',
+            action: p.protected ? null : 'open-github-protection',
+          }];
+        })(),
+        { id: 'allowExec', label: 'Exec allowed', kind: 'required', status: s.allowExec ? 'ready' : 'missing', detail: s.allowExec ? 'autorisé' : 'flippe le toggle Exec dans Settings', action: 'open-settings-safety' },
+        { id: 'allowLoop', label: 'Loop allowed', kind: 'required', status: s.allowLoop ? 'ready' : 'missing', detail: s.allowLoop ? 'autorisé' : 'flippe le toggle Loop dans Settings', action: 'open-settings-safety' },
+        { id: 'allowAutoMerge', label: 'Auto-merge (Power mode)', kind: 'optional', status: s.allowAutoMerge ? 'ready' : 'optional', detail: s.allowAutoMerge ? 'ENABLED' : 'optionnel — laisser OFF par défaut', action: 'open-settings-safety' },
+        { id: 'guard', label: 'Task guard', kind: 'required', status: 'unknown', detail: 'check via doctor', action: 'run-doctor' },
+        { id: 'notion', label: 'Notion', kind: 'optional', status: notionCfg.configured ? 'ready' : 'optional', detail: notionCfg.summary, action: notionCfg.configured ? null : 'open-settings-integrations' },
+        { id: 'n8n', label: 'n8n webhooks', kind: 'optional', status: n8nCfg.questionWebhookConfigured && n8nCfg.answerWebhookConfigured ? 'ready' : 'optional', detail: n8nCfg.summary, action: 'open-settings-integrations' },
+        { id: 'whatsapp', label: 'WhatsApp', kind: 'optional', status: whatsappCfg.configured ? 'ready' : 'optional', detail: whatsappCfg.configured ? `via ${whatsappCfg.via ?? 'on'}` : 'optionnel — notifications mobile', action: 'open-settings-integrations' },
+      ];
+      const requiredMissing = items.filter((i) => i.kind === 'required' && i.status !== 'ready' && i.status !== 'unknown');
+      return send(res, 200, {
+        items,
+        requiredMissingCount: requiredMissing.length,
+        ready: requiredMissing.length === 0,
+        summary: requiredMissing.length === 0 ? 'Full autopilot ready' : `${requiredMissing.length} required item(s) missing`,
+      });
+    }
+
     if (method === 'POST' && path === '/api/autopilot/start') {
       let body; try { body = await readBody(req); } catch (e) { return sendErr(res, 422, e.message); }
       const mode = ['plan', 'exec', 'loop'].includes(body?.mode) ? body.mode : 'plan';
@@ -473,7 +513,22 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
     }
     if (method === 'GET' && path === '/api/autopilot/status') {
       const ap = getAutopilot();
-      return send(res, 200, { autopilot: ap.current() });
+      const current = ap.current();
+      const history = ap.history({ limit: 10 });
+      const latest = current ?? history[0] ?? null;
+      return send(res, 200, { autopilot: current, latest, history });
+    }
+    if (method === 'GET' && /^\/api\/autopilot\/runs\/[A-Za-z0-9-]+$/.test(path)) {
+      const id = path.split('/').pop();
+      const ap = getAutopilot();
+      const r = ap.getRun(id);
+      if (!r) return sendErr(res, 404, 'run not found');
+      return send(res, 200, r);
+    }
+    if (method === 'POST' && path === '/api/autopilot/reset') {
+      const ap = getAutopilot();
+      const r = ap.reset();
+      return send(res, r.ok ? 200 : 409, r);
     }
     if (method === 'GET' && path === '/api/autopilot/events') {
       const ap = getAutopilot();

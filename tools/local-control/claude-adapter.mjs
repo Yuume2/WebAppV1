@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
 import { loadV5Env } from './v5-env.mjs';
 
 const SAFE_COMMAND_RE = /^[A-Za-z0-9_.\-]+$/;
@@ -137,7 +138,46 @@ export function launchClaude({ prompt, command, repoRoot, env = {}, allowExec = 
   return { ok: true, child };
 }
 
-export function buildAdapter({ env = {}, repoRoot }) {
+export function buildMockChild({ scenario = 'success' } = {}) {
+  const emitter = new EventEmitter();
+  const child = Object.assign(emitter, {
+    stdout: new EventEmitter(),
+    stderr: new EventEmitter(),
+    kill: () => true,
+    pid: 99999,
+  });
+  setImmediate(() => {
+    child.stdout.emit('data', Buffer.from('[mock] starting\n'));
+    if (scenario === 'failure') {
+      setTimeout(() => {
+        child.stderr.emit('data', Buffer.from('[mock] simulated crash\n'));
+        child.emit('close', 1);
+      }, 30);
+    } else {
+      setTimeout(() => {
+        child.stdout.emit('data', Buffer.from('[mock] done\n'));
+        child.emit('close', 0);
+      }, 30);
+    }
+  });
+  return child;
+}
+
+export function buildAdapter({ env = {}, repoRoot, mock = null }) {
+  if (mock || env.AUTOPILOT_MOCK_CLAUDE === '1' || process.env.AUTOPILOT_MOCK_CLAUDE === '1') {
+    const scenario = mock === 'failure' || env.AUTOPILOT_MOCK_CLAUDE === 'failure' ? 'failure' : 'success';
+    return {
+      available: true,
+      command: 'mock',
+      version: 'mock-1.0',
+      reason: null,
+      mock: scenario,
+      prepare(args) { return prepareClaudeRun({ ...args, repoRoot, env: { CLAUDE_CODE_COMMAND: 'mock' } }); },
+      launch() {
+        return { ok: true, child: buildMockChild({ scenario }) };
+      },
+    };
+  }
   const resolved = resolveClaudeCommand(env);
   const probe = resolved.ok ? probeClaudeAvailability({ command: resolved.command }) : { available: false, version: null, reason: resolved.reason };
   return {
