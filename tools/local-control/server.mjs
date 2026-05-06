@@ -337,25 +337,38 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
     }
 
     if (method === 'GET' && path === '/api/questions') {
-      const r = spawnSync('pnpm', ['task:questions:list', '--json'], { cwd: repoRoot, encoding: 'utf8' });
+      const r = spawnSync('node', ['tools/task-questions.mjs', 'list', '--json'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
       const tok = settings.get().authToken;
-      if (r.status !== 0) return sendErr(res, 500, redactSecrets(r.stderr || 'questions failed', [tok]));
-      try { return send(res, 200, JSON.parse(r.stdout)); }
-      catch { return send(res, 200, []); }
+      if (r.status !== 0) {
+        return send(res, 200, { items: [], error: redactSecrets((r.stderr || 'questions failed').slice(0, 400), [tok]) });
+      }
+      try {
+        const parsed = JSON.parse(r.stdout);
+        const items = Array.isArray(parsed) ? parsed : (parsed?.items ?? []);
+        return send(res, 200, { items });
+      } catch {
+        return send(res, 200, { items: [] });
+      }
     }
 
     if (method === 'POST' && path === '/api/questions/answer') {
       let body; try { body = await readBody(req); } catch (e) { return sendErr(res, 422, e.message); }
-      const id = String(body?.id ?? '');
+      const id = String(body?.id ?? body?.qid ?? '');
       const answer = String(body?.answer ?? '');
+      const issue = Number(body?.issue ?? 0);
       if (!/^[A-Za-z0-9_\-:]+$/.test(id)) return sendErr(res, 422, 'invalid question id');
       if (!answer || answer.length > 8000) return sendErr(res, 422, 'invalid answer');
-      const r = spawnSync('pnpm', ['task:questions', 'answer', '--id', id, '--answer', answer], {
-        cwd: repoRoot, encoding: 'utf8',
-      });
+      const args = ['tools/task-questions.mjs', 'answer', '--qid', id, '--answer', answer, '--json'];
+      if (Number.isInteger(issue) && issue > 0) args.push('--issue', String(issue));
+      const r = spawnSync('node', args, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
       const tok = settings.get().authToken;
-      if (r.status !== 0) return sendErr(res, 500, redactSecrets(r.stderr || 'answer failed', [tok]));
-      return send(res, 200, { ok: true, runId: null });
+      if (r.status !== 0) return sendErr(res, 500, redactSecrets((r.stderr || r.stdout || 'answer failed').slice(0, 400), [tok]));
+      try {
+        const parsed = JSON.parse(r.stdout);
+        return send(res, 200, parsed);
+      } catch {
+        return send(res, 200, { ok: true, qid: id });
+      }
     }
 
     if (method === 'POST' && path === '/api/automerge/check') {
@@ -525,10 +538,13 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
     if (method === 'GET' && path === '/api/autopilot/status') {
       const ap = getAutopilot();
       const current = ap.current();
+      const latest = ap.latest();
       const history = ap.history({ limit: 10 });
-      const latest = current ?? history[0] ?? null;
       const missionReport = (current?.missionReport ?? latest?.missionReport ?? null);
-      return send(res, 200, { autopilot: current, latest, history, missionReport });
+      const visibleRun = current ?? latest;
+      const isLive = !!current;
+      const stale = !current && (latest?.status === 'waiting' || latest?.status === 'running');
+      return send(res, 200, { autopilot: visibleRun, latest, history, missionReport, isLive, stale });
     }
     if (method === 'GET' && path === '/api/autopilot/notifier') {
       const n = getNotifier();
@@ -540,6 +556,45 @@ export function buildApp({ repoRoot = REPO_ROOT_DEFAULT } = {}) {
       const r = ap.getRun(id);
       if (!r) return sendErr(res, 404, 'run not found');
       return send(res, 200, r);
+    }
+    if (method === 'POST' && path === '/api/autopilot/answer-question') {
+      let body; try { body = await readBody(req); } catch (e) { return sendErr(res, 422, e.message); }
+      const qid = String(body?.qid ?? body?.id ?? '');
+      const answer = String(body?.answer ?? '');
+      const issue = Number(body?.issue ?? 0);
+      if (!qid || !/^[A-Za-z0-9_\-:]+$/.test(qid)) return sendErr(res, 422, 'invalid qid');
+      if (!answer.trim() || answer.length > 8000) return sendErr(res, 422, 'invalid answer');
+      const ap = getAutopilot();
+      const r = await ap.answerQuestion({ qid, answer, issue: Number.isInteger(issue) && issue > 0 ? issue : null });
+      return send(res, r.ok ? 200 : 409, r);
+    }
+    if (method === 'GET' && path === '/api/autopilot/recent') {
+      const ap = getAutopilot();
+      const activeId = ap.current()?.id ?? null;
+      const history = ap.history({ limit: 12 }).filter((h) => h.id !== activeId && h.status !== 'running');
+      const items = history.slice(0, 8).map((h) => ({
+        id: h.id,
+        status: h.status,
+        outcome: h.missionReport?.outcome ?? null,
+        startedAt: h.startedAt,
+        completedAt: h.completedAt,
+        durationMs: h.completedAt && h.startedAt ? Math.max(0, new Date(h.completedAt).getTime() - new Date(h.startedAt).getTime()) : null,
+        prsCreated: h.prsCreated ?? 0,
+        failedCount: (h.failedIssues ?? []).length,
+        completedIssues: (h.completedIssues ?? []).length,
+        plannedTasks: h.plannedTasks ?? null,
+        unattended: !!h.unattended,
+        summary: h.missionReport?.summary ?? null,
+        prs: h.createdPrs ?? [],
+        firstPr: (h.createdPrs ?? [])[0] ?? null,
+      }));
+      return send(res, 200, { items });
+    }
+    if (method === 'POST' && path === '/api/autopilot/pr-status') {
+      let body; try { body = await readBody(req); } catch { body = {}; }
+      const ap = getAutopilot();
+      const r = ap.refreshPrStatus({ runId: body?.runId ?? null });
+      return send(res, r.ok ? 200 : 409, r);
     }
     if (method === 'POST' && path === '/api/autopilot/reset') {
       const ap = getAutopilot();

@@ -18,6 +18,7 @@ import {
   MISSION_MODES, DEFAULT_MODE_ID, findMode,
   renderModeRail, buildMissionState, renderMissionHero, renderMissionProgress,
   renderUnattendedRun, buildPrLinksText,
+  renderActivityTicker, renderQuestionCard, renderRecentRuns,
   renderFullChecklist, renderNextTask, renderTaskBoard,
   renderLogSummary, appendLogLine, clearLogs,
   renderMissionResult, buildDiagnostic,
@@ -101,8 +102,13 @@ async function refreshAll() {
     try {
       const apStatus = await api.get("/api/autopilot/status");
       lastLatestRun = apStatus?.latest ?? null;
+      lastIsLive = !!apStatus?.isLive;
       if (apStatus?.autopilot) lastV5 = { ...(lastV5 || {}), autopilot: apStatus.autopilot };
     } catch {}
+    try {
+      const recent = await api.get("/api/autopilot/recent");
+      lastRecentRuns = Array.isArray(recent?.items) ? recent.items : [];
+    } catch { lastRecentRuns = []; }
     setConnState(ConnState.CONNECTED);
     renderStatusGrid({ conn: "connected", settings, v5, network });
     if (dash) renderStatusBranch(dash);
@@ -139,12 +145,17 @@ function rerenderMission() {
   const ap = lastV5?.autopilot ?? lastLatestRun ?? null;
   renderMissionProgress(ap);
   renderUnattendedRun(ap);
+  renderActivityTicker(ap);
+  renderQuestionCard(ap, { isLive: lastIsLive });
   renderMissionResult(ap);
+  renderRecentRuns(lastRecentRuns);
   if (m.full) renderFullChecklist(lastReadiness, openChecklistAction);
   else document.getElementById("full-checklist-card")?.classList.add("hidden");
 }
 
 let lastLatestRun = null;
+let lastRecentRuns = [];
+let lastIsLive = false;
 
 function openChecklistAction(action) {
   if (action === "open-settings-safety") return openSettingsSection("safety");
@@ -305,6 +316,72 @@ document.getElementById("autopilot-resume")?.addEventListener("click", async (ev
   }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
 });
 
+// Question card — option click pre-fills the textarea
+document.body.addEventListener("click", (ev) => {
+  const opt = ev.target.closest("[data-q-option]");
+  if (!opt) return;
+  const ta = document.getElementById("q-answer-input");
+  if (ta) { ta.value = opt.dataset.qOption || ""; ta.focus(); }
+});
+
+// Question card — stale: post to /api/questions/answer (no resume)
+document.body.addEventListener("click", async (ev) => {
+  const btn = ev.target.closest('[data-q-action="submit-stale"]');
+  if (!btn) return;
+  ev.preventDefault();
+  const ap = lastV5?.autopilot ?? lastLatestRun ?? null;
+  const ta = document.getElementById("q-answer-input");
+  const text = String(ta?.value || "").trim();
+  if (!text) { showToast("Réponse vide", "warn"); return; }
+  if (!ap?.pendingQuestionId) { showToast("Aucune question", "warn"); return; }
+  await runWithState(btn, async () => {
+    const r = await api.post("/api/questions/answer", {
+      qid: ap.pendingQuestionId,
+      answer: text,
+      issue: ap.pendingQuestion?.issue ?? ap.issue ?? null,
+    });
+    if (r?.ok) {
+      showToast("Réponse postée sur GitHub", "ok");
+      if (ta) ta.value = "";
+      refreshAll().catch(() => {});
+    } else showToast(r?.reason || "Échec", "err");
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
+});
+
+// Question card — submit answer + auto-resume
+document.body.addEventListener("click", async (ev) => {
+  const btn = ev.target.closest('[data-q-action="submit"]');
+  if (!btn) return;
+  ev.preventDefault();
+  const ap = lastV5?.autopilot ?? lastLatestRun ?? null;
+  const ta = document.getElementById("q-answer-input");
+  const text = String(ta?.value || "").trim();
+  if (!text) { showToast("Réponse vide", "warn"); return; }
+  if (!ap?.pendingQuestionId) { showToast("Aucune question en attente", "warn"); return; }
+  await runWithState(btn, async () => {
+    const r = await api.post("/api/autopilot/answer-question", {
+      qid: ap.pendingQuestionId,
+      answer: text,
+      issue: ap.pendingQuestion?.issue ?? ap.issue ?? null,
+    });
+    if (r?.ok) {
+      showToast("Réponse envoyée — mission relancée", "ok");
+      if (ta) ta.value = "";
+      refreshAll().catch(() => {});
+    } else {
+      showToast(r?.reason ?? "Échec de l'envoi", "err");
+    }
+  }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
+});
+
+// Cmd/Ctrl+Enter inside the answer textarea triggers submit
+document.body.addEventListener("keydown", (ev) => {
+  if (ev.target?.id === "q-answer-input" && (ev.metaKey || ev.ctrlKey) && ev.key === "Enter") {
+    ev.preventDefault();
+    document.querySelector('[data-q-action="submit"]')?.click();
+  }
+});
+
 // Mission result actions
 document.body.addEventListener("click", async (ev) => {
   const rb = ev.target.closest("[data-result-action]");
@@ -322,6 +399,14 @@ document.body.addEventListener("click", async (ev) => {
       const text = buildPrLinksText(ap) || ap?.prUrl || "";
       if (!text) { showToast("Aucune PR à copier", "warn"); return; }
       navigator.clipboard?.writeText(text).then(() => showToast("PR links copiés", "ok")).catch(() => showToast("Copie échouée", "warn"));
+      return;
+    }
+    if (action === "refresh-pr-status") {
+      await runWithState(rb, async () => {
+        const r = await api.post("/api/autopilot/pr-status", {});
+        if (r?.ok) { showToast("Statuts PR mis à jour", "ok"); await refreshAll(); }
+        else showToast(r?.reason ?? "Échec", "warn");
+      }).catch((e) => showToast(redact(String(e?.message || e)), "err"));
       return;
     }
     if (action === "copy-diagnostic") {

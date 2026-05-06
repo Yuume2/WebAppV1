@@ -215,6 +215,61 @@ Pour brancher n8n plus tard : ajouter `N8N_BASE_URL`, `N8N_WEBHOOK_SECRET`,
 Pour WhatsApp : `WHATSAPP_PROVIDER=twilio` + `TWILIO_ACCOUNT_SID/AUTH_TOKEN` +
 `WHATSAPP_FROM/TO` (ou `WHATSAPP_PROVIDER=n8n` pour passer par n8n).
 
+## V20 — répondre à une human question depuis le cockpit
+
+Quand Claude pose une question (commentaire `<!-- claude-question v1` sur
+l'issue), la mission passe en `waiting`. Le cockpit affiche alors une carte
+**Décision humaine** complète :
+
+- titre clair issu du markdown du commentaire
+- contexte (« Pourquoi je demande »)
+- options sous forme de boutons (clic = pré-remplit la zone de réponse)
+- recommandation Claude mise en valeur si présente
+- zone de texte libre + bouton « Envoyer la réponse et reprendre »
+- raccourci `Cmd/Ctrl+Enter` pour envoyer
+
+L'envoi appelle `POST /api/autopilot/answer-question` qui :
+
+1. Poste un commentaire `<!-- claude-answer qid:... -->` sur l'issue via `gh`.
+2. Poste une `<!-- claude-resolution -->` (best-effort).
+3. Appelle `engine.resume({ answeredQid })` pour faire repartir la loop.
+
+Le tout se fait sans n8n, sans Notion. Le bridge externe reste optionnel.
+
+### Stale waiting state
+
+Si tu redémarres le serveur cockpit pendant qu'un run était en `waiting`, le
+process perd `activeRun`. Le rapport persiste (`/api/autopilot/status` renvoie
+`isLive: false, stale: true`) et la carte question affiche un mode dégradé :
+bouton **Envoyer la réponse (run précédent)** qui poste sur GitHub uniquement,
+et bouton **Reset run** pour repartir d'une mission propre.
+
+## V20 — voir les runs récents
+
+Une nouvelle section **Derniers runs** liste les missions terminées avec :
+
+- outcome (completed / partial / failed / stopped / waiting)
+- résumé court
+- 1ère PR cliquable
+- date + durée
+
+Backend : `GET /api/autopilot/recent` renvoie 8 runs max, filtre les runs actifs.
+
+## V20 — état des PR
+
+Chaque PR créée capture `number`, `url`, `title`, `branch`, `issueNumber` à la
+création. Bouton **Refresh PR status** dans le rapport final qui appelle
+`POST /api/autopilot/pr-status` ; ça rappelle `gh pr view` pour chaque PR et
+ajoute `state` (open / merged / closed / draft). Les badges de la PR list
+prennent les couleurs : open=vert, merged=violet, closed=rouge, draft=jaune.
+
+## V20 — activity ticker
+
+Sous le CTA principal, un bandeau live affiche en français ce que fait
+Claude **maintenant** : `Préflight…`, `Création de la branche…`,
+`Claude is coding…`, `Vérification PR…`, etc. + un compteur done/failed quand
+le run est unattended.
+
 ## Sécurité
 
 - Auth token requise (Bearer ou query `?token=`).
