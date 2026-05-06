@@ -369,6 +369,53 @@ function escapeHtml2(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+export function renderUnattendedRun(ap) {
+  const host = document.getElementById('mission-unattended');
+  if (!host) return;
+  if (!ap || ap.status === 'idle' || (ap.status !== 'running' && ap.status !== 'waiting')) {
+    host.classList.add('hidden');
+    return;
+  }
+  if (!ap.unattended) {
+    host.classList.add('hidden');
+    return;
+  }
+  host.classList.remove('hidden');
+  const planned = ap.plannedTasks ?? '?';
+  const done = (ap.completedIssues ?? []).length;
+  const failed = (ap.failedIssues ?? []).length;
+  const skipped = (ap.skippedIssues ?? []).length;
+  const remaining = typeof planned === 'number' ? Math.max(0, planned - done) : '?';
+  const prs = (ap.createdPrs ?? []);
+  const prList = prs.length ? prs.map((p) => `
+    <li class="pr-item">
+      <a href="${escapeHtml2(p.url || '#')}" target="_blank" rel="noopener">PR #${p.number ?? '?'}</a>
+      <span class="muted small">${escapeHtml2(p.title || '')}</span>
+    </li>
+  `).join('') : '<li class="muted small">Aucune PR pour l\'instant.</li>';
+  const currentLine = ap.issue
+    ? `Current: #${ap.issue}${ap.issueTitle ? ' · ' + escapeHtml2(ap.issueTitle) : ''}`
+    : 'Current: (selecting safe task)';
+  host.innerHTML = `
+    <div class="unattended-head">
+      <span class="badge running">Unattended run</span>
+      <span class="muted small">Planned: ${escapeHtml2(String(planned))} task${typeof planned === 'number' && planned > 1 ? 's' : ''}</span>
+    </div>
+    <div class="unattended-current">${currentLine}</div>
+    <div class="unattended-stats">
+      <span><strong>${done}</strong> done</span>
+      <span><strong>${failed}</strong> failed</span>
+      <span><strong>${skipped}</strong> skipped</span>
+      <span><strong>${prs.length}</strong> PR</span>
+      <span class="muted small">Remaining safe: ${escapeHtml2(String(remaining))}</span>
+    </div>
+    <ul class="pr-list-live">${prList}</ul>
+    <div class="unattended-actions">
+      ${prs.length ? `<button data-result-action="copy-pr-links">Copy PR links</button>` : ''}
+    </div>
+  `;
+}
+
 export function renderMissionResult(ap) {
   const host = document.getElementById('mission-result');
   if (!host) return;
@@ -376,39 +423,101 @@ export function renderMissionResult(ap) {
     host.classList.add('hidden');
     return;
   }
+  const report = ap.missionReport ?? null;
   const tone = STATUS_TONE[ap.status] || '';
   const label = STATUS_LABEL[ap.status] || ap.status;
-  const issue = ap.issue ? `#${ap.issue}` : '—';
-  let body = '';
-  if (ap.status === 'completed' && ap.prUrl) {
-    body = `<div class="result-row"><span class="result-label">PR</span><a href="${escapeHtml2(ap.prUrl)}" target="_blank" rel="noopener" class="result-link">PR #${ap.prNumber ?? '?'}</a></div>`;
-  } else if (ap.status === 'completed') {
-    body = `<div class="result-row"><span class="result-label">Issue</span><span class="result-value">${issue}</span></div>
-            <div class="result-row"><span class="result-label">Note</span><span class="result-value">Aucune PR détectée — vérifie l'issue ou relance.</span></div>`;
-  } else if (ap.status === 'failed') {
-    body = `<div class="result-row"><span class="result-label">Issue</span><span class="result-value">${issue}</span></div>
-            <div class="result-row"><span class="result-label">Étape</span><span class="result-value">${escapeHtml2(ap.currentStep || '?')}</span></div>
-            <div class="result-row"><span class="result-label">Raison</span><span class="result-value">${escapeHtml2(humanFailureReason(ap))}</span></div>`;
-  } else if (ap.status === 'stopped') {
-    body = `<div class="result-row"><span class="result-label">Issue</span><span class="result-value">${issue}</span></div>
-            <div class="result-row"><span class="result-label">Raison</span><span class="result-value">${escapeHtml2(ap.stopReason || 'arrêt manuel')}</span></div>`;
-  }
+  const created = report?.createdPrs ?? ap.createdPrs ?? [];
+  const failed = report?.failedIssues ?? ap.failedIssues ?? [];
+  const skipped = report?.skippedIssues ?? ap.skippedIssues ?? [];
+  const summary = report?.summary
+    || (ap.status === 'completed' && ap.prUrl ? `Mission terminée : 1 PR créée.` : null)
+    || (ap.status === 'failed' ? humanFailureReason(ap) : null)
+    || 'Mission terminée.';
+  const nextAction = report?.nextAction ?? (ap.status === 'completed' && ap.prUrl ? `Review PR #${ap.prNumber ?? ''}.`.trim() : (ap.status === 'failed' ? 'Inspect the failure and retry.' : 'Mission ended.'));
+
+  const prsBlock = created.length ? `
+    <div class="result-section">
+      <div class="result-section-title">PRs created (${created.length})</div>
+      <ul class="pr-list">
+        ${created.map((p) => `
+          <li class="pr-item">
+            <a href="${escapeHtml2(p.url || '#')}" target="_blank" rel="noopener">PR #${p.number ?? '?'}</a>
+            <span class="muted small">${escapeHtml2(p.title || '')}</span>
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  ` : '';
+
+  const failedBlock = failed.length ? `
+    <div class="result-section">
+      <div class="result-section-title">Failed (${failed.length})</div>
+      <ul class="failed-list">
+        ${failed.map((f) => `
+          <li class="failed-item">
+            <span class="failed-num">#${f.number ?? '?'}</span>
+            <span class="failed-reason">${escapeHtml2(f.reason || '')}</span>
+            ${f.detail ? `<div class="failed-detail">${escapeHtml2(f.detail)}</div>` : ''}
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  ` : '';
+
+  const skippedBlock = skipped.length ? `
+    <div class="result-section">
+      <div class="result-section-title">Skipped (${skipped.length})</div>
+      <ul class="skipped-list">
+        ${skipped.map((s) => `<li>#${s.number ?? '?'} · ${escapeHtml2(s.reason || '')}</li>`).join('')}
+      </ul>
+    </div>
+  ` : '';
+
+  const issueLine = ap.issue ? `Mission #${ap.issue}` : 'Mission';
+  const headTitle = report?.outcome ? `${headLabel(report.outcome)} · ${created.length} PR / ${failed.length} failed` : (ap.issueTitle || issueLine);
+
   host.classList.remove('hidden');
   host.innerHTML = `
     <div class="result-head">
       <span class="badge ${tone}">${escapeHtml2(label)}</span>
       <span class="muted small">${ap.completedAt ? new Date(ap.completedAt).toLocaleTimeString() : ''}</span>
     </div>
-    <h3>${escapeHtml2(ap.issueTitle || `Mission ${issue}`)}</h3>
-    <div class="result-body">${body}</div>
+    <h3>${escapeHtml2(headTitle)}</h3>
+    <p class="result-summary">${escapeHtml2(summary)}</p>
+    ${prsBlock}
+    ${failedBlock}
+    ${skippedBlock}
+    <div class="result-section result-next-action">
+      <div class="result-section-title">Next action</div>
+      <div class="result-next">${escapeHtml2(nextAction)}</div>
+    </div>
     <div class="result-actions">
-      ${ap.status === 'completed' && ap.prUrl ? `<button data-result-action="open-pr" class="primary">Open PR</button>` : ''}
-      ${ap.status === 'failed' ? `<button data-result-action="retry" class="primary">Retry</button>` : ''}
+      ${created.length === 1 ? `<button data-result-action="open-pr" class="primary">Open PR</button>` : ''}
+      ${created.length > 1 ? `<button data-result-action="open-all-prs" class="primary">Open all PRs</button>` : ''}
+      ${created.length ? `<button data-result-action="copy-pr-links">Copy PR links</button>` : ''}
+      ${failed.length ? `<button data-result-action="retry">Retry failed</button>` : ''}
       <button data-result-action="copy-diagnostic">Copy diagnostic</button>
       <button data-result-action="open-logs" class="ghost">Open logs</button>
       <button data-result-action="reset" class="ghost">Reset</button>
     </div>
   `;
+}
+
+function headLabel(outcome) {
+  switch (outcome) {
+    case 'completed': return 'Mission complète';
+    case 'partial': return 'Mission partielle';
+    case 'failed': return 'Mission échouée';
+    case 'stopped': return 'Mission stoppée';
+    case 'waiting': return 'En attente';
+    default: return 'Mission';
+  }
+}
+
+export function buildPrLinksText(ap) {
+  const created = ap?.missionReport?.createdPrs ?? ap?.createdPrs ?? [];
+  if (!created.length && ap?.prUrl) return ap.prUrl;
+  return created.map((p) => `${p.url ?? ''}${p.title ? ' — ' + p.title : ''}`.trim()).filter(Boolean).join('\n');
 }
 
 export function buildDiagnostic(ap) {

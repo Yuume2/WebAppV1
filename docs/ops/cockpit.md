@@ -145,6 +145,76 @@ Auto-merge reste OFF par défaut. Voir `docs/ops/automerge-policy.md`.
 L'UI est responsive. Tableau des tâches → cartes sur téléphone, boutons
 plus larges (touch-target 44px), onglets en barre du bas.
 
+## Mode unattended (loop robuste)
+
+Quand tu sélectionnes Auto · 5 tasks, Loop · 10 tasks ou Custom loop, le cockpit
+passe en mode **unattended run** : tu peux fermer l'onglet et faire autre chose.
+
+### Lancer un unattended run
+
+1. Ouvre le cockpit, choisis un mode loop (`auto5` recommandé).
+2. Clique **Start mission**.
+3. La carte « Unattended run » apparaît : tâche en cours, queue restante,
+   compteurs done / failed / skipped, liste des PR en live.
+4. Tu peux fermer l'onglet — la mission continue tant que le serveur tourne.
+
+### Config recommandée
+
+```
+allowExec=true
+allowLoop=true
+allowAutoMerge=false
+maxPrsPerRun=5
+maxRetriesPerIssue=1
+```
+
+Auto-merge reste OFF : tu valides chaque PR manuellement.
+
+### Comportement face aux échecs
+
+- Si Claude exit non-zero sur une issue : la mission marque l'issue **failed**,
+  l'exclut du run et passe à la suivante.
+- Si Claude exit 0 sans PR : l'issue passe en `no-pr-produced`, exclue du run,
+  loop continue.
+- Une issue échouée n'est jamais reprise dans le même run.
+- Stop propre quand : `maxPrsPerRun` atteint, `maxErrors` atteint, plus aucune
+  task safe (`no-safe-task`), time budget dépassé, ou stop manuel.
+
+### Lire le rapport final
+
+Quand la mission termine, la carte **Mission report** s'affiche et persiste
+après refresh. Elle contient :
+
+- Outcome : `completed` / `partial` / `failed` / `stopped`.
+- Liste cliquable des PR créées (boutons **Open all PRs**, **Copy PR links**).
+- Liste des issues échouées avec raison + dernière sortie Claude.
+- Issues skipped avec raison.
+- **Next action** : ce que tu dois faire ensuite (review PRs, retry, etc.).
+
+Si une seule PR : bouton **Open PR**. Si plusieurs : **Open all PRs** ouvre
+chaque lien dans un nouvel onglet, **Copy PR links** met la liste au presse-papier.
+
+### Notifications n8n / Notion / WhatsApp
+
+Adapter `notifier.mjs` envoie des événements à chaque transition :
+`mission_started`, `pr_created`, `issue_failed`, `question_required`,
+`mission_completed`.
+
+| Provider | Status | Comportement |
+|---|---|---|
+| Notion | configuré → ready | événements queueables |
+| n8n | base configuré + question webhook → ready | POST signé HMAC |
+| WhatsApp | optional | ne bloque jamais |
+
+`GET /api/autopilot/notifier` retourne le status + événements récents. Si une
+intégration manque, le rapport local reste complet — rien ne crash.
+
+Pour brancher n8n plus tard : ajouter `N8N_BASE_URL`, `N8N_WEBHOOK_SECRET`,
+`N8N_QUESTION_NOTIFY_WEBHOOK` dans `.local-control/v5.env`.
+
+Pour WhatsApp : `WHATSAPP_PROVIDER=twilio` + `TWILIO_ACCOUNT_SID/AUTH_TOKEN` +
+`WHATSAPP_FROM/TO` (ou `WHATSAPP_PROVIDER=n8n` pour passer par n8n).
+
 ## Sécurité
 
 - Auth token requise (Bearer ou query `?token=`).

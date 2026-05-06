@@ -116,7 +116,7 @@ export function shouldStopRun({ run, settings, now = Date.now() }) {
   return { stop: false, reason: null };
 }
 
-export function buildAutopilotState({ id, mode, issue, branch, settingsSnapshot, issueTitle }) {
+export function buildAutopilotState({ id, mode, issue, branch, settingsSnapshot, issueTitle, unattended = false, plannedTasks = null }) {
   const now = new Date().toISOString();
   return {
     id: id ?? randomUUID(),
@@ -146,6 +146,14 @@ export function buildAutopilotState({ id, mode, issue, branch, settingsSnapshot,
     settingsSnapshot: settingsSnapshot ?? null,
     log: [],
     stopRequested: false,
+    unattended: !!unattended,
+    plannedTasks: plannedTasks ?? null,
+    failedIssues: [],
+    skippedIssues: [],
+    completedIssues: [],
+    createdPrs: [],
+    attempts: {},
+    missionReport: null,
   };
 }
 
@@ -170,7 +178,137 @@ export function recordPR({ run, pr }) {
   run.lastPR = pr;
   if (pr?.url) run.prUrl = pr.url;
   if (pr?.number) run.prNumber = pr.number;
+  if (!Array.isArray(run.createdPrs)) run.createdPrs = [];
+  const entry = {
+    number: pr?.number ?? null,
+    url: pr?.url ?? null,
+    title: pr?.title ?? null,
+    branch: pr?.branch ?? run.branch ?? null,
+    issueNumber: pr?.issueNumber ?? run.issue ?? null,
+    checks: pr?.checks ?? null,
+    createdAt: new Date().toISOString(),
+  };
+  run.createdPrs.push(entry);
   return run;
+}
+
+export function recordIssueCompleted(run, issueNum, extras = {}) {
+  if (!Array.isArray(run.completedIssues)) run.completedIssues = [];
+  run.completedIssues.push({
+    number: issueNum,
+    title: extras.title ?? null,
+    prUrl: extras.prUrl ?? null,
+    prNumber: extras.prNumber ?? null,
+    at: new Date().toISOString(),
+  });
+  return run;
+}
+
+export function recordIssueFailed(run, issueNum, reason, extras = {}) {
+  if (!Array.isArray(run.failedIssues)) run.failedIssues = [];
+  run.failedIssues.push({
+    number: issueNum,
+    title: extras.title ?? null,
+    reason: reason ?? 'unknown',
+    detail: extras.detail ?? null,
+    step: extras.step ?? run.currentStep ?? null,
+    at: new Date().toISOString(),
+  });
+  return run;
+}
+
+export function recordIssueSkipped(run, issueNum, reason, extras = {}) {
+  if (!Array.isArray(run.skippedIssues)) run.skippedIssues = [];
+  run.skippedIssues.push({
+    number: issueNum,
+    title: extras.title ?? null,
+    reason: reason ?? 'unknown',
+    at: new Date().toISOString(),
+  });
+  return run;
+}
+
+export function buildMissionReport(run) {
+  if (!run) return null;
+  const startedAt = run.startedAt ? new Date(run.startedAt).getTime() : Date.now();
+  const endedAt = run.completedAt ? new Date(run.completedAt).getTime() : Date.now();
+  const durationMs = Math.max(0, endedAt - startedAt);
+  const created = Array.isArray(run.createdPrs) ? run.createdPrs : [];
+  const failed = Array.isArray(run.failedIssues) ? run.failedIssues : [];
+  const skipped = Array.isArray(run.skippedIssues) ? run.skippedIssues : [];
+  const completed = Array.isArray(run.completedIssues) ? run.completedIssues : [];
+  const attempted = (run.issuesProcessed ?? []).length || (completed.length + failed.length + skipped.length);
+  let outcome;
+  if (run.status === 'completed') {
+    if (created.length > 0 && failed.length > 0) outcome = 'partial';
+    else if (created.length > 0) outcome = 'completed';
+    else if (failed.length > 0) outcome = 'failed';
+    else outcome = 'completed';
+    if (run.stopReason === AUTOPILOT_STOP_REASONS.NO_SAFE_TASK && created.length === 0 && attempted === 0) outcome = 'completed';
+  } else if (run.status === 'failed') {
+    outcome = created.length > 0 ? 'partial' : 'failed';
+  } else if (run.status === 'stopped') {
+    outcome = created.length > 0 ? 'partial' : 'stopped';
+  } else if (run.status === 'waiting') {
+    outcome = 'waiting';
+  } else {
+    outcome = run.status ?? 'unknown';
+  }
+  let nextAction;
+  const allowAutoMerge = !!run.settingsSnapshot?.allowAutoMerge;
+  if (created.length > 0 && !allowAutoMerge) {
+    nextAction = `Review and merge ${created.length} PR${created.length > 1 ? 's' : ''} manually.`;
+  } else if (created.length === 0 && failed.length > 0) {
+    nextAction = `Inspect ${failed.length} failed issue${failed.length > 1 ? 's' : ''} and retry manually.`;
+  } else if (run.status === 'waiting') {
+    nextAction = 'Answer pending question, then resume autopilot.';
+  } else if (run.stopReason === AUTOPILOT_STOP_REASONS.NO_SAFE_TASK) {
+    nextAction = 'No safe task available. Triage queue or label new issues.';
+  } else if (created.length === 0 && attempted === 0) {
+    nextAction = 'No task ran. Check preflight blockers.';
+  } else {
+    nextAction = 'Mission ended. Review run log if needed.';
+  }
+  let summary;
+  if (created.length > 0 && failed.length > 0) {
+    summary = `Mission terminée : ${created.length} PR créée${created.length > 1 ? 's' : ''}, ${failed.length} issue${failed.length > 1 ? 's' : ''} échouée${failed.length > 1 ? 's' : ''}.`;
+  } else if (created.length > 0) {
+    summary = `Mission terminée : ${created.length} PR créée${created.length > 1 ? 's' : ''}.`;
+  } else if (failed.length > 0 && created.length === 0) {
+    const f = failed[0];
+    summary = `Aucune PR créée : #${f.number} a échoué (${f.reason}).`;
+  } else if (run.stopReason === AUTOPILOT_STOP_REASONS.NO_SAFE_TASK) {
+    summary = 'Plus aucune task safe disponible.';
+  } else if (run.status === 'waiting') {
+    summary = 'Mission en attente d\'une réponse humaine.';
+  } else if (run.status === 'stopped') {
+    summary = 'Mission stoppée avant la fin.';
+  } else {
+    summary = 'Mission terminée.';
+  }
+  return {
+    runId: run.id,
+    outcome,
+    summary,
+    durationMs,
+    startedAt: run.startedAt,
+    endedAt: run.completedAt,
+    plannedTasks: run.plannedTasks ?? null,
+    unattended: !!run.unattended,
+    attempted,
+    completedCount: completed.length,
+    failedCount: failed.length,
+    skippedCount: skipped.length,
+    prsCreated: created.length,
+    completedIssues: completed,
+    failedIssues: failed,
+    skippedIssues: skipped,
+    createdPrs: created,
+    pendingQuestionId: run.pendingQuestionId ?? null,
+    stopReason: run.stopReason ?? null,
+    nextAction,
+    autoMergeAllowed: allowAutoMerge,
+  };
 }
 
 const FAILURE_REASONS = new Set([
@@ -197,6 +335,7 @@ export function markStopped(run, reason) {
   run.stopReason = reason;
   run.stoppedAt = new Date().toISOString();
   run.completedAt = run.stoppedAt;
+  run.missionReport = buildMissionReport(run);
   return run;
 }
 
@@ -243,6 +382,13 @@ export function exportRunSummary(run) {
     resumeAvailable: run.resumeAvailable,
     logsCount: (run.log ?? []).length,
     log: (run.log ?? []).slice(-30),
+    unattended: !!run.unattended,
+    plannedTasks: run.plannedTasks ?? null,
+    failedIssues: Array.isArray(run.failedIssues) ? run.failedIssues : [],
+    skippedIssues: Array.isArray(run.skippedIssues) ? run.skippedIssues : [],
+    completedIssues: Array.isArray(run.completedIssues) ? run.completedIssues : [],
+    createdPrs: Array.isArray(run.createdPrs) ? run.createdPrs : [],
+    missionReport: run.missionReport ?? (run.status === 'completed' || run.status === 'failed' || run.status === 'stopped' ? buildMissionReport(run) : null),
   };
 }
 
@@ -333,7 +479,7 @@ export function findClaudeQuestionOnIssue(repoRoot, issueNum) {
 }
 
 export class AutopilotEngine {
-  constructor({ repoRoot, settings, store, logs, env, claudeAdapter, dryRun = true }) {
+  constructor({ repoRoot, settings, store, logs, env, claudeAdapter, dryRun = true, notifier = null }) {
     this.repoRoot = repoRoot;
     this.settings = settings;
     this.store = store;
@@ -341,6 +487,7 @@ export class AutopilotEngine {
     this.env = env;
     this.claudeAdapter = claudeAdapter;
     this.dryRun = dryRun;
+    this.notifier = notifier;
     this.activeRun = null;
     this.activeChild = null;
     this.activeRunId = null;
@@ -354,16 +501,18 @@ export class AutopilotEngine {
     }
   }
 
-  async start({ mode = 'plan', issue = null }) {
+  async start({ mode = 'plan', issue = null, unattended = null, plannedTasks = null }) {
     if (this.hasActive()) return { ok: false, reason: 'autopilot already active', run: exportRunSummary(this.activeRun) };
 
     const settingsSnapshot = this.settings.get();
     const claudeAvailable = !!this.claudeAdapter?.available;
     const wantExec = mode !== 'plan' && settingsSnapshot.allowExec && claudeAvailable && !this.dryRun;
     const wantLoop = mode === 'loop' && settingsSnapshot.allowLoop && wantExec;
+    const isUnattended = unattended != null ? !!unattended : !!wantLoop;
+    const planned = plannedTasks ?? (wantLoop ? (settingsSnapshot.maxPrsPerRun ?? 5) : 1);
 
     const pre = preflightFromRepo({ repoRoot: this.repoRoot, claudeAvailable, settings: settingsSnapshot, env: this.env, mode });
-    const run = buildAutopilotState({ mode, issue, settingsSnapshot });
+    const run = buildAutopilotState({ mode, issue, settingsSnapshot, unattended: isUnattended, plannedTasks: planned });
     this.activeRun = run;
     this.activeRunId = run.id;
     this._persist(); this._emit('state', exportRunSummary(run));
@@ -403,7 +552,7 @@ export class AutopilotEngine {
   }
 
   async _pickIssue({ run, issue }) {
-    if (issue) { run.issue = issue; runStep(run, 'task-selected', { issue, branch: `feat/issue-${issue}-autopilot` }); return issue; }
+    if (issue) { run.issue = issue; runStep(run, 'task-selected', { issue, branch: `feat/issue-${issue}-autopilot` }); return { number: issue, title: null }; }
     const queue = loadQueueItems(this.repoRoot);
     if (!queue.ok) {
       recordError(run, new Error(queue.reason));
@@ -411,7 +560,10 @@ export class AutopilotEngine {
       this._persist();
       return null;
     }
-    const safe = chooseSafeTask({ items: queue.items, excludeIssues: run.issuesProcessed ?? [], staleDays: run.settingsSnapshot?.staleDays });
+    const failedNums = (run.failedIssues ?? []).map((f) => Number(f.number));
+    const skippedNums = (run.skippedIssues ?? []).map((s) => Number(s.number));
+    const exclude = Array.from(new Set([...(run.issuesProcessed ?? []), ...failedNums, ...skippedNums]));
+    const safe = chooseSafeTask({ items: queue.items, excludeIssues: exclude, staleDays: run.settingsSnapshot?.staleDays });
     if (!safe) {
       markStopped(run, AUTOPILOT_STOP_REASONS.NO_SAFE_TASK);
       this._persist();
@@ -420,14 +572,19 @@ export class AutopilotEngine {
     run.issue = safe.number;
     run.issueTitle = safe.title ?? null;
     runStep(run, 'task-selected', { issue: safe.number, title: safe.title ?? null, branch: `feat/issue-${safe.number}-autopilot` });
-    return safe.number;
+    return { number: safe.number, title: safe.title ?? null };
   }
 
   async _runLifecycle({ run, settingsSnapshot, wantLoop, initialIssue }) {
     const maxErrors = settingsSnapshot.maxErrors ?? 3;
-    const maxPRs = settingsSnapshot.maxPrsPerRun ?? 2;
+    const maxPRs = settingsSnapshot.maxPrsPerRun ?? (wantLoop ? 5 : 1);
+    const maxRetriesPerIssue = settingsSnapshot.maxRetriesPerIssue ?? 1;
     const startedAt = Date.now();
     const maxMs = (settingsSnapshot.maxMinutes ?? 60) * 60 * 1000;
+
+    if (this.notifier) {
+      try { await this.notifier.notify('mission_started', { runId: run.id, mode: run.mode, plannedTasks: run.plannedTasks, unattended: !!run.unattended }); } catch {}
+    }
 
     let iterIssue = initialIssue ?? null;
     while (true) {
@@ -436,22 +593,63 @@ export class AutopilotEngine {
       if (run.errors >= maxErrors) { markStopped(run, AUTOPILOT_STOP_REASONS.ERROR_BUDGET); break; }
       if ((run.prsCreated ?? 0) >= maxPRs) { markStopped(run, AUTOPILOT_STOP_REASONS.PR_BUDGET); break; }
 
-      const issueNum = await this._pickIssue({ run, issue: iterIssue });
-      if (!issueNum) break;
-      iterIssue = null; // only first iteration uses initialIssue
+      const picked = await this._pickIssue({ run, issue: iterIssue });
+      if (!picked) break;
+      iterIssue = null;
+      const issueNum = picked.number;
+      const issueTitle = picked.title ?? run.issueTitle ?? null;
 
-      const ok = await this._runSingleIssue(run, issueNum);
-      if (!ok) break; // issue handler set stopReason already if fatal
-      run.issuesProcessed.push(issueNum);
+      run.attempts = run.attempts ?? {};
+      run.attempts[issueNum] = (run.attempts[issueNum] ?? 0) + 1;
 
-      if (!wantLoop) { markStopped(run, AUTOPILOT_STOP_REASONS.COMPLETED); break; }
+      const outcome = await this._attemptIssue(run, issueNum, issueTitle);
+
+      if (outcome.fatal) {
+        // already markStopped by handler
+        break;
+      }
+
+      if (outcome.kind === 'pr') {
+        recordIssueCompleted(run, issueNum, { title: issueTitle, prUrl: outcome.pr?.url ?? null, prNumber: outcome.pr?.number ?? null });
+        if (!run.issuesProcessed.includes(issueNum)) run.issuesProcessed.push(issueNum);
+        if (this.notifier) {
+          try { await this.notifier.notify('pr_created', { runId: run.id, issue: issueNum, pr: outcome.pr }); } catch {}
+        }
+        if (!wantLoop) { markStopped(run, AUTOPILOT_STOP_REASONS.COMPLETED); break; }
+      } else if (outcome.kind === 'waiting') {
+        // markWaitingOnQuestion already set
+        if (this.notifier) {
+          try { await this.notifier.notify('question_required', { runId: run.id, issue: issueNum, qid: run.pendingQuestionId }); } catch {}
+        }
+        break;
+      } else if (outcome.kind === 'failed') {
+        recordIssueFailed(run, issueNum, outcome.reason ?? 'unknown', { title: issueTitle, detail: outcome.detail ?? null, step: run.currentStep });
+        if (!run.issuesProcessed.includes(issueNum)) run.issuesProcessed.push(issueNum);
+        if (this.notifier) {
+          try { await this.notifier.notify('issue_failed', { runId: run.id, issue: issueNum, reason: outcome.reason, detail: outcome.detail ?? null }); } catch {}
+        }
+        if (!wantLoop) {
+          markStopped(run, outcome.stopReason ?? AUTOPILOT_STOP_REASONS.CLAUDE_FAILED);
+          break;
+        }
+        // wantLoop: continue, picker will exclude this issue
+        continue;
+      } else if (outcome.kind === 'skipped') {
+        recordIssueSkipped(run, issueNum, outcome.reason ?? 'skipped', { title: issueTitle });
+        continue;
+      }
+    }
+    if (run.status === 'running') markStopped(run, AUTOPILOT_STOP_REASONS.COMPLETED);
+    if (this.notifier) {
+      try { await this.notifier.notify('mission_completed', { runId: run.id, report: run.missionReport }); } catch {}
     }
     this._persist(); this._emit('state', exportRunSummary(run));
   }
 
-  async _runSingleIssue(run, issueNum) {
+  async _attemptIssue(run, issueNum, issueTitle) {
     const branch = `feat/issue-${issueNum}-autopilot`;
     run.branch = branch;
+    if (issueTitle && !run.issueTitle) run.issueTitle = issueTitle;
     this._persist(); this._emit('state', exportRunSummary(run));
 
     runStep(run, 'reset-to-main');
@@ -460,7 +658,7 @@ export class AutopilotEngine {
       recordError(run, new Error('reset to main failed: ' + (reset.reason ?? '?')));
       markStopped(run, AUTOPILOT_STOP_REASONS.REPO_DIRTY);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return false;
+      return { kind: 'failed', fatal: true, reason: AUTOPILOT_STOP_REASONS.REPO_DIRTY, detail: reset.reason ?? null };
     }
 
     runStep(run, 'create-branch', { branch });
@@ -469,7 +667,7 @@ export class AutopilotEngine {
       recordError(run, new Error('create-branch failed: ' + (br.reason ?? '?')));
       markStopped(run, AUTOPILOT_STOP_REASONS.REPO_DIRTY);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return false;
+      return { kind: 'failed', fatal: true, reason: AUTOPILOT_STOP_REASONS.REPO_DIRTY, detail: br.reason ?? null };
     }
 
     const prep = this.claudeAdapter.prepare({ issue: issueNum, mode: 'exec', env: this.env, repoRoot: this.repoRoot });
@@ -482,10 +680,12 @@ export class AutopilotEngine {
       recordError(run, new Error('launch failed: ' + (launch.reason ?? '?')));
       markStopped(run, AUTOPILOT_STOP_REASONS.CLAUDE_UNAVAILABLE);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return false;
+      return { kind: 'failed', fatal: true, reason: AUTOPILOT_STOP_REASONS.CLAUDE_UNAVAILABLE, detail: launch.reason ?? null };
     }
     this.activeChild = launch.child;
 
+    let lastStderr = '';
+    let lastStdout = '';
     const exitCode = await new Promise((resolveP) => {
       const onClose = (code) => { try { launch.child.removeAllListeners(); } catch {} resolveP(code ?? 0); };
       launch.child.on('close', onClose);
@@ -493,6 +693,8 @@ export class AutopilotEngine {
       const tok = run.settingsSnapshot?.authToken;
       const stream = (label) => (chunk) => {
         const text = redactSecrets(chunk.toString('utf8'), tok ? [tok] : []);
+        if (label === 'stderr') lastStderr = (lastStderr + text).slice(-2000);
+        else lastStdout = (lastStdout + text).slice(-2000);
         if (this.logs?.append) this.logs.append(run.id, label, text);
         this._emit('log', { runId: run.id, stream: label, chunk: text });
       };
@@ -504,46 +706,58 @@ export class AutopilotEngine {
     if (run.stopRequested) {
       markStopped(run, AUTOPILOT_STOP_REASONS.STOPPED);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return false;
+      return { kind: 'failed', fatal: true, reason: AUTOPILOT_STOP_REASONS.STOPPED };
     }
 
     runStep(run, 'claude-exited', { exitCode });
 
     if (exitCode !== 0) {
       recordError(run, new Error(`claude exit=${exitCode}`));
-      markStopped(run, AUTOPILOT_STOP_REASONS.CLAUDE_FAILED);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return false;
+      return {
+        kind: 'failed', fatal: false,
+        reason: AUTOPILOT_STOP_REASONS.CLAUDE_FAILED,
+        stopReason: AUTOPILOT_STOP_REASONS.CLAUDE_FAILED,
+        detail: (lastStderr || lastStdout || `exit=${exitCode}`).trim().slice(-400) || null,
+      };
     }
 
     runStep(run, 'task-guard');
     const guard = runTaskGuard(this.repoRoot);
     if (!guard.ok && !guard.allow) {
       runStep(run, 'guard-block', { violations: guard.violations });
-      markStopped(run, AUTOPILOT_STOP_REASONS.GUARD_BLOCK);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return false;
+      return {
+        kind: 'failed', fatal: false,
+        reason: AUTOPILOT_STOP_REASONS.GUARD_BLOCK,
+        stopReason: AUTOPILOT_STOP_REASONS.GUARD_BLOCK,
+        detail: Array.isArray(guard.violations) ? guard.violations.slice(0, 5).join('; ') : null,
+      };
     }
 
     runStep(run, 'check-pr');
     const pr = findOpenPRForBranch(this.repoRoot, branch);
     if (pr) {
-      recordPR({ run, pr });
+      recordPR({ run, pr: { ...pr, branch, issueNumber: issueNum } });
       runStep(run, 'pr-created', pr);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return true;
+      return { kind: 'pr', fatal: false, pr: { ...pr, branch, issueNumber: issueNum } };
     }
     const q = findClaudeQuestionOnIssue(this.repoRoot, issueNum);
     if (q) {
       markWaitingOnQuestion(run, q.id);
       this._persist(); this._emit('state', exportRunSummary(run));
-      return false;
+      return { kind: 'waiting', fatal: false, qid: q.id };
     }
     runStep(run, 'no-pr-no-question');
     recordError(run, new Error('claude did not open PR and posted no question'));
-    markStopped(run, AUTOPILOT_STOP_REASONS.NO_PR_PRODUCED);
     this._persist(); this._emit('state', exportRunSummary(run));
-    return false;
+    return {
+      kind: 'failed', fatal: false,
+      reason: AUTOPILOT_STOP_REASONS.NO_PR_PRODUCED,
+      stopReason: AUTOPILOT_STOP_REASONS.NO_PR_PRODUCED,
+      detail: 'Claude exited 0 but produced no PR and no question.',
+    };
   }
 
   stop() {
