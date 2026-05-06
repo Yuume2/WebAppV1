@@ -11,6 +11,7 @@
     "clean": "rm -rf .next .turbo"
   },
   "dependencies": {
+    "@sentry/nextjs": "^8.55.1",
     "@webapp/config": "workspace:*",
     "@webapp/types": "workspace:*",
     "@webapp/ui": "workspace:*",
